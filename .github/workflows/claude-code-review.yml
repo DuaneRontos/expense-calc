@@ -46,4 +46,16 @@ jobs:
             Report every issue you find, including low-severity ones. For each,
             give file:line, the concrete failure case, and a suggested fix. Say
             plainly if you found nothing worth flagging.
-          claude_args: --model claude-opus-5
+
+          # `claude_args: --model claude-opus-5` was removed here.
+          #
+          # The action ran correctly (validation passed, checkout worked, the
+          # PR diff was ingested) and then failed after ~19s with:
+          #   Claude result reported subtype success with is_error:true
+          # The action does not surface the underlying cause. Two candidates:
+          # the pinned model being unavailable to this API key, or an account
+          # credit / rate limit problem.
+          #
+          # Dropping the pin isolates the first. If a run now succeeds, the
+          # model was the cause. If it still fails with is_error:true, the
+          # problem is the API account, not this file.
