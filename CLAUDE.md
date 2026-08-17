@@ -57,14 +57,19 @@ start failing with `is_error:true`.
 ## Building
 
 ```bash
-cd backend && ./gradlew build          # compile + test (tests need Docker)
-cd backend && ./gradlew build -x test  # compile only, no Docker required
-cd backend && ./gradlew bootRun        # needs a Postgres on localhost:5432
+cd backend && ./mvnw verify              # compile + test (tests need Docker)
+cd backend && ./mvnw -DskipTests package # compile only, no Docker required
+cd backend && ./mvnw spring-boot:run     # needs a Postgres on localhost:5432
 ```
 
-Spring Boot 4.1 on Java 21, Gradle with the Kotlin DSL. The build targets
-Java 21 via a toolchain; if the machine has a different JDK, Gradle provisions
-one automatically through the Foojay resolver in `settings.gradle.kts`.
+Spring Boot 4.1 on Java 21, Maven. `spring-boot-starter-parent` supplies
+dependency management, which is why no dependency in `pom.xml` carries a
+version.
+
+The `java.version` property drives `maven.compiler.release`, so the compiler
+enforces Java 21 APIs and bytecode whatever JDK runs the build. A newer JDK
+produces a correct Java 21 artifact — there is nothing to install or provision
+to match.
 
 **Boot 4 renamed things.** Starters are `spring-boot-starter-webmvc` (not
 `-web`), and test starters are split per module (`-data-jpa-test`,
@@ -85,13 +90,16 @@ When an annotation you know exists won't resolve, find its real package rather
 than adding dependencies:
 
 ```bash
-unzip -l ~/.gradle/caches/modules-2/**/spring-boot-*-test-*.jar | grep TheClass
+find ~/.m2/repository -name 'spring-boot-*test*.jar' -exec unzip -l {} \; | grep TheClass
 ```
 
-**Tests require Docker** — `ExpenseCalcBackendApplicationTests` starts a real
-Postgres via Testcontainers. Without a Docker daemon, `./gradlew build` fails
-at the test task, not at compilation. Use `-x test` when you only need to know
-the code compiles.
+The matched line is the class's path inside the jar, which is its package.
+
+**Tests require Docker** — `ExpenseCalcBackendApplicationTests`,
+`ExpenseRepositoryTest`, and `CategoryTypeTest` start a real Postgres via
+Testcontainers. Without a Docker daemon `./mvnw verify` fails in the test
+phase, not at compilation. Use `-DskipTests` when you only need to know the
+code compiles, and rely on CI to run the rest.
 
 ## Conventions
 

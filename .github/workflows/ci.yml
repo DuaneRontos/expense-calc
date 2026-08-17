@@ -22,25 +22,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Installing JDK 21 here means the Gradle toolchain resolves locally.
-      # Without it the Foojay resolver downloads a JDK on every run.
+      # cache: maven replaces the separate Gradle cache action — setup-java
+      # handles ~/.m2 itself, so there is no second caching step to conflict
+      # with. JDK 21 here matches maven.compiler.release in the POM.
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
+          cache: maven
 
-      # Owns Gradle caching and validates the wrapper checksum. Do not also set
-      # `cache: gradle` on setup-java — two cache implementations fight.
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-
-      # ubuntu-latest ships a running Docker daemon, so this is the first place
-      # the Testcontainers tests from #2 and #5 actually execute. They have
-      # been written but never run.
+      # ubuntu-latest ships a running Docker daemon, which is what lets the
+      # Testcontainers suites run at all. `verify` rather than `test` so the
+      # packaging phase is exercised too.
       - name: Build and test
         working-directory: backend
-        run: ./gradlew build --stacktrace
+        run: ./mvnw -B verify
 
       # always(), not failure(). Gradle prints no test counts on success, so a
       # green run would otherwise leave no evidence of what actually ran —
@@ -51,9 +48,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: backend-test-reports
-          path: |
-            backend/build/reports/tests/
-            backend/build/test-results/
+          path: backend/target/surefire-reports/
           retention-days: 7
 
   frontend:
