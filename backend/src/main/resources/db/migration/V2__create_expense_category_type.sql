@@ -7,10 +7,16 @@
 -- a schema change with a defined destination for every existing expense, and
 -- ALTER TYPE ... ADD VALUE makes that an explicit, reviewable migration step.
 --
--- The cost of that choice, recorded honestly: Postgres has no
--- ALTER TYPE ... DROP VALUE. Retiring a category means creating a replacement
--- type, rewriting every dependent column, and dropping the old one. Removals
--- are meant to be rare, so that is an acceptable trade — but it is a real one.
+-- The costs of that choice, recorded honestly:
+--
+--   * Postgres has no ALTER TYPE ... DROP VALUE. Retiring a category means
+--     creating a replacement type, rewriting every dependent column, and
+--     dropping the old one. Removals are meant to be rare, so this is an
+--     acceptable trade — but it is a real one.
+--   * A JPA field mapped to this type needs @JdbcTypeCode(SqlTypes.NAMED_ENUM).
+--     A plain @Enumerated(EnumType.STRING) binds a varchar and Postgres
+--     rejects it outright: column "category" is of type expense_category but
+--     expression is of type character varying. That bill comes due in #9.
 --
 -- ---------------------------------------------------------------------------
 -- ADDING A CATEGORY LATER — two traps, both of which produce working-looking
@@ -28,6 +34,12 @@
 --    taxonomy change, and "a defined destination for every existing expense"
 --    is exactly what spec §4 asks for — so the failing case is the intended
 --    workflow, not an exotic one. Vn adds the value, Vn+1 backfills.
+--
+--    That split works because Flyway gives each migration its own transaction.
+--    Setting spring.flyway.group=true runs all pending migrations in one
+--    transaction and brings the failure straight back — on a fresh database
+--    applying Vn and Vn+1 together, so it surfaces in CI or on a new machine
+--    rather than where the change was made. application.yml leaves group unset.
 --
 -- 2. ADD VALUE appends unless told otherwise, and order is load-bearing here.
 --    A bare ADD VALUE 'EDUCATION' sorts after UNCLASSIFIED, putting the

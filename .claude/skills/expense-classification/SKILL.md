@@ -21,7 +21,7 @@ not a one-line enum edit — every existing expense needs a defined destination.
 | `HEALTH` | Medical, dental, pharmacy, insurance premiums | Gym → `DISCRETIONARY` |
 | `DISCRETIONARY` | Entertainment, hobbies, subscriptions, gifts | — |
 | `CAPITAL` | Purchases that hold value past the period | Consumables → the fitting category |
-| `INCOME` | Money in that was never an expense — salary, reimbursements | Refunds → the category being refunded, as a negative amount |
+| `INCOME` | Money in not tied to any expense — salary, interest, gifts received | Anything offsetting a specific expense → that expense's category, negative |
 | `UNCLASSIFIED` | Nothing matched | — |
 
 ## Rules
@@ -38,10 +38,22 @@ disambiguates between candidates that already matched on text.
 precede a more general one. When adding a rule, add a test that fails without
 it and a test that proves it didn't capture something the previous rule owned.
 
-**Refunds keep the category of what they refund.** A grocery refund is a
-negative `GROCERIES` amount, not `INCOME`. `INCOME` is reserved for money that
-was never an expense. This keeps category totals net rather than gross, which
-is what the reports show.
+**Money in that offsets a specific expense keeps that expense's category, as a
+negative amount. Money in that offsets nothing is `INCOME`.** That single test
+settles refunds and reimbursements together, and it is the only test — the
+counterparty does not matter.
+
+A grocery refund is negative `GROCERIES`. A ₱2,000 client dinner your employer
+reimburses is negative `DINING`, not `INCOME`, even though the money came from
+someone other than the restaurant: you did not ultimately bear that cost, and
+recording it as `INCOME` would leave the by-category report showing ₱2,000 of
+dining you never paid for, offset invisibly in a different bucket.
+
+Salary offsets no particular expense, so it stays `INCOME`.
+
+This keeps category totals net rather than gross, which is what the reports
+show — and it means every aggregation must handle negatives rather than
+`abs()`-ing them or filtering them out.
 
 **Reclassification is an event, not an overwrite.** Changing an expense's
 category writes a new classification record with the reason and leaves the
