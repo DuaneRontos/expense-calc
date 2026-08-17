@@ -34,6 +34,12 @@ jobs:
           # separate from a claude.ai Pro/Max subscription. Reviews now draw
           # on the subscription, which shares quota with interactive use.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # Disables the sanitizer that strips the SDK result field, so the
+          # real API status, retry-after, and rate-limit headers reach the job
+          # log. Without this a quota rejection and an invalid token are
+          # indistinguishable from CI output (claude-code-action#880).
+          show_full_output: true
           track_progress: true
           prompt: |
             Review this pull request. This repo is a Java Spring Boot backend
@@ -51,15 +57,4 @@ jobs:
             give file:line, the concrete failure case, and a suggested fix. Say
             plainly if you found nothing worth flagging.
 
-          # `claude_args: --model claude-opus-5` was removed here.
-          #
-          # The action ran correctly (validation passed, checkout worked, the
-          # PR diff was ingested) and then failed after ~19s with:
-          #   Claude result reported subtype success with is_error:true
-          # The action does not surface the underlying cause. Two candidates:
-          # the pinned model being unavailable to this API key, or an account
-          # credit / rate limit problem.
-          #
-          # Dropping the pin isolates the first. If a run now succeeds, the
-          # model was the cause. If it still fails with is_error:true, the
-          # problem is the API account, not this file.
+          claude_args: --model claude-opus-5
