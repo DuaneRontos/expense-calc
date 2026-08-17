@@ -12,7 +12,7 @@ scaffolding around it.
 | Path | What lives here |
 | --- | --- |
 | `backend/` | Java Spring Boot API — expense model, classification, query, reporting |
-| `frontend/` | React Native app — expense entry, list views, chart screens |
+| `frontend/` | Expo / React Native Web — iOS, Android, and desktop web from one codebase |
 | `.claude/skills/` | Skills the agents load on demand |
 | `.claude/agents/` | Subagent definitions |
 | `.github/workflows/` | The agents themselves (see below) |

@@ -55,18 +55,20 @@ assumption. Three viable paths:
 | **B. React Native + Electron shell** | Native desktop binary | Adds packaging, auto-update, and code-signing work. Heavy for an expense tracker. |
 | **C. RN mobile + separate React web app** | Purpose-built desktop UI | Two frontends, two sets of bugs, duplicated API client. Best desktop UX, worst maintenance. |
 
-### Recommendation: Option A
+### Decision: Option A — React Native Web via Expo
 
-One codebase, and "desktop" for this application means a resizable window
-showing tables and charts — a browser tab serves that fully. The realistic risk
-is the charting library: **choose one with confirmed React Native Web support
-before writing any chart code**, since discovering the gap at the chart-screen
-stage means rewriting the visualization layer.
+**Decided.** One codebase, and "desktop" for this application means a resizable
+window showing tables and charts — a browser tab serves that fully.
 
-Adopting A changes issue [#3](https://github.com/DuaneRontos/expense-calc/issues/3):
-the scaffold becomes Expo (which provides the RN Web pipeline) rather than bare
-React Native, and the acceptance criteria gain a web target alongside the iOS
-and Android ones.
+The realistic risk is the charting library: **it must have confirmed React
+Native Web support, verified by rendering a chart on the web target** — not by
+reading a README. Discovering the gap at the chart-screen stage means rewriting
+the visualization layer.
+
+Issue [#3](https://github.com/DuaneRontos/expense-calc/issues/3) has been
+updated accordingly: the scaffold is Expo rather than bare React Native, the
+acceptance criteria gain a web target alongside iOS and Android, and the
+charting-library evaluation is folded into that PR.
 
 ### Responsive behavior
 
@@ -290,8 +292,8 @@ surfaces `detail` inline against the offending field rather than in a toast.
 
 Each needs an answer before the affected work starts.
 
-**9.1 — Desktop strategy.** §2. *Recommendation: Option A (RN Web via Expo).*
-Blocks issue #3.
+**9.1 — Desktop strategy. RESOLVED.** Option A, React Native Web via Expo. See
+§2. Issue #3 updated.
 
 **9.2 — Authentication.** Deferred on a single-user assumption. If the API is
 ever reachable off-device this is blocking, and it touches every endpoint.
@@ -306,8 +308,9 @@ reasonable expectation and a large piece of work (local store, queue, conflict
 resolution). *Recommendation: out of scope for v1, stated in the README so it
 reads as a decision rather than an oversight.*
 
-**9.5 — Charting library.** Must support React Native Web if 9.1 resolves to A.
-*Recommendation: evaluate two, decide in issue #3's PR, record the reasoning.*
+**9.5 — Charting library. FOLDED INTO #3.** Now that 9.1 is Option A, React
+Native Web support is a hard requirement rather than a preference. Evaluate two,
+verify on the web target, decide in issue #3's PR, record the reasoning.
 
 **9.6 — Currency.** Stored per-expense but unenforced. *Recommendation: reject
 mixed currencies at the API boundary in v1 so the assumption is explicit rather
@@ -344,7 +347,7 @@ Mapped to the existing [board](https://github.com/users/DuaneRontos/projects/2).
 
 | Phase | Issues | Gate |
 | --- | --- | --- |
-| **0 — Foundations** | [#2](../../issues/2) [#3](../../issues/3) [#4](../../issues/4) | Both modules build in CI. Resolve §9.1 first. |
+| **0 — Foundations** | [#2](../../issues/2) [#3](../../issues/3) [#4](../../issues/4) | Both modules build in CI; frontend runs on iOS, Android, and web |
 | **1 — Domain** | [#5](../../issues/5) [#6](../../issues/6) [#7](../../issues/7) [#8](../../issues/8) [#9](../../issues/9) | Classification correct on the full category matrix, refunds included |
 | **2 — Query** | [#10](../../issues/10) [#11](../../issues/11) | Filters compose; pagination stable under duplicate sort keys |
 | **3 — Reporting** | [#12](../../issues/12) | All three reports; totals reconcile against a filtered list sum |
