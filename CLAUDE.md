@@ -41,6 +41,27 @@ starting an issue; most issue bodies name the section that governs them.
 
 Both need the `ANTHROPIC_API_KEY` repository secret.
 
+## Building
+
+```bash
+cd backend && ./gradlew build          # compile + test (tests need Docker)
+cd backend && ./gradlew build -x test  # compile only, no Docker required
+cd backend && ./gradlew bootRun        # needs a Postgres on localhost:5432
+```
+
+Spring Boot 4.1 on Java 21, Gradle with the Kotlin DSL. The build targets
+Java 21 via a toolchain; if the machine has a different JDK, Gradle provisions
+one automatically through the Foojay resolver in `settings.gradle.kts`.
+
+**Boot 4 renamed things.** Starters are `spring-boot-starter-webmvc` (not
+`-web`), and test starters are split per module (`-data-jpa-test`,
+`-webmvc-test`). Boot 3 snippets found online will not copy-paste cleanly.
+
+**Tests require Docker** — `ExpenseCalcBackendApplicationTests` starts a real
+Postgres via Testcontainers. Without a Docker daemon, `./gradlew build` fails
+at the test task, not at compilation. Use `-x test` when you only need to know
+the code compiles.
+
 ## Conventions
 
 **Money is `BigDecimal`, never `double` or `float`.** Every amount, subtotal,

@@ -1,0 +1,3 @@
+Flyway migration location. The first migration (V1__create_expense.sql) lands
+with the expense domain model in issue #5. Flyway fails to start if this
+directory is absent from the classpath, so it is kept even while empty.

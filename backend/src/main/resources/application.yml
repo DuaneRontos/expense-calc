@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: expense-calc-backend
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/expensecalc}
+    username: ${DB_USERNAME:expensecalc}
+    password: ${DB_PASSWORD:expensecalc}
+
+  jpa:
+    hibernate:
+      # Flyway owns the schema. `validate` fails loudly on drift; `update`
+      # would silently mutate tables and make migrations meaningless.
+      ddl-auto: validate
+    # Off deliberately: open-in-view hides lazy loading behind the request
+    # boundary, which is how N+1 queries reach production unnoticed (spec §10).
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          # Audit Instants are stored UTC. Reporting periods convert to
+          # Asia/Manila at query time — see app.reporting.zone below.
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # No migrations yet. The first one lands with the expense model (#5).
+
+# ---------------------------------------------------------------------------
+# Decisions from docs/SPECIFICATION.md, parked here so they have one home.
+# Nothing reads them yet; the consuming issue is noted on each.
+# ---------------------------------------------------------------------------
+app:
+  # spec §4 / §9.6 — v1 is Philippine Peso only. Anything else is rejected at
+  # the API boundary with a 400, before persistence. Consumed by #5.
+  currency: PHP
+
+  reporting:
+    # spec §4 — relative periods ("this month", "last 30 days") resolve against
+    # this zone, never UTC and never the host default. At 17:00 UTC on 31 Jan
+    # it is already February in Manila. Consumed by #12.
+    zone: Asia/Manila
