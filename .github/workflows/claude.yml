@@ -41,14 +41,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      # No claude_args / --model pin: the action uses its own default.
-      # The pin was removed while diagnosing a `result is_error:true` failure
-      # on PR #23 — see claude-code-review.yml for the full note. Re-add it
-      # only once a run is known to succeed without it.
       - uses: anthropics/claude-code-action@v1
         with:
           # Subscription-backed OAuth, not an API key. The API key had no
           # credit — platform.claude.com billing is separate from a claude.ai
           # Pro/Max subscription, and the subscription does not fund it.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # Opus costs more of the shared subscription pool per run than the
+          # action's Sonnet default. CI and interactive Claude Code draw on the
+          # same quota, so this is the first thing to drop if runs start
+          # failing with is_error:true (claude-code-action#1614).
           claude_args: --model claude-opus-5
