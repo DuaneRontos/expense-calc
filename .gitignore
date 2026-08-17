@@ -1,32 +1,101 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
+# =============================================================
+# expense-calc — Java Spring Boot backend + Expo/React Native frontend
+# Replaces the Go template the repo was initialized with.
+# =============================================================
 
-# Test binary, built with `go test -c`
-*.test
+# ---------- Java / JVM ----------
+*.class
+*.log
+hs_err_pid*
+replay_pid*
 
-# Code coverage profiles and other test artifacts
-*.out
-coverage.*
-*.coverprofile
-profile.cov
+# ---------- Gradle ----------
+.gradle/
+build/
+gradle-app.setting
+.gradletasknamecache
+# The wrapper jar and properties MUST be committed — never blanket-ignore *.jar
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
 
-# Dependency directories (remove the comment below to include it)
-# vendor/
+# ---------- Maven ----------
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+!.mvn/wrapper/maven-wrapper.jar
 
-# Go workspace file
-go.work
-go.work.sum
+# ---------- Spring Boot ----------
+# Local overrides; the committed application.yml stays tracked
+application-local.yml
+application-local.properties
+application-secrets.yml
 
-# env file
+# ---------- Node / JavaScript ----------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.tsbuildinfo
+.eslintcache
+
+# ---------- Expo / React Native ----------
+.expo/
+.expo-shared/
+dist/
+web-build/
+.metro-health-check*
+*.jsbundle
+
+# ---------- iOS ----------
+ios/Pods/
+ios/build/
+ios/.xcode.env.local
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# ---------- Android ----------
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.apk
+*.aab
+# Signing keys must never be committed. RN ships a shared debug keystore —
+# that one is safe and expected in version control.
+*.keystore
+!android/app/debug.keystore
+
+# ---------- Secrets and environment ----------
 .env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.p8
+*.mobileprovision
 
-# Editor/IDE
-# .idea/
-# .vscode/
+# ---------- Editors and OS ----------
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+!.vscode/extensions.json
+.settings/
+.classpath
+.project
+.DS_Store
+Thumbs.db
+
+# ---------- Test and coverage output ----------
+coverage/
+.nyc_output/
+*.lcov
