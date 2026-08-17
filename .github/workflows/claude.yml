@@ -1,0 +1,41 @@
+name: Claude
+
+# Interactive agent. Mention @claude in an issue, a PR comment, or a review
+# and Claude picks up the thread, does the work, and pushes a branch/PR.
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened]
+
+# Serialize per issue/PR so two mentions on the same thread can't run
+# concurrently and race each other pushing to the same branch. Different
+# threads still run in parallel. Not cancel-in-progress: killing an agent
+# mid-run can leave a half-pushed branch behind.
+concurrency:
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  claude:
+    # Without this guard every comment on the repo starts a billed run.
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # read the repo, push branches
+      pull-requests: write   # open PRs, comment
+      issues: write          # comment back on the issue
+      id-token: write        # OIDC token for the action
+    steps:
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: --model claude-opus-5
