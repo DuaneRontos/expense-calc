@@ -21,7 +21,7 @@ not a one-line enum edit — every existing expense needs a defined destination.
 | `HEALTH` | Medical, dental, pharmacy, insurance premiums | Gym → `DISCRETIONARY` |
 | `DISCRETIONARY` | Entertainment, hobbies, subscriptions, gifts | — |
 | `CAPITAL` | Purchases that hold value past the period | Consumables → the fitting category |
-| `INCOME` | Money in — salary, refunds, reimbursements | Signed negative expenses (see below) |
+| `INCOME` | Money in that was never an expense — salary, reimbursements | Refunds → the category being refunded, as a negative amount |
 | `UNCLASSIFIED` | Nothing matched | — |
 
 ## Rules

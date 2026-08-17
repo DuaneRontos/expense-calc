@@ -40,11 +40,14 @@ class CategoryTypeTest {
 	@DisplayName("Postgres enum labels match the Java enum exactly, in order")
 	void databaseTypeMatchesJavaEnum() {
 		@SuppressWarnings("unchecked")
+		// ::regtype resolves through search_path and can only match one type.
+		// Filtering on pg_type.typname alone would match a same-named type in
+		// any schema, concatenating both label sets — and the failure would
+		// then read as phantom duplicate categories rather than "wrong schema".
 		List<String> labels = this.entityManager.getEntityManager().createNativeQuery("""
 				SELECT e.enumlabel
 				FROM pg_enum e
-				JOIN pg_type t ON t.oid = e.enumtypid
-				WHERE t.typname = 'expense_category'
+				WHERE e.enumtypid = 'expense_category'::regtype
 				ORDER BY e.enumsortorder
 				""").getResultList();
 
