@@ -20,6 +20,13 @@ jobs:
       issues: write
       id-token: write
     steps:
+      # Required. Without a working tree the action cannot diff the PR — it
+      # fails on `git hash-object` and `git fetch`. fetch-depth: 0 because a
+      # shallow clone leaves it unable to resolve the merge base.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
