@@ -1,6 +1,6 @@
 # Expense Calculator — Specification
 
-**Version** 0.1 (initial draft) · **Status** Nothing implemented
+**Version** 0.2 · **Status** Nothing implemented · **Decisions** all six resolved
 
 This spec is written forward from the domain, not derived from existing code —
 at time of writing the repository contains no `backend/` or `frontend/` source.
@@ -8,7 +8,8 @@ Conventions referenced here are already committed in [`CLAUDE.md`](../CLAUDE.md)
 and [`.claude/skills/expense-classification/SKILL.md`](../.claude/skills/expense-classification/SKILL.md);
 this document is the layer above them.
 
-Assumptions are marked **[A]**. Open decisions are collected in §9.
+Remaining assumptions are marked **[A]**. Decisions are collected in §9 — all
+six are resolved as of v0.2.
 
 ---
 
@@ -18,10 +19,9 @@ An expense calculator that records spending, classifies it into a fixed
 taxonomy, lets the user query it by any dimension, and turns the result into
 analytical reports with charts.
 
-**Primary user [A]:** one person tracking personal or household spending. The
-data model does not currently carry a tenant or owner. If this is meant to be
-multi-user, say so now — retrofitting tenancy after the reporting layer exists
-is expensive.
+**Primary user: one person.** Confirmed single-user for v1. The data model
+carries no tenant or owner column, and that is a decision rather than an
+omission — see §9.3 for what changing it later costs.
 
 ### In scope for v1
 
@@ -104,9 +104,9 @@ keeps report totals consistent across platforms.
 **The API is stateless.** No server-side session. Every request carries what it
 needs.
 
-**Auth [A]:** deferred for v1 on the assumption of a single local user. If the
-app is ever exposed beyond localhost this becomes blocking, not optional —
-see §9.2.
+**Auth: JWT, built at first deployment.** Decided now, implemented when the
+API first leaves localhost — see §9.2 for the mechanism and the safety rule
+that keeps the local-dev bypass from ever reaching production.
 
 ---
 
@@ -118,7 +118,7 @@ see §9.2.
 | --- | --- | --- |
 | `id` | UUID | Server-generated |
 | `amountMinor` | `BIGINT` | **Minor units** (cents). Signed — negative means refund. |
-| `currency` | `CHAR(3)` | ISO 4217. Single-currency in v1; stored so v2 isn't a migration. |
+| `currency` | `CHAR(3)` | ISO 4217, always `PHP` in v1. Stored so v2 isn't a migration. |
 | `occurredOn` | `LocalDate` | The date the money moved, user-supplied |
 | `merchant` | `VARCHAR(200)` | Nullable |
 | `description` | `TEXT` | Nullable |
@@ -129,6 +129,37 @@ boundary. Summation stays exact and scale never drifts across a large set.
 
 The current category is **not** a column — it is derived from the latest
 `ClassificationRecord` (§4.2).
+
+### Currency and locale
+
+**v1 is Philippine Peso only.** `PHP` has a two-decimal minor unit (centavo),
+so `amountMinor` is centavos and the existing integer model needs no change.
+
+- **Validation:** any expense whose `currency` is not `PHP` is rejected at the
+  API boundary with a 400. Mixed currencies never enter the database, so no
+  aggregation can silently sum across them (§9.6).
+- **Formatting is the client's job.** The API returns a decimal string plus the
+  ISO code; the client formats with `Intl.NumberFormat("en-PH", { style:
+  "currency", currency: "PHP" })` → `₱1,234.56`. Never hardcode `₱` in the
+  client — the moment v2 adds a second currency, every hardcoded symbol is a
+  bug, and there will be more of them than anyone expects.
+- **The peso symbol is `₱` (U+20B1)**, not `P`. Ensure the database, API, and
+  client are UTF-8 end to end.
+
+### Time zone
+
+**Reporting periods are computed in `Asia/Manila` (UTC+8), never UTC.**
+
+`occurredOn` is a `LocalDate` with no zone attached, so "this month" has to be
+resolved against *some* zone. Resolve it against UTC and a user in Manila sees
+the wrong month for eight hours a day — at 17:00 UTC on 31 January it is
+already 01:00 on 1 February in Manila, and a UTC-derived "current month" would
+still be reporting January.
+
+The Philippines has observed no DST since 1978, so the offset is a constant
++08:00 and none of the usual spring-forward boundary problems apply. Pin the
+zone in configuration rather than reading the server's default, so the behavior
+does not change when the deployment host does.
 
 ### ClassificationRecord
 
@@ -203,6 +234,9 @@ All optional, all combining with AND semantics.
 Half-open ranges are not a detail. `[2026-01-01, 2026-02-01)` is January with
 no possibility of double-counting the boundary day into February.
 
+Relative periods — "this month", "last 30 days" — resolve against
+`Asia/Manila`, not the server's zone (§4).
+
 ### Sorting and pagination
 
 `sort=field,dir` over `occurredOn` · `amountMinor` · `merchant` · `category`.
@@ -234,11 +268,11 @@ Three reports, each returning pre-aggregated buckets.
 ```json
 {
   "period": { "from": "2026-01-01", "to": "2026-02-01" },
-  "currency": "USD",
-  "total": "1842.55",
+  "currency": "PHP",
+  "total": "48250.75",
   "buckets": [
-    { "key": "GROCERIES", "label": "Groceries", "total": "612.40" },
-    { "key": "DINING",    "label": "Dining",    "total": "238.15" }
+    { "key": "GROCERIES", "label": "Groceries", "total": "18420.00" },
+    { "key": "DINING",    "label": "Dining",    "total": "6135.50" }
   ]
 }
 ```
@@ -295,26 +329,61 @@ Each needs an answer before the affected work starts.
 **9.1 — Desktop strategy. RESOLVED.** Option A, React Native Web via Expo. See
 §2. Issue #3 updated.
 
-**9.2 — Authentication.** Deferred on a single-user assumption. If the API is
-ever reachable off-device this is blocking, and it touches every endpoint.
-*Recommendation: decide now, implement when first deployed.*
+**9.2 — Authentication. RESOLVED — JWT, implemented at first deployment.**
 
-**9.3 — Multi-user.** The model has no owner column. *Recommendation: confirm
-single-user for v1 explicitly; adding tenancy after reporting exists is a
-migration across every table and every query.*
+Mechanism: short-lived access token (15 min) plus a rotating refresh token,
+credentials verified against an Argon2id hash, issued by Spring Security. This
+keeps the API stateless as §3 requires, works identically on iOS, Android, and
+web, and avoids taking a third-party identity provider as a dependency for a
+single-user application.
 
-**9.4 — Offline behavior.** Mobile expense entry without connectivity is a
-reasonable expectation and a large piece of work (local store, queue, conflict
-resolution). *Recommendation: out of scope for v1, stated in the README so it
-reads as a decision rather than an oversight.*
+Token storage is where this goes wrong in practice, so it is specified rather
+than left to the implementer:
+
+| Target | Access token | Refresh token |
+| --- | --- | --- |
+| iOS / Android | In memory | Expo SecureStore (Keychain / Keystore) |
+| Web | In memory only | `httpOnly; Secure; SameSite=Strict` cookie |
+
+**Never `localStorage`.** A token in `localStorage` is readable by any script
+that achieves XSS, and "we don't have XSS" is a claim with a poor track record.
+
+**The local-dev bypass must be impossible to deploy.** Development runs
+permit-all behind a Spring profile, and the production build fails to start if
+that profile is active. A dev bypass that ships is a total authentication
+bypass, and it is a well-worn way to lose a database.
+
+**9.3 — Multi-user. RESOLVED — single-user for v1.**
+
+Confirmed explicitly. No owner or tenant column. Recorded here so that adding
+tenancy in v2 is understood as what it is: a migration across every table plus
+a predicate on every query and every report aggregation, not a column addition.
+
+**9.4 — Offline behavior. RESOLVED — deferred to v2.**
+
+Out of scope for v1, planned for a future version. The work is a local store, a
+mutation queue, and conflict resolution for edits made on two devices while
+partitioned — comparable in size to the entire query layer. Stated in the
+README so it reads as a decision rather than an oversight.
 
 **9.5 — Charting library. FOLDED INTO #3.** Now that 9.1 is Option A, React
 Native Web support is a hard requirement rather than a preference. Evaluate two,
 verify on the web target, decide in issue #3's PR, record the reasoning.
 
-**9.6 — Currency.** Stored per-expense but unenforced. *Recommendation: reject
-mixed currencies at the API boundary in v1 so the assumption is explicit rather
-than implied.*
+**9.6 — Currency. RESOLVED — `PHP` only, enforced at the API boundary.**
+
+Philippine Peso for v1. Any expense with a `currency` other than `PHP` is
+rejected with a 400 before it reaches the database, so no aggregation can sum
+across currencies. Details, including the `Asia/Manila` reporting-period rule,
+are in §4.
+
+The column stays in the schema so a v2 multi-currency feature is a validation
+change and a conversion service, not a migration.
+
+---
+
+**All six decisions are resolved.** New questions get appended here with the
+same numbering rather than being settled in a PR comment.
 
 ---
 
@@ -335,9 +404,15 @@ queries in the expense or report path.
 Every chart pairs with an accessible table or legend carrying the same values.
 Category color is supported by label or pattern, never carrying meaning alone.
 
+**Security:** TLS everywhere once deployed. Tokens stored per the table in
+§9.2 — never `localStorage`. The dev auth bypass is profile-gated and the
+production build refuses to start with that profile active.
+
 **Testing:** classification has a case per category plus negative-amount
 coverage; pagination has a stable-sort test using a page of identical amounts;
-reporting has a test proving results are unchanged after a reclassification.
+reporting has a test proving results are unchanged after a reclassification;
+currency validation has a test proving a non-`PHP` expense is rejected before
+persistence, not after.
 
 ---
 

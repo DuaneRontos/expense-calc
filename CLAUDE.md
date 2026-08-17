@@ -39,9 +39,22 @@ even when the test passes.
 layer, converted to `BigDecimal` at the service boundary. This keeps summation
 exact and avoids scale drift across a large expense set.
 
+**Currency is `PHP` only in v1, enforced at the API boundary.** Anything else
+is a 400 before it reaches the database. `amountMinor` is centavos. The client
+formats with `Intl.NumberFormat("en-PH", …)` — never hardcode `₱`.
+
 **Dates are `LocalDate` for expense dates, `Instant` for audit timestamps.**
 Reporting periods are half-open — `[start, end)` — so month boundaries don't
 double-count.
+
+**Relative periods resolve against `Asia/Manila`, never UTC or the host
+default.** At 17:00 UTC on 31 January it is already February in Manila; a
+UTC-derived "this month" reports the wrong month for eight hours a day. The
+zone is pinned in configuration. No DST since 1978, so the offset is a constant
++08:00.
+
+**v1 is single-user.** No owner or tenant column anywhere. Adding one in v2 is
+a migration plus a predicate on every query — don't half-add it early.
 
 **Classification is deterministic and testable.** Rules live in code, not in
 prompt text, so the same expense always lands in the same category. See
