@@ -39,10 +39,11 @@ jobs:
         working-directory: backend
         run: ./mvnw -B verify
 
-      # always(), not failure(). Gradle prints no test counts on success, so a
-      # green run would otherwise leave no evidence of what actually ran —
-      # and "did the Testcontainers tests execute or silently skip?" is exactly
-      # the question this repo has needed answered.
+      # always(), not failure(). Surefire does print counts on success, but they
+      # are buried in the log and scroll away; the XML here is the durable,
+      # machine-readable record of which suites actually ran. "Did the
+      # Testcontainers tests execute or silently skip?" is exactly the question
+      # this repo has needed answered, and a console line cannot answer it later.
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v7

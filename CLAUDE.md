@@ -71,6 +71,13 @@ enforces Java 21 APIs and bytecode whatever JDK runs the build. A newer JDK
 produces a correct Java 21 artifact — there is nothing to install or provision
 to match.
 
+**`release` governs compilation only.** Surefire forks the test JVM on whatever
+JDK is running the build, so tests run on your local JDK while CI runs them on
+21. Hibernate's bytecode generation is JDK-sensitive, so a failure that appears
+on one and not the other is possible in both directions. **CI on JDK 21 is the
+parity check; a local pass on a newer JDK is advisory.** Trust CI when they
+disagree.
+
 **Boot 4 renamed things.** Starters are `spring-boot-starter-webmvc` (not
 `-web`), and test starters are split per module (`-data-jpa-test`,
 `-webmvc-test`). Boot 3 snippets found online will not copy-paste cleanly.
