@@ -117,7 +117,7 @@ that keeps the local-dev bypass from ever reaching production.
 | Field | Type | Notes |
 | --- | --- | --- |
 | `id` | UUID | Server-generated |
-| `amountMinor` | `BIGINT` | **Minor units** (cents). Signed — negative means refund. |
+| `amountMinor` | `BIGINT` | **Minor units** (centavos). Signed — negative means refund. |
 | `currency` | `CHAR(3)` | ISO 4217, always `PHP` in v1. Stored so v2 isn't a migration. |
 | `occurredOn` | `LocalDate` | The date the money moved, user-supplied |
 | `merchant` | `VARCHAR(200)` | Nullable |
@@ -422,12 +422,12 @@ Mapped to the existing [board](https://github.com/users/DuaneRontos/projects/2).
 
 | Phase | Issues | Gate |
 | --- | --- | --- |
-| **0 — Foundations** | [#2](../../issues/2) [#3](../../issues/3) [#4](../../issues/4) | Both modules build in CI; frontend runs on iOS, Android, and web |
-| **1 — Domain** | [#5](../../issues/5) [#6](../../issues/6) [#7](../../issues/7) [#8](../../issues/8) [#9](../../issues/9) | Classification correct on the full category matrix, refunds included |
-| **2 — Query** | [#10](../../issues/10) [#11](../../issues/11) | Filters compose; pagination stable under duplicate sort keys |
-| **3 — Reporting** | [#12](../../issues/12) | All three reports; totals reconcile against a filtered list sum |
-| **4 — Client** | [#13](../../issues/13) [#14](../../issues/14) [#15](../../issues/15) [#16](../../issues/16) | Runs on iOS, Android, and desktop web |
-| **5 — Agentic** | [#17](../../issues/17) [#18](../../issues/18) [#19](../../issues/19) [#20](../../issues/20) | Skills and subagents documented and exercised |
+| **0 — Foundations** | [#2](https://github.com/DuaneRontos/expense-calc/issues/2) [#3](https://github.com/DuaneRontos/expense-calc/issues/3) [#4](https://github.com/DuaneRontos/expense-calc/issues/4) | Both modules build in CI; frontend runs on iOS, Android, and web |
+| **1 — Domain** | [#5](https://github.com/DuaneRontos/expense-calc/issues/5) [#6](https://github.com/DuaneRontos/expense-calc/issues/6) [#7](https://github.com/DuaneRontos/expense-calc/issues/7) [#8](https://github.com/DuaneRontos/expense-calc/issues/8) [#9](https://github.com/DuaneRontos/expense-calc/issues/9) | Classification correct on the full category matrix, refunds included |
+| **2 — Query** | [#10](https://github.com/DuaneRontos/expense-calc/issues/10) [#11](https://github.com/DuaneRontos/expense-calc/issues/11) | Filters compose; pagination stable under duplicate sort keys |
+| **3 — Reporting** | [#12](https://github.com/DuaneRontos/expense-calc/issues/12) | All three reports; totals reconcile against a filtered list sum |
+| **4 — Client** | [#13](https://github.com/DuaneRontos/expense-calc/issues/13) [#14](https://github.com/DuaneRontos/expense-calc/issues/14) [#15](https://github.com/DuaneRontos/expense-calc/issues/15) [#16](https://github.com/DuaneRontos/expense-calc/issues/16) | Runs on iOS, Android, and desktop web |
+| **5 — Agentic** | [#17](https://github.com/DuaneRontos/expense-calc/issues/17) [#18](https://github.com/DuaneRontos/expense-calc/issues/18) [#19](https://github.com/DuaneRontos/expense-calc/issues/19) [#20](https://github.com/DuaneRontos/expense-calc/issues/20) | Skills and subagents documented and exercised |
 
 Phases 1–3 are strictly ordered; each depends on the correctness of the one
 before. Phase 4 can start against a mocked API once §8 is frozen, and phase 5

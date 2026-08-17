@@ -5,6 +5,12 @@ on:
   pull_request:
     types: [opened, synchronize]
 
+# Three pushes in a minute would otherwise start three billed reviews, two of
+# them already reviewing stale commits. Keep only the newest.
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   review:
     runs-on: ubuntu-latest

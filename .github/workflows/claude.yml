@@ -10,7 +10,15 @@ on:
   pull_request_review:
     types: [submitted]
   issues:
-    types: [opened, assigned]
+    types: [opened]
+
+# Serialize per issue/PR so two mentions on the same thread can't run
+# concurrently and race each other pushing to the same branch. Different
+# threads still run in parallel. Not cancel-in-progress: killing an agent
+# mid-run can leave a half-pushed branch behind.
+concurrency:
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
 
 jobs:
   claude:
