@@ -42,8 +42,12 @@ jobs:
         working-directory: backend
         run: ./gradlew build --stacktrace
 
+      # always(), not failure(). Gradle prints no test counts on success, so a
+      # green run would otherwise leave no evidence of what actually ran —
+      # and "did the Testcontainers tests execute or silently skip?" is exactly
+      # the question this repo has needed answered.
       - name: Upload test reports
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: backend-test-reports
