@@ -39,7 +39,20 @@ starting an issue; most issue bodies name the section that governs them.
 - **`.github/workflows/claude-code-review.yml`** — automatic. Reviews every PR
   on open and on each push.
 
-Both need the `ANTHROPIC_API_KEY` repository secret.
+Both authenticate with the `CLAUDE_CODE_OAUTH_TOKEN` repository secret, which
+draws on a Claude Pro/Max subscription. Regenerate it with `claude setup-token`
+and store it with `gh secret set CLAUDE_CODE_OAUTH_TOKEN`.
+
+The `ANTHROPIC_API_KEY` secret is *not* the credential these workflows use.
+Billing on platform.claude.com is prepaid and separate from a claude.ai
+subscription, so an API key on an unfunded account fails with "credit balance
+is too low" — which the action reports as a bare `is_error:true`. Only
+`claude-code-review.yml` sets `show_full_output: true` to unmask that; a
+failing interactive run still needs the flag added before it will say why.
+
+Both pin `--model claude-opus-5`, and CI shares the subscription quota with
+interactive Claude Code — so dropping the pin is the first remedy if runs
+start failing with `is_error:true`.
 
 ## Building
 
