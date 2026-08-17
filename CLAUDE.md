@@ -11,6 +11,7 @@ scaffolding around it.
 
 | Path | What lives here |
 | --- | --- |
+| [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md) | **Read this before implementing anything.** Domain model, API surface, resolved decisions |
 | `backend/` | Java Spring Boot API — expense model, classification, query, reporting |
 | `frontend/` | Expo / React Native Web — iOS, Android, and desktop web from one codebase |
 | `.claude/skills/` | Skills the agents load on demand |
@@ -18,6 +19,18 @@ scaffolding around it.
 | `.github/workflows/` | The agents themselves (see below) |
 
 Both `backend/` and `frontend/` are still to be scaffolded.
+
+## Start with the specification
+
+[`docs/SPECIFICATION.md`](docs/SPECIFICATION.md) is the source of truth for
+*what* to build. This file covers *how* to build it. They do not overlap: if a
+convention here contradicts the spec, the spec wins and this file is the bug.
+
+The spec carries the pieces you cannot infer from the code, because the code
+does not exist yet — the entity fields and their types, the exact query and
+report contracts, the endpoint list, and six decisions that are settled and
+should not be relitigated in a PR (§9). Read the relevant section before
+starting an issue; most issue bodies name the section that governs them.
 
 ## Agents in this repo
 
