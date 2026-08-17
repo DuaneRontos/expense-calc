@@ -9,24 +9,25 @@
 hs_err_pid*
 replay_pid*
 
-# ---------- Gradle ----------
-.gradle/
-build/
-gradle-app.setting
-.gradletasknamecache
-# The wrapper jar and properties MUST be committed — never blanket-ignore *.jar
-!gradle/wrapper/gradle-wrapper.jar
-!gradle/wrapper/gradle-wrapper.properties
-
 # ---------- Maven ----------
+# The backend builds with Maven. React Native's Android build still uses
+# Gradle — its ignores live under the Android section below, not here.
 target/
+
+# ---------- Stale Gradle output ----------
+# Kept after the Gradle→Maven migration even though Maven writes neither.
+# Deleting these as "dead" let `git add -A` sweep 51MB of leftover build/ and
+# .gradle/ from the old Gradle runs into a commit. Anyone who built this repo
+# before the migration still has both directories on disk, so these lines stay
+# until that is no longer true of anyone.
+build/
+.gradle/
 pom.xml.tag
 pom.xml.releaseBackup
 pom.xml.versionsBackup
 pom.xml.next
 release.properties
 dependency-reduced-pom.xml
-!.mvn/wrapper/maven-wrapper.jar
 
 # ---------- Spring Boot ----------
 # Local overrides; the committed application.yml stays tracked
