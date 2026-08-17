@@ -57,6 +57,24 @@ one automatically through the Foojay resolver in `settings.gradle.kts`.
 `-web`), and test starters are split per module (`-data-jpa-test`,
 `-webmvc-test`). Boot 3 snippets found online will not copy-paste cleanly.
 
+**Boot 4 also relocated the test slices** out of
+`org.springframework.boot.test.autoconfigure.*` into per-module packages. Boot 3
+imports fail to compile with a bare "cannot find symbol", which reads like a
+missing dependency rather than a moved class:
+
+| Class | Boot 4 package |
+| --- | --- |
+| `DataJpaTest` | `org.springframework.boot.data.jpa.test.autoconfigure` |
+| `AutoConfigureTestDatabase` | `org.springframework.boot.jdbc.test.autoconfigure` |
+| `TestEntityManager` | `org.springframework.boot.jpa.test.autoconfigure` |
+
+When an annotation you know exists won't resolve, find its real package rather
+than adding dependencies:
+
+```bash
+unzip -l ~/.gradle/caches/modules-2/**/spring-boot-*-test-*.jar | grep TheClass
+```
+
 **Tests require Docker** — `ExpenseCalcBackendApplicationTests` starts a real
 Postgres via Testcontainers. Without a Docker daemon, `./gradlew build` fails
 at the test task, not at compilation. Use `-x test` when you only need to know
