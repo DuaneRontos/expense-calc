@@ -27,7 +27,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: anthropics/claude-code-action@v1
+      # A PR merged between queueing and runner pickup sends the action down
+      # its closed-PR path: it creates a local `claude/pr-N-<ts>` branch, then
+      # 404s on `compare/main...claude%2Fpr-N-<ts>` because that branch is
+      # never pushed. That failure is indistinguishable from a real one in the
+      # checks list. Reviewing a merged PR is moot anyway — skip instead.
+      - id: pr_state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          state=$(gh pr view "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" --json state -q .state)
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          echo "PR is $state"
+
+      - if: steps.pr_state.outputs.state == 'OPEN'
+        uses: anthropics/claude-code-action@v1
         with:
           # Subscription-backed OAuth, not an API key. The API key returned
           # "credit balance is too low": platform.claude.com is prepaid and
