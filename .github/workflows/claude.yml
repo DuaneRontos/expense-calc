@@ -47,4 +47,7 @@ jobs:
       # only once a run is known to succeed without it.
       - uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Subscription-backed OAuth, not an API key. The API key had no
+          # credit — platform.claude.com billing is separate from a claude.ai
+          # Pro/Max subscription, and the subscription does not fund it.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
