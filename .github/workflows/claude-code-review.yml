@@ -34,6 +34,11 @@ jobs:
           # separate from a claude.ai Pro/Max subscription. Reviews now draw
           # on the subscription, which shares quota with interactive use.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # TEMPORARY: --debug makes the CLI print the raw API error before
+          # the action's sanitizer strips it (claude-code-action#880). Remove
+          # once the reviewer produces a successful run.
+          claude_args: --debug
           track_progress: true
           prompt: |
             Review this pull request. This repo is a Java Spring Boot backend
