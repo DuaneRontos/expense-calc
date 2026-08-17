@@ -7,6 +7,8 @@ import java.util.Objects;
 import java.util.UUID;
 
 import com.duanerontos.expensecalc.money.Money;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -41,6 +43,11 @@ public class Expense {
 	@Column(name = "amount_minor", nullable = false)
 	private long amountMinor;
 
+	// The migration declares CHAR(3) per spec §4, which Postgres stores as
+	// bpchar. A plain String maps to VARCHAR by default, so ddl-auto=validate
+	// rejects the mismatch at startup. Naming the JDBC type keeps entity and
+	// schema agreeing without a Postgres-specific columnDefinition.
+	@JdbcTypeCode(SqlTypes.CHAR)
 	@Column(name = "currency", nullable = false, length = 3)
 	private String currency;
 
