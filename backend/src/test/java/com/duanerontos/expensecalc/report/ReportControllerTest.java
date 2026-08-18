@@ -55,7 +55,10 @@ class ReportControllerTest {
 			.andExpect(jsonPath("$.currency").value("PHP"))
 			.andExpect(jsonPath("$.buckets[0].key").value("GROCERIES"))
 			.andExpect(jsonPath("$.buckets[0].label").value("Groceries"))
-			.andExpect(jsonPath("$.buckets[0].total").value("18420.00"));
+			.andExpect(jsonPath("$.buckets[0].total").value("18420.00"))
+			// Spec §7 defines this shape with four keys. isEmpty() was being
+			// picked up as a bean property and serialised a fifth.
+			.andExpect(jsonPath("$.empty").doesNotExist());
 	}
 
 	@Test
@@ -84,14 +87,18 @@ class ReportControllerTest {
 	}
 
 	@Test
-	@DisplayName("defaults to the current month when neither bound is given")
+	@DisplayName("defaults to the period the service decides, not one it builds itself")
 	void defaultsToTheCurrentMonth() throws Exception {
-		given(this.reports.reportingZone()).willReturn(ZoneId.of("Asia/Manila"));
+		// The default belongs to the service, which owns both the clock and the
+		// zone. A controller assembling a period from a zone it fetched is doing
+		// the service's job with the service's data.
+		given(this.reports.defaultPeriod()).willReturn(JANUARY);
 		given(this.reports.byCategory(any())).willReturn(CategoryBreakdown.of(JANUARY, List.of()));
 
 		this.mvc.perform(get("/api/v1/reports/by-category")).andExpect(status().isOk());
 
-		verify(this.reports).byCategory(ReportPeriod.currentMonth(ZoneId.of("Asia/Manila")));
+		verify(this.reports).defaultPeriod();
+		verify(this.reports).byCategory(JANUARY);
 	}
 
 	@Test

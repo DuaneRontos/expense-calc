@@ -98,7 +98,7 @@ class CategoryBreakdownTest {
 		// empty state rather than an error.
 		CategoryBreakdown breakdown = CategoryBreakdown.of(JANUARY, List.of());
 
-		assertThat(breakdown.isEmpty()).isTrue();
+		assertThat(breakdown.hasNoBuckets()).isTrue();
 		assertThat(breakdown.buckets()).isEmpty();
 		assertThat(breakdown.total()).isEqualTo("0.00");
 		assertThat(breakdown.period()).isEqualTo(JANUARY);

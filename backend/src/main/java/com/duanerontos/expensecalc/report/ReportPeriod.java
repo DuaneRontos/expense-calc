@@ -1,5 +1,6 @@
 package com.duanerontos.expensecalc.report;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
@@ -42,9 +43,22 @@ public record ReportPeriod(LocalDate from, LocalDate to) {
 		return new ReportPeriod(first, first.plusMonths(1));
 	}
 
-	/** The month in progress right now, in {@code zone}. */
-	public static ReportPeriod currentMonth(ZoneId zone) {
-		return monthOf(LocalDate.now(zone));
+	/**
+	 * The month in progress according to {@code clock}.
+	 *
+	 * <p>Takes a {@link Clock} rather than reading {@link LocalDate#now(ZoneId)}
+	 * so that <em>which month gets reported</em> is testable. That is the §4
+	 * behaviour with the eight-hours-a-day failure mode, and reading the JVM
+	 * clock here left it as the one decision no test could pin — while the
+	 * injected clock governed only the as-of instant, so a single request read
+	 * two clocks.
+	 *
+	 * <p>The clock carries the zone: pass one already set to {@code Asia/Manila}
+	 * (see {@code ReportService}), because an instant alone cannot say which
+	 * calendar day it is.
+	 */
+	public static ReportPeriod currentMonth(Clock clock) {
+		return monthOf(LocalDate.now(clock));
 	}
 
 	/**
@@ -54,11 +68,11 @@ public record ReportPeriod(LocalDate from, LocalDate to) {
 	 * exclusive bound is tomorrow. Ending it at today would silently drop
 	 * everything spent this morning.
 	 */
-	public static ReportPeriod lastDays(int days, ZoneId zone) {
+	public static ReportPeriod lastDays(int days, Clock clock) {
 		if (days < 1) {
 			throw new IllegalArgumentException("A period of %d days is not a period.".formatted(days));
 		}
-		LocalDate tomorrow = LocalDate.now(zone).plusDays(1);
+		LocalDate tomorrow = LocalDate.now(clock).plusDays(1);
 		return new ReportPeriod(tomorrow.minusDays(days), tomorrow);
 	}
 

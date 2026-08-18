@@ -55,8 +55,17 @@ public class ReportController {
 					List.of(from == null ? "from" : "to"));
 		}
 
-		ReportPeriod period = (from == null) ? ReportPeriod.currentMonth(this.reports.reportingZone())
-				: new ReportPeriod(from, to);
+		ReportPeriod period;
+		try {
+			period = (from == null) ? this.reports.defaultPeriod() : new ReportPeriod(from, to);
+		}
+		catch (IllegalArgumentException ex) {
+			// Converted here, where the exception is known to describe the
+			// request. Handling IllegalArgumentException in the advice instead
+			// would also catch server-side failures further down the stack and
+			// report them as the caller's bad dates.
+			throw new InvalidReportPeriodException(ex.getMessage(), List.of("from", "to"));
+		}
 
 		return ResponseEntity.ok(this.reports.byCategory(period));
 	}

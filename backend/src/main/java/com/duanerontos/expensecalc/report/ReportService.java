@@ -9,6 +9,7 @@ import com.duanerontos.expensecalc.expense.Category;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Turns periods into chart-shaped answers (spec §7).
@@ -34,9 +35,29 @@ public class ReportService {
 		this.reportingZone = reportingZone;
 	}
 
-	/** The zone relative periods resolve against — {@code Asia/Manila}, from configuration. */
-	public ZoneId reportingZone() {
-		return this.reportingZone;
+	/**
+	 * The period a request means when it names none: the month in progress in
+	 * {@code Asia/Manila}.
+	 *
+	 * <p>Here rather than in the controller because it needs the clock and the
+	 * zone, and both live here. A controller reaching back through the service
+	 * for a zone in order to build a period is doing the service's job with the
+	 * service's data.
+	 */
+	@Transactional(readOnly = true)
+	public ReportPeriod defaultPeriod() {
+		return ReportPeriod.currentMonth(reportingClock());
+	}
+
+	/**
+	 * The injected clock, zoned for reporting.
+	 *
+	 * <p>The bean answers "what instant is it", which has no zone; turning that
+	 * into a Philippine calendar day is this step. Conflating them is how a
+	 * report ends up in the host's timezone (spec §4).
+	 */
+	private Clock reportingClock() {
+		return this.clock.withZone(this.reportingZone);
 	}
 
 	/**
@@ -47,6 +68,7 @@ public class ReportService {
 	 * when they correct a miscategorised expense — the correction should show up
 	 * in the history it applies to.
 	 */
+	@Transactional(readOnly = true)
 	public CategoryBreakdown byCategory(ReportPeriod period) {
 		return byCategory(period, this.clock.instant());
 	}
@@ -66,6 +88,7 @@ public class ReportService {
 	 * would have to filter on {@code created_at} as well, which is a larger
 	 * decision than #9 settled and belongs with whoever needs it.
 	 */
+	@Transactional(readOnly = true)
 	public CategoryBreakdown byCategory(ReportPeriod period, Instant asOf) {
 		List<CategoryTotal> totals = this.repository.totalsByCategory(period.from(), period.to(), asOf)
 			.stream()

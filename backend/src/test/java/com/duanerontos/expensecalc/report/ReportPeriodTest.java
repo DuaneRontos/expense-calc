@@ -1,5 +1,7 @@
 package com.duanerontos.expensecalc.report;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 
@@ -40,20 +42,24 @@ class ReportPeriodTest {
 	}
 
 	@Test
-	@DisplayName("resolves the current month in Manila, not in the host's zone")
+	@DisplayName("reports February in Manila while it is still January in UTC")
 	void resolvesCurrentMonthInManila() {
-		// Spec §4's worked example: at 17:00 UTC on 31 January it is already
-		// 1 February in Manila. A UTC-derived "this month" would report January
-		// for another seven hours. This asserts the two zones genuinely differ
-		// at that instant rather than asserting a fixed month, which would only
-		// hold while the test was being written.
-		LocalDate manilaDay = LocalDate.now(MANILA);
-		LocalDate utcDay = LocalDate.now(ZoneId.of("UTC"));
+		// Spec §4's worked example, pinned rather than approximated: at 17:00
+		// UTC on 31 January it is already 01:00 on 1 February in Manila. A
+		// UTC-derived "this month" reports January for another seven hours, and
+		// only in the evening — which is a miserable thing to reproduce.
+		//
+		// A fixed clock is what makes this assertable at all. Reading the JVM
+		// clock could only ever check that two zones differ today, which is not
+		// the claim.
+		Clock atManilaMidnightish = Clock.fixed(Instant.parse("2026-01-31T17:00:00Z"), MANILA);
+		Clock sameInstantInUtc = Clock.fixed(Instant.parse("2026-01-31T17:00:00Z"), ZoneId.of("UTC"));
 
-		assertThat(ReportPeriod.currentMonth(MANILA).contains(manilaDay)).isTrue();
-		assertThat(ReportPeriod.currentMonth(MANILA)).isEqualTo(ReportPeriod.monthOf(manilaDay));
-		// Manila is never behind UTC, so its date is the same or one day ahead.
-		assertThat(manilaDay).isBetween(utcDay, utcDay.plusDays(1));
+		assertThat(ReportPeriod.currentMonth(atManilaMidnightish))
+			.isEqualTo(new ReportPeriod(LocalDate.of(2026, 2, 1), LocalDate.of(2026, 3, 1)));
+		// The bug this prevents, spelled out: same instant, wrong month.
+		assertThat(ReportPeriod.currentMonth(sameInstantInUtc))
+			.isEqualTo(new ReportPeriod(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 2, 1)));
 	}
 
 	@Test
@@ -61,8 +67,14 @@ class ReportPeriodTest {
 	void lastDaysIncludesToday() {
 		// Ending at today rather than tomorrow would drop everything spent this
 		// morning, and the report would look right until someone checked.
-		ReportPeriod week = ReportPeriod.lastDays(7, MANILA);
-		LocalDate today = LocalDate.now(MANILA);
+		//
+		// Fixed rather than wall-clock: the previous version read the clock
+		// twice, and a Manila midnight landing between the two reads made it
+		// fail for whoever was working at 00:00 +08:00.
+		Clock manila = Clock.fixed(Instant.parse("2026-01-20T05:00:00Z"), MANILA);
+		LocalDate today = LocalDate.of(2026, 1, 20);
+
+		ReportPeriod week = ReportPeriod.lastDays(7, manila);
 
 		assertThat(week.contains(today)).isTrue();
 		assertThat(week.to()).isEqualTo(today.plusDays(1));
@@ -93,7 +105,8 @@ class ReportPeriodTest {
 
 		assertThatIllegalArgumentException().isThrownBy(() -> new ReportPeriod(day, day));
 		assertThatIllegalArgumentException().isThrownBy(() -> new ReportPeriod(day, day.minusDays(1)));
-		assertThatIllegalArgumentException().isThrownBy(() -> ReportPeriod.lastDays(0, MANILA));
+		assertThatIllegalArgumentException()
+			.isThrownBy(() -> ReportPeriod.lastDays(0, Clock.fixed(Instant.EPOCH, MANILA)));
 	}
 
 }

@@ -21,6 +21,20 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  * as a 500 anybody investigates. The mapping is only safe where the exception is
  * known to describe the request.
  *
+ * <p><b>It handles one exception type, and that is the point.</b> An earlier
+ * version also mapped {@link IllegalArgumentException} here, reasoning that
+ * {@link ReportPeriod}'s own validation throws it. Two things went wrong. The
+ * controller's stack reaches into {@code ReportService}, where
+ * {@code Category.valueOf} throws the same type — so a schema ahead of the jar
+ * (V2 describes exactly that migration shape) reported a money-path failure as
+ * the caller's bad dates, and never as a 500 anybody investigates. And Spring
+ * matches handlers on the cause chain, so it also swallowed
+ * {@code MethodArgumentTypeMismatchException}, replacing Boot's own problem
+ * detail with one that blamed both bounds when only one was malformed.
+ *
+ * <p>The conversion now happens in the controller, where the exception is known
+ * to describe the request. That is the only place it can be known.
+ *
  * <p>This is the first piece of what spec §8 asks for across the whole API.
  * When #10 adds the expense endpoints it will want the same treatment, and the
  * shared parts of this belong in one place at that point rather than being
@@ -34,16 +48,6 @@ public class ReportProblemHandler {
 	@ExceptionHandler(InvalidReportPeriodException.class)
 	public ProblemDetail handleInvalidPeriod(InvalidReportPeriodException problem) {
 		return asProblem(problem.getMessage(), problem.getFields());
-	}
-
-	/**
-	 * {@link ReportPeriod}'s own validation — an inverted or empty range —
-	 * arrives as {@link IllegalArgumentException} from the record's constructor.
-	 * It describes the request just as directly, so it gets the same treatment.
-	 */
-	@ExceptionHandler(IllegalArgumentException.class)
-	public ProblemDetail handleInvalidArgument(IllegalArgumentException problem) {
-		return asProblem(problem.getMessage(), List.of("from", "to"));
 	}
 
 	private static ProblemDetail asProblem(String detail, List<String> fields) {

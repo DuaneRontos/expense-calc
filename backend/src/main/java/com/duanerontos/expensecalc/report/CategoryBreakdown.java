@@ -17,8 +17,23 @@ import com.duanerontos.expensecalc.money.Money;
  *
  * @param period the window reported on, half-open
  * @param currency ISO 4217; always {@code PHP} in v1 (spec §9.6)
- * @param total the net of every bucket, which may be negative
+ * @param total the net of every bucket, which may be negative — see below
  * @param buckets ranked by total descending; may be empty
+ *
+ * <p><b>{@code total} is net cash flow for the period, {@code INCOME}
+ * included.</b> Stated because the consequence surprises: a month with a salary
+ * recorded returns a negative headline total on a chart called "category
+ * breakdown". The alternative — total as period spending, with {@code INCOME}
+ * shown beside it but not summed in — was rejected because it makes
+ * {@code total} stop equalling the sum of the buckets, and a legend whose
+ * numbers do not add up to its own total is a worse thing to explain to a user
+ * than a negative one.
+ *
+ * <p>Spec §7 already anticipates the rendering half: a donut cannot draw a
+ * negative slice, so the client surfaces such categories in the legend with
+ * their real value and excludes them from the arc. That means the arc and the
+ * headline total legitimately disagree whenever a negative bucket exists, and
+ * #16 needs to show that rather than hide it.
  */
 public record CategoryBreakdown(ReportPeriod period, String currency, String total, List<Bucket> buckets) {
 
@@ -68,8 +83,17 @@ public record CategoryBreakdown(ReportPeriod period, String currency, String tot
 		return amount.toPlainString();
 	}
 
-	/** True when the period had no expenses at all. Spec §7: that is a 200 with no buckets, not a 404. */
-	public boolean isEmpty() {
+	/**
+	 * True when the period had no expenses at all. Spec §7: that is a 200 with
+	 * no buckets, not a 404.
+	 *
+	 * <p>Named {@code hasNoBuckets} rather than {@code isEmpty} because Jackson
+	 * treats an {@code is}-prefixed method on a record as another property and
+	 * serialised an {@code "empty"} field into the response — a fifth key in a
+	 * shape spec §7 defines with four, on the payload the client's types get
+	 * generated from.
+	 */
+	public boolean hasNoBuckets() {
 		return this.buckets.isEmpty();
 	}
 
