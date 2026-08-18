@@ -76,10 +76,43 @@ public record ReportPeriod(LocalDate from, LocalDate to) {
 		return new ReportPeriod(tomorrow.minusDays(days), tomorrow);
 	}
 
-	/** The period of equal length immediately before this one, for §7's comparison report. */
-	public ReportPeriod immediatelyBefore() {
+	/** True when this period is exactly one calendar month. */
+	public boolean isWholeCalendarMonth() {
+		return this.from.getDayOfMonth() == 1 && this.from.plusMonths(1).equals(this.to);
+	}
+
+	/**
+	 * The period this one should be compared against (spec §7's grouped bar).
+	 *
+	 * <p><b>Calendar-aware when this period is a whole month, equal-length
+	 * otherwise.</b> Both rules are wrong for the other's case, which is why the
+	 * shape of the period decides rather than a flag:
+	 *
+	 * <ul>
+	 * <li>Equal-length on March gives {@code [2026-01-29, 2026-03-01)} — 31 days
+	 * ending at February's end, which is not February. A user who picked March
+	 * from a month picker expects February, and would read that as a bug.
+	 * <li>Calendar-aware on "last 30 days" is meaningless: there is no previous
+	 * calendar month for a window that straddles two of them.
+	 * </ul>
+	 *
+	 * <p>Comparing February against January is comparing 28 days against 31, and
+	 * that is the honest comparison rather than a defect — a month picker is
+	 * asking about months, and normalising the lengths would report a February
+	 * that never happened. The client should say which months it is showing so
+	 * the reader can see the difference for themselves.
+	 */
+	public ReportPeriod previous() {
+		if (isWholeCalendarMonth()) {
+			return new ReportPeriod(this.from.minusMonths(1), this.from);
+		}
 		long length = this.to.toEpochDay() - this.from.toEpochDay();
 		return new ReportPeriod(this.from.minusDays(length), this.from);
+	}
+
+	/** Days in this period. */
+	public long lengthInDays() {
+		return this.to.toEpochDay() - this.from.toEpochDay();
 	}
 
 	public boolean contains(LocalDate day) {

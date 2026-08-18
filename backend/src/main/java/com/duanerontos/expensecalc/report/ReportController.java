@@ -49,15 +49,63 @@ public class ReportController {
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
 
+		return ResponseEntity.ok(this.reports.byCategory(periodFrom(from, to)));
+	}
+
+	/**
+	 * {@code GET /api/v1/reports/over-time?bucket=day|week|month}.
+	 *
+	 * <p>Returns one bucket per slice with no gaps: an empty month comes back as
+	 * {@code "0.00"} rather than being absent, so a line chart cannot draw two
+	 * points three months apart as though they were adjacent.
+	 *
+	 * @param bucket slice width; defaults to {@code month}
+	 */
+	@GetMapping("/over-time")
+	public ResponseEntity<SpendOverTime> overTime(
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+			@RequestParam(defaultValue = "MONTH") TimeBucket bucket) {
+
+		return ResponseEntity.ok(this.reports.overTime(periodFrom(from, to), bucket));
+	}
+
+	/**
+	 * {@code GET /api/v1/reports/compare}.
+	 *
+	 * <p>Takes one period and derives what to compare it against, rather than
+	 * taking two. Spec §7 calls this "current vs. prior", and letting a caller
+	 * pass two arbitrary windows would let it compare a month against a week and
+	 * render the difference as a fall in spending.
+	 *
+	 * <p>A whole calendar month is compared against the calendar month before
+	 * it; any other window against the equally long window before it. See
+	 * {@link ReportPeriod#previous()} for why the shape decides.
+	 */
+	@GetMapping("/compare")
+	public ResponseEntity<PeriodComparison> compare(
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+
+		return ResponseEntity.ok(this.reports.compare(periodFrom(from, to)));
+	}
+
+	/**
+	 * Both bounds, or neither.
+	 *
+	 * <p>Shared by all three endpoints. Defaulting one without the other is
+	 * deliberately unsupported: "January to unspecified" reads as either "to
+	 * now" or "to the end of January", and picking one silently is how a report
+	 * comes back subtly wrong.
+	 */
+	private ReportPeriod periodFrom(LocalDate from, LocalDate to) {
 		if ((from == null) != (to == null)) {
 			throw new InvalidReportPeriodException(
 					"Give both from and to, or neither. One bound alone has more than one sensible reading, and guessing which produces a report that is wrong without looking wrong.",
 					List.of(from == null ? "from" : "to"));
 		}
-
-		ReportPeriod period;
 		try {
-			period = (from == null) ? this.reports.defaultPeriod() : new ReportPeriod(from, to);
+			return (from == null) ? this.reports.defaultPeriod() : new ReportPeriod(from, to);
 		}
 		catch (IllegalArgumentException ex) {
 			// Converted here, where the exception is known to describe the
@@ -66,8 +114,6 @@ public class ReportController {
 			// report them as the caller's bad dates.
 			throw new InvalidReportPeriodException(ex.getMessage(), List.of("from", "to"));
 		}
-
-		return ResponseEntity.ok(this.reports.byCategory(period));
 	}
 
 }

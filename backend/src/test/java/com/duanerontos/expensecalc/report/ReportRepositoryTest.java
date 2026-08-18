@@ -182,6 +182,68 @@ class ReportRepositoryTest {
 			.isEqualTo(1);
 	}
 
+	private Map<LocalDate, Long> timeBuckets(TimeBucket bucket) {
+		this.entityManager.flush();
+		this.entityManager.clear();
+		return this.reports.totalsByTimeBucket(JANUARY.from(), JANUARY.to(), bucket.truncUnit())
+			.stream()
+			.collect(Collectors.toMap(ReportRepository.BucketTotalRow::getBucketStart,
+					ReportRepository.BucketTotalRow::getTotalMinor));
+	}
+
+	@Test
+	@DisplayName("agrees with TimeBucket about where a week starts")
+	void weekBoundariesMatchTheJavaSide() {
+		// The load-bearing agreement in the over-time report. Postgres
+		// date_trunc('week') snaps to Monday; TimeBucket.WEEK must snap to the
+		// same day, or the zero-filling would generate bucket starts the query
+		// never returns — every week reading zero while the real totals sat in
+		// buckets nothing looked for. Asserting it against the database is the
+		// only way to know they agree.
+		LocalDate wednesday = LocalDate.of(2026, 1, 7);
+		classify(expense("100.00", wednesday), Category.DINING, CLASSIFIED_AT);
+
+		Map<LocalDate, Long> weeks = timeBuckets(TimeBucket.WEEK);
+
+		assertThat(weeks).containsExactly(java.util.Map.entry(LocalDate.of(2026, 1, 5), 10_000L));
+		assertThat(TimeBucket.WEEK.startOfBucket(wednesday)).isEqualTo(LocalDate.of(2026, 1, 5));
+	}
+
+	@Test
+	@DisplayName("groups by day, week and month at the same data")
+	void groupsAtEveryWidth() {
+		classify(expense("100.00", LocalDate.of(2026, 1, 5)), Category.DINING, CLASSIFIED_AT);
+		classify(expense("200.00", LocalDate.of(2026, 1, 6)), Category.DINING, CLASSIFIED_AT);
+		classify(expense("400.00", LocalDate.of(2026, 1, 20)), Category.DINING, CLASSIFIED_AT);
+
+		assertThat(timeBuckets(TimeBucket.DAY)).hasSize(3);
+		// 5 and 6 January are the same week; 20 January is not.
+		assertThat(timeBuckets(TimeBucket.WEEK)).hasSize(2)
+			.containsEntry(LocalDate.of(2026, 1, 5), 30_000L);
+		assertThat(timeBuckets(TimeBucket.MONTH)).containsExactly(
+				java.util.Map.entry(LocalDate.of(2026, 1, 1), 70_000L));
+	}
+
+	@Test
+	@DisplayName("nets refunds inside a time bucket and lets one go negative")
+	void netsRefundsWithinATimeBucket() {
+		classify(expense("500.00", LocalDate.of(2026, 1, 12)), Category.DINING, CLASSIFIED_AT);
+		classify(expense("-1250.00", LocalDate.of(2026, 1, 13)), Category.DINING, CLASSIFIED_AT);
+
+		assertThat(timeBuckets(TimeBucket.MONTH)).containsEntry(LocalDate.of(2026, 1, 1), -75_000L);
+	}
+
+	@Test
+	@DisplayName("returns only the slices that have expenses, leaving the fill to the response")
+	void returnsOnlyPopulatedSlices() {
+		// The query is deliberately sparse; SpendOverTime generates the
+		// contiguous sequence. Asserting the sparseness keeps the two halves of
+		// that contract honest about which one fills the gaps.
+		classify(expense("100.00", LocalDate.of(2026, 1, 5)), Category.DINING, CLASSIFIED_AT);
+
+		assertThat(timeBuckets(TimeBucket.DAY)).hasSize(1);
+	}
+
 	@Test
 	@DisplayName("keeps each category's sign independent")
 	void keepsBucketSignsIndependent() {
