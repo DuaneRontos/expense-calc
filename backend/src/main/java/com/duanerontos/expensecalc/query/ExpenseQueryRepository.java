@@ -1,7 +1,9 @@
 package com.duanerontos.expensecalc.query;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 import com.duanerontos.expensecalc.expense.Category;
 import com.duanerontos.expensecalc.money.Money;
@@ -112,10 +114,30 @@ public class ExpenseQueryRepository {
 
 	private static ExpenseSummary toSummary(Object[] row) {
 		Category category = Category.valueOf((String) row[6]);
-		return new ExpenseSummary((java.util.UUID) row[0],
-				Money.toMajorUnits(((Number) row[1]).longValue()).toPlainString(), (String) row[2],
-				((java.sql.Date) row[3]).toLocalDate(), (String) row[4], (String) row[5], category.name(),
+		return new ExpenseSummary((UUID) row[0], Money.toMajorUnits(((Number) row[1]).longValue()).toPlainString(),
+				(String) row[2], toLocalDate(row[3]), (String) row[4], (String) row[5], category.name(),
 				category.getLabel());
+	}
+
+	/**
+	 * A {@code date} column, whichever type the driver hands back.
+	 *
+	 * <p>Not defensive coding for its own sake: this cast is the one place a
+	 * native query gives up the type safety the rest of the codebase has, and
+	 * assuming {@link java.sql.Date} was wrong — the current pgjdbc returns
+	 * {@link LocalDate} directly, so the assumption compiled, passed every test
+	 * that did not need Docker, and failed only against a real database.
+	 * Accepting both means a driver upgrade cannot reintroduce it.
+	 */
+	private static LocalDate toLocalDate(Object value) {
+		if (value instanceof LocalDate date) {
+			return date;
+		}
+		if (value instanceof java.sql.Date sqlDate) {
+			return sqlDate.toLocalDate();
+		}
+		throw new IllegalStateException("occurred_on came back as %s, which is neither LocalDate nor java.sql.Date."
+			.formatted(value == null ? "null" : value.getClass().getName()));
 	}
 
 }
