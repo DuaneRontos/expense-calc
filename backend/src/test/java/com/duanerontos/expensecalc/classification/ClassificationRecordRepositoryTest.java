@@ -203,18 +203,23 @@ class ClassificationRecordRepositoryTest {
 	}
 
 	@Test
-	@DisplayName("lets a backdated write become the current category, which is a recorded limit")
-	void aBackdatedWriteWinsOverALaterOne() {
-		// Pinned as a known gap, not as intent. Append-only prevents an
-		// overwrite; it does not prevent an insertion into the past. Writing
-		// DINING now and GROCERIES stamped earlier leaves GROCERIES current,
-		// while the history still shows DINING as the later decision.
+	@DisplayName("silently ignores a backdated write, which is a recorded limit")
+	void aBackdatedWriteIsSilentlyIgnored() {
+		// Pinned as a known gap, not as intent — and measured rather than
+		// reasoned about, because the reasoning got it backwards first time.
 		//
-		// Unreachable today — nothing writes these rows. It becomes reachable in
-		// #10 and #12 through clock skew, and deliberately so for IMPORT. The
-		// remedy is the monotonic sequence column V3's comment describes, or a
-		// service-level check that the stamp does not go backwards; both are
-		// larger than this issue and neither has a caller to constrain yet.
+		// The read takes the greatest recorded_at, so a record stamped in the
+		// past does NOT become current: it is accepted, stored, and has no
+		// effect. The hazard is a silent no-op, not a silent revert. A user
+		// reclassifies, the write succeeds, the category does not change, and
+		// nothing anywhere says why.
+		//
+		// Unreachable today since nothing writes these rows. It becomes
+		// reachable in #10 and #12 through clock skew between instances, and
+		// deliberately so for IMPORT, which is the source most likely to want a
+		// backdated stamp. The remedy is V3's monotonic sequence column or a
+		// service-level check that a stamp does not go backwards; both want a
+		// caller to constrain them first.
 		UUID expenseId = anExpense();
 		classified(expenseId, Category.DINING, RECLASSIFIED_AT);
 		classified(expenseId, Category.GROCERIES, CLASSIFIED_AT);
@@ -224,7 +229,11 @@ class ClassificationRecordRepositoryTest {
 		assertThat(this.records.findFirstByExpenseIdOrderByRecordedAtDescIdDesc(expenseId))
 			.get()
 			.extracting(ClassificationRecord::getCategory)
-			.isEqualTo(Category.GROCERIES);
+			.isEqualTo(Category.DINING);
+
+		// Both rows are there — the backdated decision is recorded history, it
+		// simply never becomes current.
+		assertThat(this.records.findByExpenseIdOrderByRecordedAtDescIdDesc(expenseId)).hasSize(2);
 	}
 
 	@Test

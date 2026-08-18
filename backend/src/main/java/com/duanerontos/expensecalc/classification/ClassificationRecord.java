@@ -35,15 +35,15 @@ import jakarta.persistence.Table;
  * <p><b>{@code when} must not go backwards for an expense.</b> "Latest wins"
  * reads the greatest {@code recordedAt}, and nothing here enforces that a new
  * record's stamp is at or after the newest existing one — append-only prevents
- * an overwrite, not an insertion into the past. A record written with an
- * earlier stamp silently becomes the current category while the history still
- * shows the later decision, which is a worse outcome than a rejected write.
- * Nothing produces these rows yet; the callers that will (#10, #12) have to
- * pass a clock reading rather than an arbitrary instant, and clock skew across
- * instances is the realistic way this breaks. {@code IMPORT} is the source most
- * likely to want a backdated stamp on purpose, and is the point at which this
- * wants the monotonic sequence column V3's comment describes rather than a
- * convention. Pinned by {@code ClassificationRecordRepositoryTest}.
+ * an overwrite, not an insertion into the past. A record stamped earlier than
+ * the current one is accepted, stored, and has no effect: the reclassification
+ * silently does nothing, and no error says so. Nothing produces these rows yet;
+ * the callers that will (#10, #12) have to pass a clock reading rather than an
+ * arbitrary instant, and clock skew across instances is the realistic way this
+ * breaks. {@code IMPORT} is the source most likely to want a backdated stamp on
+ * purpose, and is the point at which this wants the monotonic sequence column
+ * V3's comment describes rather than a convention. Pinned by
+ * {@code ClassificationRecordRepositoryTest}.
  *
  * <p>The two enum mappings need {@link JdbcTypeCode} with
  * {@link SqlTypes#NAMED_ENUM} because the columns are native Postgres enum
