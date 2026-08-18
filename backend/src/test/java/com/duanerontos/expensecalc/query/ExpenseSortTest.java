@@ -46,7 +46,7 @@ class ExpenseSortTest {
 	@DisplayName("names the alternatives when the field is unknown")
 	void refusesAnUnknownField() {
 		assertThatIllegalArgumentException().isThrownBy(() -> ExpenseSort.parse("createdAt"))
-			.withMessageContaining("occurredOn, amount, merchant, or category");
+			.withMessageContaining("occurredOn, amountMinor, merchant, or category");
 	}
 
 	@Test

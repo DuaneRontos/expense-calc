@@ -29,6 +29,13 @@ import org.springframework.stereotype.Repository;
  * declared in code; the request selects among them and never contributes
  * characters. That is the whole of the dynamic surface.
  *
+ * <p><b>Why the substring filters escape their own input.</b> The value is
+ * bound, so this was never injection — but {@code %} and {@code _} inside the
+ * <em>value</em> are still {@code LIKE} metacharacters. Unescaped,
+ * {@code ?merchant=%} returns every expense and {@code ?merchant=_M} matches
+ * {@code SM}, and the result looks plausible enough that nobody checks. A
+ * merchant called "100% Fitness" is not a hypothetical.
+ *
  * <p><b>Why the filters are written as {@code (:x IS NULL OR …)}.</b> One static
  * statement handles every combination, so there is no query-string assembly to
  * get wrong, and Postgres can plan it. The cost is that an unused filter still
@@ -56,8 +63,12 @@ public class ExpenseQueryRepository {
 			       OR COALESCE(cr.category::text, 'UNCLASSIFIED') = ANY(CAST(:categories AS text[])))
 			  AND (CAST(:fromDate AS date) IS NULL OR e.occurred_on >= CAST(:fromDate AS date))
 			  AND (CAST(:toDate   AS date) IS NULL OR e.occurred_on <  CAST(:toDate   AS date))
-			  AND (CAST(:merchant AS text) IS NULL OR e.merchant ILIKE '%' || CAST(:merchant AS text) || '%')
-			  AND (CAST(:text     AS text) IS NULL OR e.description ILIKE '%' || CAST(:text AS text) || '%')
+			  AND (CAST(:merchant AS text) IS NULL
+			       OR e.merchant ILIKE '%' || REPLACE(REPLACE(REPLACE(CAST(:merchant AS text),
+			              '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%')
+			  AND (CAST(:text AS text) IS NULL
+			       OR e.description ILIKE '%' || REPLACE(REPLACE(REPLACE(CAST(:text AS text),
+			              '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%')
 			  AND (CAST(:minAmount AS bigint) IS NULL OR e.amount_minor >= CAST(:minAmount AS bigint))
 			  AND (CAST(:maxAmount AS bigint) IS NULL OR e.amount_minor <= CAST(:maxAmount AS bigint))
 			""";

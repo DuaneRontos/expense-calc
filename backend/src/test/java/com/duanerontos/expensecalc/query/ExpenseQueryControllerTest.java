@@ -8,6 +8,8 @@ import com.duanerontos.expensecalc.expense.Category;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -151,6 +153,53 @@ class ExpenseQueryControllerTest {
 		this.mvc.perform(get("/api/v1/expenses").param("minAmount", "10.005"))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.violations[0].field").value("minAmount"));
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "amountMinor", "amount", "AMOUNT" })
+	@DisplayName("accepts every spelling of the sort field the documentation uses")
+	void acceptsTheSpecsFieldNames(String field) throws Exception {
+		// Spec §6 names the field amountMinor. A client copying the spec should
+		// not get a 400 for having read it correctly — the mistake this
+		// codebase already made once with bucket=day.
+		given(this.expenses.list(any(), any(), anyBoolean(), anyInt(), any())).willReturn(EMPTY);
+
+		this.mvc.perform(get("/api/v1/expenses").param("sort", field + ",desc")).andExpect(status().isOk());
+
+		verify(this.expenses).list(any(), org.mockito.ArgumentMatchers.eq(ExpenseSort.AMOUNT), anyBoolean(), anyInt(),
+				any());
+	}
+
+	@Test
+	@DisplayName("refuses a sort direction it does not understand instead of guessing")
+	void refusesAnUnknownDirection() throws Exception {
+		// Previously "not asc" meant descending, so sort=occurredOn,ascending
+		// returned 200 with the order reversed — the caller asked for one order
+		// and silently got the other.
+		this.mvc.perform(get("/api/v1/expenses").param("sort", "occurredOn,ascending"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.violations[0].field").value("sort"))
+			.andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("asc or desc")));
+	}
+
+	@Test
+	@DisplayName("reports a malformed date as problem+json, not an empty 400")
+	void reportsMalformedDatesAsProblemJson() throws Exception {
+		// The most ordinary typo on this endpoint used to produce a 400 with no
+		// body at all, so the client had nothing to surface against the field.
+		this.mvc.perform(get("/api/v1/expenses").param("from", "2026-13-99"))
+			.andExpect(status().isBadRequest())
+			.andExpect(content().contentTypeCompatibleWith("application/problem+json"))
+			.andExpect(jsonPath("$.violations[0].field").value("from"));
+	}
+
+	@Test
+	@DisplayName("reports a non-numeric page the same way")
+	void reportsMalformedPagingAsProblemJson() throws Exception {
+		this.mvc.perform(get("/api/v1/expenses").param("page", "first"))
+			.andExpect(status().isBadRequest())
+			.andExpect(content().contentTypeCompatibleWith("application/problem+json"))
+			.andExpect(jsonPath("$.violations[0].field").value("page"));
 	}
 
 	@Test

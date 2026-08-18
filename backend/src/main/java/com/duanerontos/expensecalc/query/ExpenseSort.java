@@ -1,5 +1,6 @@
 package com.duanerontos.expensecalc.query;
 
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -24,13 +25,13 @@ import java.util.Locale;
 public enum ExpenseSort {
 
 	/** The date the money moved. The default. */
-	OCCURRED_ON("e.occurred_on"),
+	OCCURRED_ON("e.occurred_on", "occurredOn"),
 
 	/** Signed centavos, so a refund sorts below everything it refunds. */
-	AMOUNT("e.amount_minor"),
+	AMOUNT("e.amount_minor", "amount", "amountMinor"),
 
 	/** Null merchants sort last in both directions — see {@link #orderBy}. */
-	MERCHANT("e.merchant"),
+	MERCHANT("e.merchant", "merchant"),
 
 	/**
 	 * Taxonomy order, not alphabetical.
@@ -43,12 +44,15 @@ public enum ExpenseSort {
 	 * by declaration order, which V2 made the taxonomy's own order precisely so
 	 * that {@code ORDER BY category} means something to a person.
 	 */
-	CATEGORY("COALESCE(cr.category, 'UNCLASSIFIED'::expense_category)");
+	CATEGORY("COALESCE(cr.category, 'UNCLASSIFIED'::expense_category)", "category");
 
 	private final String column;
 
-	ExpenseSort(String column) {
+	private final List<String> aliases;
+
+	ExpenseSort(String column, String... aliases) {
 		this.column = column;
+		this.aliases = List.of(aliases);
 	}
 
 	/**
@@ -74,19 +78,30 @@ public enum ExpenseSort {
 	/**
 	 * Parses the {@code field} half of {@code sort=field,dir}.
 	 *
-	 * <p>Accepts the camelCase spelling the API uses ({@code occurredOn}) as
-	 * well as the enum's own name, because spec §6 writes the parameter as
-	 * {@code occurredOn} and a client copying the spec should not get a 400.
+	 * <p><b>Accepts every spelling the documentation uses.</b> Spec §6 names the
+	 * fields {@code occurredOn · amountMinor · merchant · category}, so all four
+	 * bind — as do the enum's own names. A client copying the spec into a
+	 * request should never receive a 400 for having read it correctly, which is
+	 * a mistake this codebase has now made twice ({@code bucket=day} in #47).
+	 *
+	 * <p>{@code amountMinor} and {@code amount} are the same sort. The parameter
+	 * names a column to order by, not a unit — the ordering is on the stored
+	 * integer either way.
 	 */
 	public static ExpenseSort parse(String field) {
-		String normalized = field.strip().replace("_", "").toLowerCase(Locale.ENGLISH);
+		String normalized = normalize(field);
 		for (ExpenseSort sort : values()) {
-			if (sort.name().replace("_", "").toLowerCase(Locale.ENGLISH).equals(normalized)) {
+			if (normalize(sort.name()).equals(normalized)
+					|| sort.aliases.stream().map(ExpenseSort::normalize).anyMatch(normalized::equals)) {
 				return sort;
 			}
 		}
 		throw new IllegalArgumentException(
-				"%s is not a sortable field. Use occurredOn, amount, merchant, or category.".formatted(field));
+				"%s is not a sortable field. Use occurredOn, amountMinor, merchant, or category.".formatted(field));
+	}
+
+	private static String normalize(String value) {
+		return value.strip().replace("_", "").toLowerCase(Locale.ENGLISH);
 	}
 
 }

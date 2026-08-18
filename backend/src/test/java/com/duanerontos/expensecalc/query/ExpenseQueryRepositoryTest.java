@@ -131,6 +131,42 @@ class ExpenseQueryRepositoryTest {
 	}
 
 	@Test
+	@DisplayName("treats a percent or underscore in a filter as text, not as a wildcard")
+	void escapesLikeMetacharacters() {
+		// The value was always bound, so this was never injection — but % and _
+		// are LIKE metacharacters, so ?merchant=% returned every expense and
+		// ?merchant=_M matched SM. The results looked plausible enough that
+		// nobody would check, and "100% Fitness" is a real merchant name.
+		given("100.00", LocalDate.of(2026, 1, 8), "Puregold", "weekly shop", Category.GROCERIES);
+		given("200.00", LocalDate.of(2026, 1, 9), "SM", "monthly stock up", Category.GROCERIES);
+		given("300.00", LocalDate.of(2026, 1, 10), "100% Fitness", "gym dues", Category.DISCRETIONARY);
+
+		assertThat(find(filter(Set.of(), null, null, "%", null, null, null))).isEmpty();
+		assertThat(find(filter(Set.of(), null, null, "_M", null, null, null))).isEmpty();
+		assertThat(find(filter(Set.of(), null, null, "100%", null, null, null))).singleElement()
+			.extracting(ExpenseSummary::merchant)
+			.isEqualTo("100% Fitness");
+		// And an ordinary substring still works.
+		assertThat(find(filter(Set.of(), null, null, "pure", null, null, null))).hasSize(1);
+	}
+
+	@Test
+	@DisplayName("sorts unclassified rows last, where the taxonomy puts them")
+	void sortsUnclassifiedLast() {
+		// UNCLASSIFIED is declared last precisely so it sorts to the bottom.
+		// Ordering on the text cast put it between TRANSPORT and UTILITIES.
+		this.expenses.save(Expense.record(new BigDecimal("50.00"), "PHP", LocalDate.of(2026, 1, 8), "none", null));
+		given("100.00", LocalDate.of(2026, 1, 9), "housing", null, Category.HOUSING);
+		given("100.00", LocalDate.of(2026, 1, 10), "transport", null, Category.TRANSPORT);
+		this.entityManager.flush();
+		this.entityManager.clear();
+
+		assertThat(this.queries.findPage(ExpenseFilter.unfiltered(), ExpenseSort.CATEGORY, false, 0, 50, NOW))
+			.extracting(ExpenseSummary::category)
+			.containsExactly("HOUSING", "TRANSPORT", "UNCLASSIFIED");
+	}
+
+	@Test
 	@DisplayName("compares amount bounds against the signed value, not the magnitude")
 	void filtersOnSignedAmount() {
 		// A refund is negative, so a minimum of zero must exclude it rather

@@ -3,6 +3,7 @@ package com.duanerontos.expensecalc.query;
 import java.time.Clock;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -23,13 +24,18 @@ public class ExpenseQueryService {
 	/**
 	 * One page of expenses.
 	 *
-	 * <p><b>The page and the count run in one transaction against one
-	 * {@code asOf}.</b> Two reads that disagreed about either could report a
-	 * total that does not match the rows returned — a pager showing "51 of 50",
-	 * or a page 2 that is empty because a row moved out of the filter between
-	 * the two statements.
+	 * <p><b>The page and the count run in one transaction, at one {@code asOf},
+	 * under one snapshot.</b> All three are needed and they are not the same
+	 * thing. Sharing {@code asOf} pins the classification lateral join, so a
+	 * reclassification between the statements cannot move a row in or out of a
+	 * category filter. But Postgres defaults to READ COMMITTED, where every
+	 * statement takes a <em>fresh</em> snapshot — so a concurrent insert
+	 * between the count and the page still produces "51 of 50".
+	 * {@code REPEATABLE_READ} is what makes the two statements see one
+	 * database, and it costs nothing here: this transaction is read-only and
+	 * v1 is single-user, so there is no contention to serialise against.
 	 */
-	@Transactional(readOnly = true)
+	@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 	public ExpensePage list(ExpenseFilter filter, ExpenseSort sort, boolean descending, int page, Integer size) {
 		int pageSize = ExpensePage.clampSize(size);
 		int pageNumber = Math.max(page, 0);

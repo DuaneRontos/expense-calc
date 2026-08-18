@@ -59,7 +59,7 @@ public class ExpenseQueryController {
 		ExpenseFilter filter = filter(category, from, to, merchant, q, minAmount, maxAmount);
 		String[] sortParts = sort.split(",", 2);
 		ExpenseSort field = parseSort(sortParts[0]);
-		boolean descending = sortParts.length < 2 || !"asc".equalsIgnoreCase(sortParts[1].strip());
+		boolean descending = parseDirection(sortParts.length < 2 ? "desc" : sortParts[1]);
 
 		return ResponseEntity.ok(this.expenses.list(filter, field, descending, page, size));
 	}
@@ -95,6 +95,28 @@ public class ExpenseQueryController {
 			}
 		}
 		return categories;
+	}
+
+	/**
+	 * Parses the {@code dir} half of {@code sort=field,dir}.
+	 *
+	 * <p>Rejects anything that is not {@code asc} or {@code desc}. Treating
+	 * "not asc" as descending meant {@code sort=occurredOn,ascending} returned
+	 * 200 with the results reversed — the caller asked for one order, got the
+	 * other, and got no signal at all. Every other malformed parameter on this
+	 * endpoint is a 400 with violations; silence was the odd one out, and the
+	 * silent wrong answer is the worse failure.
+	 */
+	private static boolean parseDirection(String direction) {
+		String normalized = direction.strip().toLowerCase(Locale.ENGLISH);
+		if ("desc".equals(normalized)) {
+			return true;
+		}
+		if ("asc".equals(normalized)) {
+			return false;
+		}
+		throw new InvalidExpenseQueryException(
+				"%s is not a sort direction. Use asc or desc.".formatted(direction.strip()), List.of("sort"));
 	}
 
 	private static ExpenseSort parseSort(String field) {
