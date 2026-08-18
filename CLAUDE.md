@@ -18,7 +18,8 @@ scaffolding around it.
 | `.claude/agents/` | Subagent definitions |
 | `.github/workflows/` | The agents themselves (see below) |
 
-Both `backend/` and `frontend/` are still to be scaffolded.
+`backend/` is scaffolded and carries the expense model, the money conversions,
+and the classification rule engine. `frontend/` is still to be scaffolded (#3).
 
 ## Start with the specification
 
@@ -48,11 +49,16 @@ starting an issue; most issue bodies name the section that governs them.
   re-review path.
 
   Only an **open, same-repo** PR resolves to a branch. A merged or closed one
-  falls back to the default branch — the head branch is usually deleted, and
-  checkout fails hard on a missing ref before the agent can report anything.
-  Fork PRs also fall back, deliberately: the action turns a PR-head checkout
-  into a real branch and pushes it to `origin`, which is this repo, so a commit
-  would land here attached to no PR while the fork saw nothing.
+  falls back to the default branch, and that fallback is the point: this repo
+  deletes head branches on merge, so naming a deleted branch as `ref` would
+  fail checkout on a missing ref before the agent could report anything. Fork
+  PRs fall back too, deliberately — the action turns a PR-head checkout into a
+  real branch and pushes it to `origin`, which is this repo, so a commit would
+  land here attached to no PR while the fork saw nothing.
+
+  `claude.yml` itself is exempt from the byte-identical rule below: its events
+  always run the default branch's copy of the workflow, so it cannot differ
+  from itself.
 - **`.github/workflows/claude-code-review.yml`** — automatic, but **once per PR,
   not once per push.** It runs when a PR opens or leaves draft. **To re-review
   after pushing fixes, comment `@claude` on the PR** — that goes to
@@ -76,13 +82,22 @@ and store it with `gh secret set CLAUDE_CODE_OAUTH_TOKEN`.
 The `ANTHROPIC_API_KEY` secret is *not* the credential these workflows use.
 Billing on platform.claude.com is prepaid and separate from a claude.ai
 subscription, so an API key on an unfunded account fails with "credit balance
-is too low" — which the action reports as a bare `is_error:true`. Only
-`claude-code-review.yml` sets `show_full_output: true` to unmask that; a
-failing interactive run still needs the flag added before it will say why.
+is too low" — which the action reports as a bare `is_error:true`. **Both
+workflows set `show_full_output: true`** to unmask that. `claude.yml` gained it
+in #39, after a failure there surfaced only as unrelated `git hash-object`
+noise and cost a wrong diagnosis.
 
 Both pin `--model claude-opus-5`, and CI shares the subscription quota with
 interactive Claude Code — so dropping the pin is the first remedy if runs
 start failing with `is_error:true`.
+
+**Changing `claude-code-review.yml` costs every open branch its reviewer until
+it takes the change.** The action requires the workflow file to be identical to
+the default branch's copy and skips itself otherwise, so merge `main` into a
+branch after that workflow changes. The reviewer also carries
+`paths-ignore: '.github/**'`, so a PR touching only workflow files never
+triggers a run in the first place — two different mechanisms with the same
+visible outcome.
 
 ## Building
 
