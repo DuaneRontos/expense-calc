@@ -85,8 +85,16 @@ public final class ClassificationRule {
 		}
 		// Before List.copyOf, which rejects a null element with a bare NPE that
 		// says nothing about which rule is malformed.
+		//
+		// Asked as "does this survive normalization" rather than isBlank(),
+		// because the two disagree: isBlank() is Character.isWhitespace, which
+		// says U+00A0 is not whitespace, while the normalizer's Unicode-aware
+		// \s says it is and returns null. A keyword of one non-breaking space
+		// therefore passed isBlank() and reached asWholeWord as null — a bare
+		// NPE, which is exactly what this check exists to prevent, for exactly
+		// the character this class normalizes for.
 		for (String keyword : keywords) {
-			if (keyword == null || keyword.isBlank()) {
+			if (keyword == null || TextNormalizer.normalize(keyword) == null) {
 				throw new IllegalArgumentException("Rule %s has a null or blank keyword.".formatted(name));
 			}
 		}

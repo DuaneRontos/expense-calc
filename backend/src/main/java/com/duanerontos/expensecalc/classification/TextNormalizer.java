@@ -32,7 +32,29 @@ final class TextNormalizer {
 
 	private static final Pattern DASHES = Pattern.compile("[\u2013\u2014]");
 
+	private static final Pattern COMBINING_MARKS = Pattern.compile("\\p{M}+");
+
 	private TextNormalizer() {
+	}
+
+	/**
+	 * Decomposes accented letters and drops the accents, so {@code Café} matches
+	 * the keyword {@code cafe}.
+	 *
+	 * <p>Typed input again: an iOS long-press produces {@code é}, and
+	 * {@code café} is an ordinary spelling of a word already in the table.
+	 *
+	 * <p><b>This folds {@code ñ} to {@code n}</b>, which is a real decision
+	 * rather than a side effect. For a Philippine keyword set it is the useful
+	 * direction — {@code Parañaque}, {@code piña} and {@code Añejo} all reach
+	 * their unaccented spellings, which is how they are typed at least as often.
+	 * It does mean the engine cannot tell {@code año} from {@code ano}; nothing
+	 * in the taxonomy turns on that distinction, and a category is not the place
+	 * to be precious about it.
+	 */
+	private static String stripDiacritics(String text) {
+		String decomposed = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFD);
+		return COMBINING_MARKS.matcher(decomposed).replaceAll("");
 	}
 
 	/**
@@ -45,6 +67,7 @@ final class TextNormalizer {
 		}
 		String folded = SMART_QUOTES.matcher(text).replaceAll("'");
 		folded = DASHES.matcher(folded).replaceAll("-");
+		folded = stripDiacritics(folded);
 		String collapsed = WHITESPACE.matcher(folded).replaceAll(" ").strip();
 		return collapsed.isEmpty() ? null : collapsed;
 	}

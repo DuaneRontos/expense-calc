@@ -41,25 +41,35 @@ public final class ClassificationRules {
 					"amortization", "landlord", "condo dues", "association dues", "property tax", "home insurance",
 					"homeowners insurance"),
 
-			// Merchant-only, and that is the entire reason this rule is separate
-			// from the one below it: "Smart TV" and "Globe trotter" are not phone
-			// bills. As a merchant, "Smart" is unambiguous.
-			ClassificationRule.onMerchant("utilities.telco-brand", Category.UTILITIES, "PLDT", "Globe", "Smart",
-					"Converge", "Sky Cable", "Starlink", "DITO"),
+			// Merchant-only, and only the brands that need it: "Smart TV" and
+			// "Globe trotter" are not phone bills, and "dito" is Tagalog for
+			// "here", so "Bayad dito" must not become one either. As merchants
+			// all three are unambiguous.
+			//
+			// The unambiguous brands deliberately live on the rule below rather
+			// than here. Merchant-only is a cost — it hides a keyword from the
+			// description stage, where "Starlink subscription" then falls through
+			// to discretionary.leisure's "subscription" and books an internet
+			// bill as discretionary spending. Only pay that cost for a word that
+			// means something else in prose.
+			ClassificationRule.onMerchant("utilities.telco-brand", Category.UTILITIES, "Globe", "Smart", "DITO"),
 
 			// Precedes capital.durable-goods, which owns "phone" and "TV". "Phone
 			// bill" and "cable TV" have to be caught here first or a monthly bill
 			// becomes a durable good.
 			ClassificationRule.onAnyText("utilities.household-service", Category.UTILITIES, "Meralco", "Maynilad",
-					"Manila Water", "electricity", "electric bill", "water bill", "gas bill", "LPG", "internet",
-					"fiber", "phone bill", "postpaid", "cable TV", "cable bill"),
+					"Manila Water", "PLDT", "Converge", "Sky Cable", "Starlink", "electricity", "electric bill",
+					"water bill", "gas bill", "LPG", "internet", "fiber", "phone bill", "postpaid", "cable TV",
+					"cable bill"),
 
 			// Precedes both dining rules. "Coffee beans from the grocery" is
 			// GROCERIES; the dining rule's "coffee" must not reach it first.
 			//
-			// Keywords are singular throughout the table: matching generates the
-			// +s, +es and y->ies plurals, so "grocery" covers "groceries" and no
-			// entry here carries its own plural spelling.
+			// Keywords are singular where English gives a choice: matching
+			// generates the +s, +es and y->ies plurals, so "grocery" covers
+			// "groceries". The exceptions are the plurale tantum — "condo dues"
+			// and "association dues" have no singular in this sense — which is
+			// why those two are written plural and "Condo due" does not match.
 			ClassificationRule.onAnyText("groceries.market", Category.GROCERIES, "SM Supermarket", "Puregold",
 					"Robinsons Supermarket", "S&R", "Landers", "WalterMart", "grocery", "palengke",
 					"wet market", "sari-sari"),
@@ -106,7 +116,7 @@ public final class ClassificationRules {
 			// order is what separates them (skill: improvements that add value
 			// are CAPITAL, repairs are MAINTENANCE).
 			ClassificationRule.onAnyText("maintenance.upkeep", Category.MAINTENANCE, "repair", "plumber",
-					"electrician", "aircon cleaning", "tune-up", "preventive maintenance", "car service",
+					"electrician", "aircon cleaning", "tune-up", "tune up", "preventive maintenance", "car service",
 					"spare part"),
 
 			// The bare "insurance" here is the catch-all, which only works because

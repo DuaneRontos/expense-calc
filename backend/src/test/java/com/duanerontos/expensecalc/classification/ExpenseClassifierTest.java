@@ -159,6 +159,9 @@ class ExpenseClassifierTest {
 					Aircon unit for bedroom |                  | CAPITAL       | and buying is still capital
 					Internet subscription   |                  | UTILITIES     | a utility precedes a subscription
 					Netflix subscription    |                  | DISCRETIONARY | and streaming is still discretionary
+					Starlink subscription   |                  | UTILITIES     | a provider named in a description is a utility
+					Converge subscription   |                  | UTILITIES     | not only the generic word
+					PLDT subscription       |                  | UTILITIES     | merchant-only scoping hid these before
 					Coffee beans from the grocery |            | GROCERIES     | groceries precede dining
 					Coffee with Ana at the cafe   |            | DINING        | but a cafe is still dining
 					""")
@@ -262,6 +265,29 @@ class ExpenseClassifierTest {
 		// the apostrophe, so the spelling without one still needs its own
 		// keyword and still works.
 		assertThat(this.classifier.classify("McDonalds", null, 32_000).category()).isEqualTo(Category.DINING);
+	}
+
+	@Test
+	@DisplayName("folds the accents an iOS long-press produces")
+	void foldsDiacritics() {
+		// "cafe" is already a keyword and "cafe" with an acute is an ordinary
+		// spelling of it, so the accented form reaching UNCLASSIFIED was an
+		// avoidable prompt for a word the table already knows.
+		assertThat(this.classifier.classify(null, "Caf\u00E9 with Ana", 45_000).category())
+			.isEqualTo(Category.DINING);
+		// Keywords take the same path, so the guarantee is symmetric — see
+		// ClassificationRuleTest.normalizesAccentedKeywordsAndInputAlike, which
+		// can build an accented keyword. Every keyword in the real table is
+		// ASCII today, so there is nothing here to assert it against.
+	}
+
+	@Test
+	@DisplayName("reads a hyphenated keyword written without the hyphen")
+	void matchesUnhyphenatedForms() {
+		assertThat(this.classifier.classify(null, "Aircon tune-up", 250_000).category())
+			.isEqualTo(Category.MAINTENANCE);
+		assertThat(this.classifier.classify(null, "Aircon tune up", 250_000).category())
+			.isEqualTo(Category.MAINTENANCE);
 	}
 
 	@Test

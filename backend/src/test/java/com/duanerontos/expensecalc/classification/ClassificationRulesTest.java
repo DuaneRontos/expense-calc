@@ -122,6 +122,45 @@ class ClassificationRulesTest {
 	}
 
 	@Test
+	@DisplayName("lets a guarded rule's vocabulary reach it before anything unguarded takes it")
+	void guardedVocabularyReachesItsRuleFirst() {
+		// The converse of the invariant above, and the half that was missing.
+		// That one asks whether a guarded rule claims a spending rule's word.
+		// This asks whether a spending rule claims a *guarded* rule's word —
+		// which discretionary.leisure's bare "gift" does, against the text
+		// "gift from" and "gift received".
+		//
+		// Today that is harmless only because income.money-in is declared
+		// first, which is a fact about the table's order rather than its
+		// vocabulary. Move discretionary.leisure ahead of it and round two's
+		// bug returns — money in booked as a negative DISCRETIONARY — while the
+		// other invariant still reports clean. So the constraint is scoped to
+		// declaration order: an unguarded rule may share a guarded rule's
+		// vocabulary, but not from in front of it.
+		List<ClassificationRule> ordered = ClassificationRules.ordered();
+
+		for (int guardedIndex = 0; guardedIndex < ordered.size(); guardedIndex++) {
+			ClassificationRule guarded = ordered.get(guardedIndex);
+			if (guarded.amountGuard() == AmountGuard.ANY) {
+				continue;
+			}
+			for (String keyword : guarded.keywords()) {
+				String asInput = TextNormalizer.normalize(keyword);
+				for (int earlierIndex = 0; earlierIndex < guardedIndex; earlierIndex++) {
+					ClassificationRule earlier = ordered.get(earlierIndex);
+					if (earlier.amountGuard() != AmountGuard.ANY) {
+						continue;
+					}
+					assertThat(matchesAnyField(earlier, asInput, -100))
+						.as("%s is declared before %s and claims its keyword '%s', so money in that %s should own would be booked as %s",
+								earlier.name(), guarded.name(), keyword, guarded.category(), earlier.category())
+						.isFalse();
+				}
+			}
+		}
+	}
+
+	@Test
 	@DisplayName("asks about every field a rule reads, so a merchant-scoped rule is not skipped")
 	void vocabularyCheckIsNotFieldBlind() {
 		// Guards the guard. A merchant-only rule returns false from

@@ -115,6 +115,33 @@ class ClassificationRuleTest {
 	}
 
 	@Test
+	@DisplayName("normalizes an accented keyword the same way it normalizes input")
+	void normalizesAccentedKeywordsAndInputAlike() {
+		// The symmetry the shared normalizer buys: a keyword written with an
+		// accent matches input written without one, and the reverse. Neither
+		// side has to be spelled the "right" way.
+		ClassificationRule accented = ClassificationRule.onAnyText("test.accented", Category.DINING, "Caf\u00E9");
+
+		assertThat(accented.matches(MatchField.MERCHANT, "cafe", 100)).isTrue();
+
+		ClassificationRule plain = ClassificationRule.onAnyText("test.plain", Category.DINING, "cafe");
+
+		assertThat(plain.matches(MatchField.MERCHANT, TextNormalizer.normalize("Caf\u00E9"), 100)).isTrue();
+	}
+
+	@Test
+	@DisplayName("names the rule when a keyword is whitespace the JDK does not call blank")
+	void refusesNonBreakingSpaceKeyword() {
+		// String.isBlank() says U+00A0 is not whitespace; the normalizer's
+		// Unicode-aware \\s says it is and returns null. Validating with
+		// isBlank() therefore let this through to a bare NPE — the exact
+		// failure the named message exists to replace.
+		assertThatIllegalArgumentException()
+			.isThrownBy(() -> ClassificationRule.onAnyText("bad.nbsp-keyword", Category.DINING, "\u00A0"))
+			.withMessageContaining("bad.nbsp-keyword");
+	}
+
+	@Test
 	@DisplayName("ignores case")
 	void ignoresCase() {
 		ClassificationRule rule = ClassificationRule.onAnyText("test.case", Category.DINING, "Jollibee");
