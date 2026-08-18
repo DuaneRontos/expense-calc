@@ -1,18 +1,41 @@
 name: Claude Code Review
 
-# Automatic agent. Runs on every PR without anyone asking for it.
+# Automatic agent, but once per PR rather than once per push.
+#
+# `synchronize` used to be here, so every push started a full review. On #36
+# that meant four rounds of ~6 minutes of Opus for one PR, each re-reading the
+# whole changed file set — and the later rounds spent much of their budget
+# re-verifying the previous round's fixes before finding anything new. Reviews
+# draw on the same subscription quota as interactive Claude Code, so that is
+# quota taken from the person waiting at a terminal.
+#
+# Dropping it costs no capability: claude.yml answers `@claude` on a PR comment,
+# so a re-review after pushing fixes is one comment away. Explicit beats
+# automatic here because only the author knows whether a push is worth another
+# round — a typo fix is not.
+#
+# paths-ignore covers .github/** because the action *cannot* review a PR that
+# edits its own workflow: it validates the file against the default branch's
+# copy and skips itself when they differ. #37 burned a job proving it. Markdown
+# stays in scope — a docs PR is worth reviewing.
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, ready_for_review]
+    paths-ignore:
+      - '.github/**'
 
-# Three pushes in a minute would otherwise start three billed reviews, two of
-# them already reviewing stale commits. Keep only the newest.
+# Rarer now that pushes don't trigger this, but `opened` on a PR created ready
+# and an immediate `ready_for_review` can still overlap. Keep only the newest.
 concurrency:
   group: claude-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   review:
+    # A draft is work in progress by definition; reviewing one spends a round on
+    # code the author already knows is unfinished. `ready_for_review` above is
+    # what brings it back.
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -85,7 +108,11 @@ jobs:
 
             You can run the backend suite:
 
-                cd backend && ./mvnw -B verify
+                cd backend && ./mvnw -B -q verify
+
+            `-q` because a passing Maven build prints a few thousand tokens of
+            INFO you would read back into context for nothing. Failures still
+            print. Drop it if you need the full log to diagnose something.
 
             Tests need Docker for the Testcontainers suites; the runner has it.
             Reproduce a bug before reporting it, and run the fix you are about
