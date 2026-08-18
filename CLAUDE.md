@@ -73,7 +73,11 @@ starting an issue; most issue bodies name the section that governs them.
   It can run `cd backend && ./mvnw -B -q verify`, and is asked to reproduce a
   bug before reporting it and to run a fix before suggesting one — a reviewer
   that could only read the code got its diagnoses right but its remedies wrong.
-  Bash is otherwise off; the allowlist covers the build wrapper only.
+  Bash is otherwise off; the allowlist covers the build wrapper and git's
+  read-only verbs (`status`, `log`, `diff`, `show`, `branch`, `ls-files`,
+  `rev-parse`, `blame`) and nothing that moves a ref. Note Claude Code
+  separately refuses `cd <dir> && git ...` because that can run hooks from the
+  target directory — the allowlist does not override that.
 
 Both authenticate with the `CLAUDE_CODE_OAUTH_TOKEN` repository secret, which
 draws on a Claude Pro/Max subscription. Regenerate it with `claude setup-token`
