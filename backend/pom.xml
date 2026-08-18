@@ -88,6 +88,19 @@
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<!--
+			Boot 4 moved TestRestTemplate out of spring-boot-test into its own
+			module: org.springframework.boot.resttestclient. The Boot 3 package
+			org.springframework.boot.test.web.client no longer exists, so a
+			copied snippet fails to compile with a bare "package does not
+			exist". Needed by BackendOperabilityTest, which drives the running
+			app over HTTP.
+		-->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-resttestclient</artifactId>
+			<scope>test</scope>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-testcontainers</artifactId>
