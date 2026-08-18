@@ -1,0 +1,183 @@
+package com.duanerontos.expensecalc.classification;
+
+import java.util.List;
+
+import com.duanerontos.expensecalc.expense.Category;
+
+/**
+ * The rule table, in match order.
+ *
+ * <p><b>The order is load-bearing.</b> First match wins, so a specific rule has
+ * to precede the general one it is an exception to. Every position below that
+ * carries weight says which rule it is defending against and what breaks if it
+ * moves; {@code ClassificationRulesTest} pins the sequence so a reorder fails
+ * the build rather than quietly reclassifying a category's worth of expenses.
+ *
+ * <p>Two conventions run through the table:
+ *
+ * <ul>
+ * <li><b>Brand rules that collide with ordinary words are merchant-only.</b>
+ * {@code Smart} and {@code Globe} are telcos, {@code Shell} sells fuel — and all
+ * three appear in descriptions meaning something else entirely.
+ * <li><b>Nothing keys on the word "refund".</b> Spec §5: a refund keeps the
+ * category of what it refunds, as a negative amount. A rule that caught refunds
+ * would file them all in one bucket and leave every category's total gross.
+ * </ul>
+ *
+ * <p>Keywords lean Philippine — {@code PHP} is the only currency in v1 (spec
+ * §9.6) and the merchants a user here actually types are Meralco and Jollibee,
+ * not utilities and restaurants in the abstract. Unrecognized merchants reach
+ * {@code UNCLASSIFIED}, which is the designed outcome rather than a gap: the
+ * user reclassifies once (issue #9) and the record explains itself.
+ */
+public final class ClassificationRules {
+
+	private static final List<ClassificationRule> ORDERED = List.of(
+
+			// Owns "home insurance" outright. The health rule below matches a bare
+			// "insurance" as its last resort, so if these two ever swap, every
+			// home insurance premium silently becomes HEALTH.
+			ClassificationRule.onAnyText("housing.rent-and-dues", Category.HOUSING, "rent", "monthly rent", "mortgage",
+					"amortization", "landlord", "condo dues", "association dues", "property tax", "home insurance",
+					"homeowners insurance"),
+
+			// Merchant-only, and only the brands that need it: "Smart TV" and
+			// "Globe trotter" are not phone bills, and "dito" is Tagalog for
+			// "here", so "Bayad dito" must not become one either. As merchants
+			// all three are unambiguous.
+			//
+			// The unambiguous brands deliberately live on the rule below rather
+			// than here. Merchant-only is a cost — it hides a keyword from the
+			// description stage, where "Starlink subscription" then falls through
+			// to discretionary.leisure's "subscription" and books an internet
+			// bill as discretionary spending. Only pay that cost for a word that
+			// means something else in prose.
+			//
+			// "Converge" is a knowing exception to that criterion: it is an
+			// ordinary English verb, so "Teams converge for the offsite" now
+			// answers UTILITIES where it used to answer UNCLASSIFIED. Taken
+			// deliberately — a monthly Converge bill is a real recurring entry
+			// and the verb is close to hypothetical in an expense description.
+			// DITO, which is the genuinely dangerous one, stayed above.
+			ClassificationRule.onMerchant("utilities.telco-brand", Category.UTILITIES, "Globe", "Smart", "DITO"),
+
+			// Precedes capital.durable-goods, which owns "phone" and "TV". "Phone
+			// bill" and "cable TV" have to be caught here first or a monthly bill
+			// becomes a durable good.
+			ClassificationRule.onAnyText("utilities.household-service", Category.UTILITIES, "Meralco", "Maynilad",
+					"Manila Water", "PLDT", "Converge", "Sky Cable", "Starlink", "electricity", "electric bill",
+					"water bill", "gas bill", "LPG", "internet", "fiber", "broadband", "phone bill", "postpaid",
+					"phone subscription", "phone plan", "mobile subscription", "mobile plan", "cable TV",
+					"cable bill", "cable subscription"),
+
+			// Precedes both dining rules. "Coffee beans from the grocery" is
+			// GROCERIES; the dining rule's "coffee" must not reach it first.
+			//
+			// Keywords are singular where English gives a choice: matching
+			// generates the +s, +es and y->ies plurals, so "grocery" covers
+			// "groceries". The exceptions are the plurale tantum — "condo dues"
+			// and "association dues" have no singular in this sense — which is
+			// why those two are written plural and "Condo due" does not match.
+			ClassificationRule.onAnyText("groceries.market", Category.GROCERIES, "SM Supermarket", "Puregold",
+					"Robinsons Supermarket", "S&R", "Landers", "WalterMart", "grocery", "palengke",
+					"wet market", "sari-sari"),
+
+			// Precedes transport.fare-and-fuel, which owns "Grab". Whole-word
+			// matching already keeps "Grab" out of "GrabFood", but "Grab Food"
+			// spelled with a space would land in TRANSPORT if this rule moved.
+			ClassificationRule.onAnyText("dining.delivery-platform", Category.DINING, "GrabFood", "Grab Food",
+					"foodpanda", "food panda"),
+
+			// "bar tab" and "inuman" rather than a bare "bar": the skill's table
+			// lists bars under DINING, but "bar" alone is a chart, a crowbar, and
+			// a bar of soap. Same call as "Total" below — the omission is
+			// deliberate, and said so rather than left looking accidental.
+			ClassificationRule.onAnyText("dining.eating-out", Category.DINING, "Jollibee", "Mang Inasal", "Chowking",
+					"McDonald's", "McDonalds", "KFC", "Starbucks", "restaurant", "cafe", "coffee", "lunch", "dinner",
+					"merienda", "milk tea", "bar tab", "beer", "inuman"),
+
+			// Merchant-only: "shell out" and "phoenix" are ordinary description
+			// words. As merchants they are fuel stations. "Total" is left out
+			// entirely — TotalEnergies does operate here, but the word is common
+			// enough in a merchant field ("Total") that the rule would cost more
+			// than it earns.
+			//
+			// Known consequence: fuel stations here run service bays, and the
+			// merchant stage completes before the description stage — so a
+			// Petron receipt described as "car service" is TRANSPORT, though the
+			// skill's table puts vehicle repair in MAINTENANCE. Pinned by
+			// ExpenseClassifierTest.ambiguousMerchantStillOutranksDescription
+			// rather than fixed: the alternative is a cross-field exception, and
+			// the field order is the spec's, not this rule's.
+			ClassificationRule.onMerchant("transport.fuel-brand", Category.TRANSPORT, "Shell", "Petron", "Caltex",
+					"Seaoil", "Phoenix", "Unioil"),
+
+			// Owns "car insurance" for the same reason housing owns "home
+			// insurance": the bare "insurance" in the health rule below would
+			// otherwise take it.
+			ClassificationRule.onAnyText("transport.fare-and-fuel", Category.TRANSPORT, "Grab", "Angkas", "JoyRide",
+					"taxi", "jeepney", "tricycle", "bus", "MRT", "LRT", "beep card", "fare", "gasoline",
+					"diesel", "toll", "Autosweep", "Easytrip", "parking", "car insurance", "motor insurance"),
+
+			// Precedes capital.durable-goods deliberately. Repairing an aircon is
+			// upkeep; buying one is a durable good. Both say "aircon", so the
+			// order is what separates them (skill: improvements that add value
+			// are CAPITAL, repairs are MAINTENANCE).
+			ClassificationRule.onAnyText("maintenance.upkeep", Category.MAINTENANCE, "repair", "plumber",
+					"electrician", "aircon cleaning", "tune-up", "tune up", "preventive maintenance", "car service",
+					"spare part"),
+
+			// The bare "insurance" here is the catch-all, which only works because
+			// housing and transport have already claimed their own kinds above.
+			ClassificationRule.onAnyText("health.care-and-pharmacy", Category.HEALTH, "Mercury Drug", "Watsons",
+					"clinic", "hospital", "dental", "dentist", "pharmacy", "drugstore", "medicine", "laboratory",
+					"consultation", "HMO", "insurance"),
+
+			// The guard is what keeps this rule off ordinary expenses: paying a
+			// helper's salary is money out, so "salary" alone never reaches
+			// INCOME — it falls through to UNCLASSIFIED, which is honest.
+			//
+			// It says "gift from" and "gift received" rather than a bare "gift",
+			// and that phrasing is load-bearing. A refund is money in, so a
+			// returned gift purchase satisfies MONEY_IN exactly as a gift
+			// received does; if this rule owned the bare word it would take both,
+			// and spec §5 says the refund keeps the category it refunds. The
+			// guard separates money in from money out, but nothing can separate
+			// two money-in meanings of one word — so the vocabularies of a
+			// guarded and an unguarded rule have to stay disjoint. Bare "gift"
+			// belongs to discretionary.leisure below, refunds included.
+			// ClassificationRulesTest.keepsGuardedAndUnguardedVocabulariesDisjoint
+			// enforces this for the whole table rather than for "gift" alone.
+			//
+			// No "refund" or "reimbursement" keyword, on purpose. A reimbursed
+			// client dinner is negative DINING, not INCOME (skill) — recording it
+			// here would leave the by-category report showing dining nobody paid
+			// for, offset invisibly in another bucket.
+			ClassificationRule
+				.onAnyText("income.money-in", Category.INCOME, "salary", "payroll", "13th month pay", "bonus",
+						"interest", "dividend", "pension", "commission", "gift from", "gift received")
+				.guardedBy(AmountGuard.MONEY_IN),
+
+			// Owns "subscription", which is why utilities.household-service has to
+			// precede it: "internet subscription" is a utility bill, and streaming
+			// is DISCRETIONARY (skill).
+			ClassificationRule.onAnyText("discretionary.leisure", Category.DISCRETIONARY, "Netflix", "Spotify",
+					"Steam", "cinema", "movie", "gym", "fitness", "concert", "videoke", "hobby", "gift",
+					"subscription", "streaming"),
+
+			// Last among the matching rules, because its keywords are the nouns
+			// every earlier rule qualifies: a phone has a bill, an aircon gets
+			// cleaned, a TV comes with cable. Anything that reaches here is the
+			// object itself rather than a service around it.
+			ClassificationRule.onAnyText("capital.durable-goods", Category.CAPITAL, "laptop", "phone", "refrigerator",
+					"aircon", "air conditioner", "television", "TV", "furniture", "appliance", "washing machine"));
+
+	private ClassificationRules() {
+	}
+
+	/** The rules, in match order. Immutable. */
+	public static List<ClassificationRule> ordered() {
+		return ORDERED;
+	}
+
+}

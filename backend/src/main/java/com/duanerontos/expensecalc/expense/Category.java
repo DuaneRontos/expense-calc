@@ -50,9 +50,11 @@ public enum Category {
 	/** Purchases that hold value past the period. */
 	CAPITAL("Capital"),
 
-	/** Money in that was never an expense — salary, reimbursements. A refund is
-	 * <em>not</em> income: it keeps the category of what it refunds, as a
-	 * negative amount (spec §5). */
+	/** Money in that offsets no particular expense — salary, interest, a gift
+	 * received. Money in that <em>does</em> offset one keeps that expense's
+	 * category as a negative amount instead: a grocery refund is negative
+	 * GROCERIES, and a reimbursed client dinner is negative DINING, however the
+	 * money reached you (spec §5). */
 	INCOME("Income"),
 
 	/** Nothing matched. A prompt for the user, not an error. */
