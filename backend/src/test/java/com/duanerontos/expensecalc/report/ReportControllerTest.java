@@ -102,6 +102,75 @@ class ReportControllerTest {
 	}
 
 	@Test
+	@DisplayName("serves over-time buckets with money as strings")
+	void servesOverTime() throws Exception {
+		given(this.reports.overTime(any(), any())).willReturn(SpendOverTime.of(JANUARY, TimeBucket.MONTH,
+				java.util.Map.of(LocalDate.of(2026, 1, 1), 150_000L)));
+
+		this.mvc
+			.perform(get("/api/v1/reports/over-time").param("from", "2026-01-01")
+				.param("to", "2026-02-01")
+				.param("bucket", "MONTH"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.bucket").value("MONTH"))
+			.andExpect(jsonPath("$.buckets[0].key").value("2026-01-01"))
+			.andExpect(jsonPath("$.buckets[0].label").value("Jan 2026"))
+			.andExpect(jsonPath("$.buckets[0].total").value("1500.00"))
+			.andExpect(jsonPath("$.total").value("1500.00"));
+	}
+
+	@Test
+	@DisplayName("defaults the over-time slice to a month")
+	void defaultsBucketToMonth() throws Exception {
+		given(this.reports.overTime(any(), any())).willReturn(SpendOverTime.of(JANUARY, TimeBucket.MONTH,
+				java.util.Map.of()));
+
+		this.mvc.perform(get("/api/v1/reports/over-time").param("from", "2026-01-01").param("to", "2026-02-01"))
+			.andExpect(status().isOk());
+
+		verify(this.reports).overTime(JANUARY, TimeBucket.MONTH);
+	}
+
+	@Test
+	@DisplayName("refuses a slice width that is not day, week or month")
+	void refusesAnUnknownBucket() throws Exception {
+		this.mvc
+			.perform(get("/api/v1/reports/over-time").param("from", "2026-01-01")
+				.param("to", "2026-02-01")
+				.param("bucket", "FORTNIGHT"))
+			.andExpect(status().is4xxClientError());
+	}
+
+	@Test
+	@DisplayName("serves a comparison with both periods on each row")
+	void servesComparison() throws Exception {
+		ReportPeriod march = ReportPeriod.monthOf(LocalDate.of(2026, 3, 1));
+		given(this.reports.compare(any())).willReturn(PeriodComparison.of(march, march.previous(),
+				List.of(new CategoryTotal(com.duanerontos.expensecalc.expense.Category.GROCERIES, 500_000L)),
+				List.of(new CategoryTotal(com.duanerontos.expensecalc.expense.Category.GROCERIES, 420_000L))));
+
+		this.mvc.perform(get("/api/v1/reports/compare").param("from", "2026-03-01").param("to", "2026-04-01"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.current.from").value("2026-03-01"))
+			.andExpect(jsonPath("$.previous.from").value("2026-02-01"))
+			.andExpect(jsonPath("$.buckets[0].current").value("5000.00"))
+			.andExpect(jsonPath("$.buckets[0].previous").value("4200.00"))
+			.andExpect(jsonPath("$.buckets[0].change").value("800.00"));
+	}
+
+	@Test
+	@DisplayName("applies the both-or-neither rule to every report, not just one")
+	void appliesThePeriodRuleEverywhere() throws Exception {
+		// The three endpoints share one helper; this is what stops a future
+		// fourth endpoint quietly reintroducing the guess.
+		for (String path : List.of("by-category", "over-time", "compare")) {
+			this.mvc.perform(get("/api/v1/reports/" + path).param("from", "2026-01-01"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.violations[0].field").value("to"));
+		}
+	}
+
+	@Test
 	@DisplayName("refuses one bound without the other rather than guessing")
 	void refusesAHalfSpecifiedPeriod() throws Exception {
 		// "January to unspecified" reads as either "to now" or "to end of
