@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -165,25 +166,65 @@ class ClassificationRecordRepositoryTest {
 		}).rootCause().hasMessageContaining("append-only");
 	}
 
+	/**
+	 * Postgres orders {@code uuid} as sixteen unsigned bytes.
+	 *
+	 * <p>{@link UUID#compareTo} compares the most-significant bits as a
+	 * <em>signed</em> long, so it disagrees with the database for roughly half
+	 * of all pairs — using it here would make this test flaky in exactly the way
+	 * the tiebreaker exists to prevent.
+	 */
+	private static final Comparator<UUID> POSTGRES_UUID_ORDER = Comparator
+		.comparing(UUID::getMostSignificantBits, Long::compareUnsigned)
+		.thenComparing(UUID::getLeastSignificantBits, Long::compareUnsigned);
+
 	@Test
-	@DisplayName("picks the same winner every time when two records share an instant")
-	void breaksSameInstantTiesStably() {
+	@DisplayName("breaks a same-instant tie on the greater id, not merely consistently")
+	void breaksSameInstantTiesOnId() {
 		// Microsecond resolution means a reclassification can land in the same
-		// instant as the record it replaces. Which one wins is arbitrary; that
-		// it wins consistently is not, because "the current category" changing
+		// instant as the record it replaces, and "the current category" changing
 		// between two reads of unchanged data is the one thing this table must
 		// never do.
+		//
+		// Asserting only that five reads agree is not enough: Postgres returns a
+		// stable row for a two-row table with or without the tiebreaker, so that
+		// version passed even with id DESC removed from the query and the index.
+		// Naming which row must win is what actually pins it.
 		UUID expenseId = anExpense();
-		classified(expenseId, Category.GROCERIES, CLASSIFIED_AT);
-		classified(expenseId, Category.DINING, CLASSIFIED_AT);
+		UUID groceries = classified(expenseId, Category.GROCERIES, CLASSIFIED_AT).getId();
+		UUID dining = classified(expenseId, Category.DINING, CLASSIFIED_AT).getId();
 		this.entityManager.flush();
 		this.entityManager.clear();
 
-		UUID first = this.records.findFirstByExpenseIdOrderByRecordedAtDescIdDesc(expenseId).orElseThrow().getId();
-		for (int attempt = 0; attempt < 5; attempt++) {
-			assertThat(this.records.findFirstByExpenseIdOrderByRecordedAtDescIdDesc(expenseId).orElseThrow().getId())
-				.isEqualTo(first);
-		}
+		UUID expected = POSTGRES_UUID_ORDER.compare(groceries, dining) >= 0 ? groceries : dining;
+
+		assertThat(this.records.findFirstByExpenseIdOrderByRecordedAtDescIdDesc(expenseId).orElseThrow().getId())
+			.isEqualTo(expected);
+	}
+
+	@Test
+	@DisplayName("lets a backdated write become the current category, which is a recorded limit")
+	void aBackdatedWriteWinsOverALaterOne() {
+		// Pinned as a known gap, not as intent. Append-only prevents an
+		// overwrite; it does not prevent an insertion into the past. Writing
+		// DINING now and GROCERIES stamped earlier leaves GROCERIES current,
+		// while the history still shows DINING as the later decision.
+		//
+		// Unreachable today — nothing writes these rows. It becomes reachable in
+		// #10 and #12 through clock skew, and deliberately so for IMPORT. The
+		// remedy is the monotonic sequence column V3's comment describes, or a
+		// service-level check that the stamp does not go backwards; both are
+		// larger than this issue and neither has a caller to constrain yet.
+		UUID expenseId = anExpense();
+		classified(expenseId, Category.DINING, RECLASSIFIED_AT);
+		classified(expenseId, Category.GROCERIES, CLASSIFIED_AT);
+		this.entityManager.flush();
+		this.entityManager.clear();
+
+		assertThat(this.records.findFirstByExpenseIdOrderByRecordedAtDescIdDesc(expenseId))
+			.get()
+			.extracting(ClassificationRecord::getCategory)
+			.isEqualTo(Category.GROCERIES);
 	}
 
 	@Test

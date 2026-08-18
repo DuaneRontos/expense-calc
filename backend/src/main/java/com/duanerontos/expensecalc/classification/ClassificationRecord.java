@@ -32,6 +32,19 @@ import jakarta.persistence.Table;
  * list row and every report bucket, so it has to be a projection over this
  * table rather than a graph walk from {@code Expense}.
  *
+ * <p><b>{@code when} must not go backwards for an expense.</b> "Latest wins"
+ * reads the greatest {@code recordedAt}, and nothing here enforces that a new
+ * record's stamp is at or after the newest existing one — append-only prevents
+ * an overwrite, not an insertion into the past. A record written with an
+ * earlier stamp silently becomes the current category while the history still
+ * shows the later decision, which is a worse outcome than a rejected write.
+ * Nothing produces these rows yet; the callers that will (#10, #12) have to
+ * pass a clock reading rather than an arbitrary instant, and clock skew across
+ * instances is the realistic way this breaks. {@code IMPORT} is the source most
+ * likely to want a backdated stamp on purpose, and is the point at which this
+ * wants the monotonic sequence column V3's comment describes rather than a
+ * convention. Pinned by {@code ClassificationRecordRepositoryTest}.
+ *
  * <p>The two enum mappings need {@link JdbcTypeCode} with
  * {@link SqlTypes#NAMED_ENUM} because the columns are native Postgres enum
  * types. A plain {@code @Enumerated(EnumType.STRING)} binds a varchar and
@@ -90,8 +103,8 @@ public class ClassificationRecord {
 	 */
 	public static ClassificationRecord fromRuleEngine(UUID expenseId, Classification classification, Instant when) {
 		Objects.requireNonNull(classification, "classification must not be null");
-		return new ClassificationRecord(UUID.randomUUID(), expenseId, classification.category(),
-				ClassificationSource.RULE_ENGINE, classification.reason(), when);
+		return new ClassificationRecord(UUID.randomUUID(), required(expenseId, "expenseId"), classification.category(),
+				ClassificationSource.RULE_ENGINE, classification.reason(), required(when, "when"));
 	}
 
 	/**
@@ -105,8 +118,29 @@ public class ClassificationRecord {
 			throw new IllegalArgumentException(
 					"A user reclassification needs a reason. Without one the record says a category changed but not why, which is the question it exists to answer.");
 		}
-		return new ClassificationRecord(UUID.randomUUID(), expenseId, category, ClassificationSource.USER, reason,
-				when);
+		// Bounded here rather than left to the column. A user's free-text note
+		// is the input most likely to run long, and without this it reaches the
+		// VARCHAR(200) as a flush-time DataIntegrityViolationException — a 500
+		// where the blank case a few lines above gives a controller a clean 400.
+		// Classification enforces the same bound on the engine's side.
+		if (reason.length() > Classification.MAX_REASON_LENGTH) {
+			throw new IllegalArgumentException("Reason is %d characters; the column holds %d."
+				.formatted(reason.length(), Classification.MAX_REASON_LENGTH));
+		}
+		return new ClassificationRecord(UUID.randomUUID(), required(expenseId, "expenseId"),
+				required(category, "category"), ClassificationSource.USER, reason, required(when, "when"));
+	}
+
+	/**
+	 * Fails at the call site rather than at flush.
+	 *
+	 * <p>The columns are all {@code NOT NULL}, so a null does get caught — but
+	 * as a constraint violation raised when the transaction flushes, by which
+	 * point the stack no longer shows who passed it. {@code Expense.record} sets
+	 * the same precedent next door.
+	 */
+	private static <T> T required(T value, String field) {
+		return Objects.requireNonNull(value, () -> "%s must not be null".formatted(field));
 	}
 
 	public UUID getId() {
