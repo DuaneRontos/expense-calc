@@ -35,11 +35,46 @@ jobs:
       issues: write          # comment back on the issue
       id-token: write        # OIDC token for the action
     steps:
+      # Which ref to check out, resolved before checkout so the answer is
+      # available to it.
+      #
+      # None of this job's four events is a `pull_request` event, and only that
+      # event family gives actions/checkout the PR's code. `issue_comment`,
+      # `pull_request_review` and `pull_request_review_comment` all run against
+      # the default branch, so checkout's default landed the agent in a tree
+      # with none of the PR's files — it died computing SHAs for every changed
+      # path ("could not open ... No such file or directory") in about 30s. A
+      # PR mention had therefore never worked; only issue mentions did, where
+      # branching from the default branch is the right thing.
+      #
+      # Same-repo PRs check out the head branch by name, so the agent can
+      # commit and push to the PR it was asked about. Forks check out the
+      # read-only `refs/pull/N/head`, whose branch does not exist here to push
+      # to. Non-PR events resolve to empty, which leaves checkout on its default.
+      - id: target
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          IS_PR: ${{ github.event.issue.pull_request != null || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment' }}
+        run: |
+          ref=''
+          if [ "$IS_PR" = "true" ]; then
+            cross=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json isCrossRepository -q .isCrossRepository)
+            if [ "$cross" = "true" ]; then
+              ref="refs/pull/$PR_NUMBER/head"
+            else
+              ref=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json headRefName -q .headRefName)
+            fi
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "checkout ref: ${ref:-<default branch>}"
+
       # The agent needs a working tree to read and edit the repo, and full
       # history so it can branch from the right base.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ steps.target.outputs.ref }}
 
       - uses: anthropics/claude-code-action@v1
         with:

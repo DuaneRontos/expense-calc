@@ -36,6 +36,15 @@ starting an issue; most issue bodies name the section that governs them.
 
 - **`.github/workflows/claude.yml`** — interactive. Mention `@claude` in an
   issue or PR comment and it does the work and opens a PR.
+
+  **On a PR it checks out the PR head, and that step is load-bearing.** None of
+  the four events it listens to is a `pull_request` event, so
+  `actions/checkout` defaults to the default branch — which meant a PR mention
+  landed the agent in a tree containing none of the PR's files and it died
+  computing SHAs in about 30 seconds. That was true from the beginning and only
+  surfaced when #38 made `@claude` the re-review path. Same-repo PRs check out
+  the head branch by name so the agent can push to it; forks get the read-only
+  `refs/pull/N/head`.
 - **`.github/workflows/claude-code-review.yml`** — automatic, but **once per PR,
   not once per push.** It runs when a PR opens or leaves draft. **To re-review
   after pushing fixes, comment `@claude` on the PR** — that goes to
