@@ -220,6 +220,68 @@ class ExpenseClassifierTest {
 			.isEqualTo(Category.DISCRETIONARY);
 	}
 
+	@ParameterizedTest
+	@CsvSource(delimiter = '|',
+			textBlock = """
+					Gift from tita   | INCOME
+					Gifts from tita  | INCOME
+					Gift received    | INCOME
+					Gifts received   | INCOME
+					""")
+	@DisplayName("reads a phrase keyword whose plural falls on a word other than the last")
+	void pluralizesEveryWordOfAPhrase(String description, Category expected) {
+		// The skill's own wording is "gifts received", so the phrasing that has
+		// to work is the plural one. Pluralizing only the last word of a phrase
+		// left "gifts from" unmatched and handed it to the bare "gift" in
+		// discretionary.leisure — money in booked as a negative DISCRETIONARY,
+		// which subtracts from a category the user did spend in and leaves no
+		// unclassified row to prompt them.
+		assertThat(this.classifier.classify(null, description, -200_000).category()).isEqualTo(expected);
+	}
+
+	@Test
+	@DisplayName("reads a keyword written in the singular in both numbers")
+	void singularKeywordsCoverPlurals() {
+		// The optional plural can add an s, never remove one — so "spare part"
+		// covers both and "spare parts" would cover only the plural.
+		assertThat(this.classifier.classify(null, "Spare part for the car", 150_000).category())
+			.isEqualTo(Category.MAINTENANCE);
+		assertThat(this.classifier.classify(null, "Spare parts for the car", 150_000).category())
+			.isEqualTo(Category.MAINTENANCE);
+	}
+
+	@Test
+	@DisplayName("folds the smart punctuation an iOS keyboard produces")
+	void foldsSmartPunctuation() {
+		// Escapes rather than literals, as with the non-breaking space: the
+		// curly forms are indistinguishable from the straight ones in a diff.
+		assertThat(this.classifier.classify("McDonald\u2019s", null, 32_000).category()).isEqualTo(Category.DINING);
+		assertThat(this.classifier.classify(null, "Aircon tune\u2013up", 250_000).category())
+			.isEqualTo(Category.MAINTENANCE);
+		// Folding maps the curly form onto the straight one; it does not delete
+		// the apostrophe, so the spelling without one still needs its own
+		// keyword and still works.
+		assertThat(this.classifier.classify("McDonalds", null, 32_000).category()).isEqualTo(Category.DINING);
+	}
+
+	@Test
+	@DisplayName("lets an ambiguous merchant outrank a description that names a more specific rule")
+	void ambiguousMerchantStillOutranksDescription() {
+		// Pinned as intended rather than fixed. "Grab" is one merchant string
+		// covering rideshare and food delivery, so the merchant stage answers
+		// TRANSPORT before dining.delivery-platform is ever consulted, even
+		// though the description names GrabFood outright.
+		//
+		// The field-outer loop is the spec's match order and is right in
+		// general; making an ambiguous merchant defer to the description would
+		// be a cross-field rule for one brand. Recorded here so the next reader
+		// finds a decision rather than a gap.
+		Classification result = this.classifier.classify("Grab", "GrabFood order", 45_000);
+
+		assertThat(result.category()).isEqualTo(Category.TRANSPORT);
+		assertThat(result.rule()).isEqualTo("transport.fare-and-fuel");
+	}
+
 	@Test
 	@DisplayName("keeps a returned gift in DISCRETIONARY rather than turning it into income")
 	void refundOfAGiftKeepsItsCategory() {

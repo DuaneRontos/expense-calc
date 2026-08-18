@@ -95,7 +95,7 @@ public final class ClassificationRules {
 			// are CAPITAL, repairs are MAINTENANCE).
 			ClassificationRule.onAnyText("maintenance.upkeep", Category.MAINTENANCE, "repair", "plumber",
 					"electrician", "aircon cleaning", "tune-up", "preventive maintenance", "car service",
-					"spare parts"),
+					"spare part"),
 
 			// The bare "insurance" here is the catch-all, which only works because
 			// housing and transport have already claimed their own kinds above.

@@ -60,6 +60,19 @@ class ClassificationRuleTest {
 	}
 
 	@Test
+	@DisplayName("names the malformed rule when a keyword is null or blank")
+	void refusesNullOrBlankKeyword() {
+		// The check runs before List.copyOf, which would otherwise reject a null
+		// element with a bare NPE naming neither the rule nor the problem.
+		assertThatIllegalArgumentException()
+			.isThrownBy(() -> ClassificationRule.onAnyText("bad.null-keyword", Category.DINING, "coffee", null))
+			.withMessageContaining("bad.null-keyword");
+		assertThatIllegalArgumentException()
+			.isThrownBy(() -> ClassificationRule.onAnyText("bad.blank-keyword", Category.DINING, "coffee", "  "))
+			.withMessageContaining("bad.blank-keyword");
+	}
+
+	@Test
 	@DisplayName("matches whole words only")
 	void matchesWholeWords() {
 		ClassificationRule rule = ClassificationRule.onAnyText("test.smart", Category.UTILITIES, "Smart");

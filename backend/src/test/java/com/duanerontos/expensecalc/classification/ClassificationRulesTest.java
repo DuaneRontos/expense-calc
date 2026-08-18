@@ -69,10 +69,13 @@ class ClassificationRulesTest {
 		// Spec §5: a refund keeps the category of what it refunds, as a negative
 		// amount. A rule matching "refund" would collect them all into one
 		// bucket and leave every other category's total gross rather than net.
+		// Asked of each field the rule actually reads. Hardcoding DESCRIPTION
+		// would let a merchant-scoped rule pass without being examined at all,
+		// since matches() declines an unscoped field before consulting the
+		// pattern.
 		List<ClassificationRule> matchingRefund = ClassificationRules.ordered()
 			.stream()
-			.filter(rule -> rule.matches(MatchField.DESCRIPTION, "refund", -100)
-					|| rule.matches(MatchField.DESCRIPTION, "reimbursement", -100))
+			.filter(rule -> matchesAnyField(rule, "refund", -100) || matchesAnyField(rule, "reimbursement", -100))
 			.toList();
 
 		assertThat(matchingRefund).isEmpty();
@@ -102,7 +105,13 @@ class ClassificationRulesTest {
 			}
 			for (String keyword : spending.keywords()) {
 				for (ClassificationRule guardedRule : guarded) {
-					assertThat(guardedRule.matches(MatchField.DESCRIPTION, keyword, -100))
+					// Every field the guarded rule reads, not a hardcoded one:
+					// matches() declines a field the rule isn't scoped to before
+					// it ever looks at the pattern, so asking only about
+					// DESCRIPTION would let a merchant-scoped guarded rule — an
+					// income brand like a payroll provider, say — pass this loop
+					// without a single keyword being compared.
+					assertThat(matchesAnyField(guardedRule, keyword, -100))
 						.as("%s claims %s's keyword '%s' on money in, so a refund of a %s expense would be booked as %s",
 								guardedRule.name(), spending.name(), keyword, spending.category(),
 								guardedRule.category())
@@ -110,6 +119,25 @@ class ClassificationRulesTest {
 				}
 			}
 		}
+	}
+
+	@Test
+	@DisplayName("asks about every field a rule reads, so a merchant-scoped rule is not skipped")
+	void vocabularyCheckIsNotFieldBlind() {
+		// Guards the guard. A merchant-only rule returns false from
+		// matches(DESCRIPTION, ...) whatever its keywords are, so an invariant
+		// that only asked about DESCRIPTION would go green on a table containing
+		// exactly the overlap it exists to catch.
+		ClassificationRule merchantScoped = ClassificationRule
+			.onMerchant("test.merchant-scoped-income", Category.INCOME, "Netflix")
+			.guardedBy(AmountGuard.MONEY_IN);
+
+		assertThat(merchantScoped.matches(MatchField.DESCRIPTION, "Netflix", -100)).isFalse();
+		assertThat(matchesAnyField(merchantScoped, "Netflix", -100)).isTrue();
+	}
+
+	private static boolean matchesAnyField(ClassificationRule rule, String text, long amountMinor) {
+		return rule.fields().stream().anyMatch(field -> rule.matches(field, text, amountMinor));
 	}
 
 	@Test

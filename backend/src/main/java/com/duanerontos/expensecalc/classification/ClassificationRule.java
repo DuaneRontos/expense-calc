@@ -45,6 +45,9 @@ import com.duanerontos.expensecalc.expense.Category;
  */
 public final class ClassificationRule {
 
+	/** Keywords are tokenized on single spaces, so collapse them first. */
+	private static final Pattern WHITESPACE = Pattern.compile("\\s+", Pattern.UNICODE_CHARACTER_CLASS);
+
 	private final String name;
 
 	private final Category category;
@@ -82,6 +85,13 @@ public final class ClassificationRule {
 		if (amountGuard == null) {
 			throw new IllegalArgumentException(
 					"Rule %s needs an amount guard; use AmountGuard.ANY for no condition.".formatted(name));
+		}
+		// Before List.copyOf, which rejects a null element with a bare NPE that
+		// says nothing about which rule is malformed.
+		for (String keyword : keywords) {
+			if (keyword == null || keyword.isBlank()) {
+				throw new IllegalArgumentException("Rule %s has a null or blank keyword.".formatted(name));
+			}
 		}
 		this.name = name;
 		this.category = category;
@@ -186,7 +196,8 @@ public final class ClassificationRule {
 
 	private static Pattern compile(String name, List<String> keywords) {
 		String alternation = keywords.stream()
-			.map(keyword -> asWholeWord(name, keyword))
+			.map(keyword -> WHITESPACE.matcher(keyword.strip()).replaceAll(" "))
+			.map(ClassificationRule::asWholeWord)
 			.collect(Collectors.joining("|"));
 		// UNICODE_CHARACTER_CLASS implies UNICODE_CASE, and is what makes the
 		// \w in the boundaries below see more than ASCII.
@@ -195,21 +206,47 @@ public final class ClassificationRule {
 
 	/**
 	 * Wraps one keyword in word boundaries, tolerating punctuation at either end
-	 * and an optional plural.
+	 * and an optional plural on <em>every</em> word of a phrase.
 	 *
 	 * <p>A boundary is only added where the keyword's own edge is a word
 	 * character. {@code \b} would be wrong here: it asserts a transition, so
 	 * {@code \bS&R\b} demands a word character after the {@code R} it already
 	 * consumed in one direction and fails outright in the other.
+	 *
+	 * <p><b>The plural is per token, not per keyword.</b> Appending it once to
+	 * the whole keyword only ever pluralizes the last word, which silently
+	 * defeats a phrase whose plural falls earlier — {@code gift from} would miss
+	 * "gifts from", and the bare {@code gift} in another rule would take it
+	 * instead. That is worse than missing outright: the expense lands in a
+	 * confidently wrong category rather than in {@code UNCLASSIFIED}.
+	 *
+	 * <p>Note the plural can only ever add an {@code s}, never remove one, so a
+	 * keyword is written in the singular. {@code spare part} covers both forms;
+	 * {@code spare parts} covers only the plural.
 	 */
-	private static String asWholeWord(String name, String keyword) {
-		if (keyword == null || keyword.isBlank()) {
-			throw new IllegalArgumentException("Rule %s has a blank keyword.".formatted(name));
+	private static String asWholeWord(String keyword) {
+		String[] tokens = keyword.split(" ");
+		StringBuilder pattern = new StringBuilder();
+		for (int index = 0; index < tokens.length; index++) {
+			String token = tokens[index];
+			boolean isFirst = index == 0;
+			boolean isLast = index == tokens.length - 1;
+			if (isFirst && isWordCharacter(token.charAt(0))) {
+				pattern.append("(?<!\\w)");
+			}
+			pattern.append(Pattern.quote(token));
+			if (isWordCharacter(token.charAt(token.length() - 1))) {
+				pattern.append("(?:s)?");
+				if (isLast) {
+					pattern.append("(?!\\w)");
+				}
+			}
+			if (!isLast) {
+				// The literal space is itself the boundary between tokens.
+				pattern.append(" ");
+			}
 		}
-		String trimmed = keyword.strip();
-		String prefix = isWordCharacter(trimmed.charAt(0)) ? "(?<!\\w)" : "";
-		String suffix = isWordCharacter(trimmed.charAt(trimmed.length() - 1)) ? "(?:s)?(?!\\w)" : "";
-		return prefix + Pattern.quote(trimmed) + suffix;
+		return pattern.toString();
 	}
 
 	private static boolean isWordCharacter(char character) {
