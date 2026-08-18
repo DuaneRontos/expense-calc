@@ -45,9 +45,6 @@ import com.duanerontos.expensecalc.expense.Category;
  */
 public final class ClassificationRule {
 
-	/** Keywords are tokenized on single spaces, so collapse them first. */
-	private static final Pattern WHITESPACE = Pattern.compile("\\s+", Pattern.UNICODE_CHARACTER_CLASS);
-
 	private final String name;
 
 	private final Category category;
@@ -195,8 +192,10 @@ public final class ClassificationRule {
 	}
 
 	private static Pattern compile(String name, List<String> keywords) {
+		// Through the same normalizer the input takes. A keyword folded one way
+		// and input the other produces a rule that silently never fires.
 		String alternation = keywords.stream()
-			.map(keyword -> WHITESPACE.matcher(keyword.strip()).replaceAll(" "))
+			.map(TextNormalizer::normalize)
 			.map(ClassificationRule::asWholeWord)
 			.collect(Collectors.joining("|"));
 		// UNICODE_CHARACTER_CLASS implies UNICODE_CASE, and is what makes the
@@ -234,12 +233,9 @@ public final class ClassificationRule {
 			if (isFirst && isWordCharacter(token.charAt(0))) {
 				pattern.append("(?<!\\w)");
 			}
-			pattern.append(Pattern.quote(token));
-			if (isWordCharacter(token.charAt(token.length() - 1))) {
-				pattern.append("(?:s)?");
-				if (isLast) {
-					pattern.append("(?!\\w)");
-				}
+			pattern.append(withOptionalPlural(token));
+			if (isLast && isWordCharacter(token.charAt(token.length() - 1))) {
+				pattern.append("(?!\\w)");
 			}
 			if (!isLast) {
 				// The literal space is itself the boundary between tokens.
@@ -247,6 +243,40 @@ public final class ClassificationRule {
 			}
 		}
 		return pattern.toString();
+	}
+
+	/**
+	 * One token, plus the plural forms English makes of it.
+	 *
+	 * <p>Covers the three regular patterns: {@code +s}, {@code +es} after a
+	 * sibilant ({@code tax} → {@code taxes}), and consonant-{@code y} → {@code
+	 * ies} ({@code grocery} → {@code groceries}). Handling them here rather than
+	 * spelling each plural out as its own keyword is what keeps the table's
+	 * coverage predictable from reading it — the alternative is a list where
+	 * some entries happen to carry their plural and the rest silently don't.
+	 *
+	 * <p>The mapping only ever adds letters, never removes them, so a keyword is
+	 * written in the singular: {@code spare part} covers both numbers,
+	 * {@code spare parts} covers only the plural.
+	 *
+	 * <p>Over-generation is deliberate and harmless — this also matches
+	 * "taxs" and "grocerys", which are not words and so cost nothing.
+	 * Under-generation is what corrupts a report.
+	 */
+	private static String withOptionalPlural(String token) {
+		char last = token.charAt(token.length() - 1);
+		if (!isWordCharacter(last)) {
+			return Pattern.quote(token);
+		}
+		if ((last == 'y' || last == 'Y') && token.length() > 1 && isConsonant(token.charAt(token.length() - 2))) {
+			// The vowel check is what keeps "pay" out of "paies".
+			return Pattern.quote(token.substring(0, token.length() - 1)) + "(?:" + last + "|ies)";
+		}
+		return Pattern.quote(token) + "(?:e?s)?";
+	}
+
+	private static boolean isConsonant(char character) {
+		return Character.isLetter(character) && "aeiouAEIOU".indexOf(character) < 0;
 	}
 
 	private static boolean isWordCharacter(char character) {

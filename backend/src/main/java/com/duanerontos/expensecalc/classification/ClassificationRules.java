@@ -57,11 +57,11 @@ public final class ClassificationRules {
 			// Precedes both dining rules. "Coffee beans from the grocery" is
 			// GROCERIES; the dining rule's "coffee" must not reach it first.
 			//
-			// "groceries" is spelled out because matching handles a trailing "s"
-			// and nothing more — grocery plus an s is "grocerys". Regular plurals
-			// elsewhere in this table need no second keyword.
+			// Keywords are singular throughout the table: matching generates the
+			// +s, +es and y->ies plurals, so "grocery" covers "groceries" and no
+			// entry here carries its own plural spelling.
 			ClassificationRule.onAnyText("groceries.market", Category.GROCERIES, "SM Supermarket", "Puregold",
-					"Robinsons Supermarket", "S&R", "Landers", "WalterMart", "grocery", "groceries", "palengke",
+					"Robinsons Supermarket", "S&R", "Landers", "WalterMart", "grocery", "palengke",
 					"wet market", "sari-sari"),
 
 			// Precedes transport.fare-and-fuel, which owns "Grab". Whole-word
@@ -70,15 +70,27 @@ public final class ClassificationRules {
 			ClassificationRule.onAnyText("dining.delivery-platform", Category.DINING, "GrabFood", "Grab Food",
 					"foodpanda", "food panda"),
 
+			// "bar tab" and "inuman" rather than a bare "bar": the skill's table
+			// lists bars under DINING, but "bar" alone is a chart, a crowbar, and
+			// a bar of soap. Same call as "Total" below — the omission is
+			// deliberate, and said so rather than left looking accidental.
 			ClassificationRule.onAnyText("dining.eating-out", Category.DINING, "Jollibee", "Mang Inasal", "Chowking",
 					"McDonald's", "McDonalds", "KFC", "Starbucks", "restaurant", "cafe", "coffee", "lunch", "dinner",
-					"merienda", "milk tea"),
+					"merienda", "milk tea", "bar tab", "beer", "inuman"),
 
 			// Merchant-only: "shell out" and "phoenix" are ordinary description
 			// words. As merchants they are fuel stations. "Total" is left out
 			// entirely — TotalEnergies does operate here, but the word is common
 			// enough in a merchant field ("Total") that the rule would cost more
 			// than it earns.
+			//
+			// Known consequence: fuel stations here run service bays, and the
+			// merchant stage completes before the description stage — so a
+			// Petron receipt described as "car service" is TRANSPORT, though the
+			// skill's table puts vehicle repair in MAINTENANCE. Pinned by
+			// ExpenseClassifierTest.ambiguousMerchantStillOutranksDescription
+			// rather than fixed: the alternative is a cross-field exception, and
+			// the field order is the spec's, not this rule's.
 			ClassificationRule.onMerchant("transport.fuel-brand", Category.TRANSPORT, "Shell", "Petron", "Caltex",
 					"Seaoil", "Phoenix", "Unioil"),
 
@@ -86,8 +98,8 @@ public final class ClassificationRules {
 			// insurance": the bare "insurance" in the health rule below would
 			// otherwise take it.
 			ClassificationRule.onAnyText("transport.fare-and-fuel", Category.TRANSPORT, "Grab", "Angkas", "JoyRide",
-					"taxi", "jeepney", "tricycle", "MRT", "LRT", "beep card", "gasoline", "diesel", "toll",
-					"Autosweep", "Easytrip", "parking", "car insurance", "motor insurance"),
+					"taxi", "jeepney", "tricycle", "bus", "MRT", "LRT", "beep card", "fare", "gasoline",
+					"diesel", "toll", "Autosweep", "Easytrip", "parking", "car insurance", "motor insurance"),
 
 			// Precedes capital.durable-goods deliberately. Repairing an aircon is
 			// upkeep; buying one is a durable good. Both say "aircon", so the

@@ -1,7 +1,6 @@
 package com.duanerontos.expensecalc.classification;
 
 import java.util.List;
-import java.util.regex.Pattern;
 
 import com.duanerontos.expensecalc.expense.Expense;
 
@@ -39,18 +38,6 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class ExpenseClassifier {
-
-	// UNICODE_CHARACTER_CLASS is load-bearing: Java's \s is ASCII-only by
-	// default, so a non-breaking space — which pasted statement text carries
-	// routinely — would survive normalization and then break keyword matching
-	// in a way that files a phone bill under CAPITAL.
-	private static final Pattern WHITESPACE = Pattern.compile("\\s+", Pattern.UNICODE_CHARACTER_CLASS);
-
-	// Typed input, not pasted: smart punctuation is on by default on iOS and
-	// macOS, and the keywords are written in ASCII.
-	private static final Pattern SMART_QUOTES = Pattern.compile("[\u2018\u2019]");
-
-	private static final Pattern DASHES = Pattern.compile("[\u2013\u2014]");
 
 	private final List<ClassificationRule> rules;
 
@@ -107,31 +94,12 @@ public class ExpenseClassifier {
 	}
 
 	/**
-	 * Folds the typographic characters a keyboard produces down to the ASCII the
-	 * keywords are written in, collapses whitespace, and treats blank as absent.
-	 *
-	 * <p>Multi-word keywords are written with single spaces, so "home  insurance"
-	 * pasted from a bank statement would otherwise miss a rule that "home
-	 * insurance" hits — a difference invisible in a bug report.
-	 *
-	 * <p>The quote and dash folding is for typed input rather than pasted. iOS
-	 * and macOS substitute smart punctuation as you type and the client is Expo
-	 * on iOS, so {@code McDonald’s} with U+2019 is what a user actually enters —
-	 * it matches neither {@code McDonald's} nor {@code McDonalds} unmapped. The
-	 * dashes protect {@code tune-up} and {@code sari-sari} the same way.
-	 *
-	 * <p>Folding does not make {@code McDonalds} and {@code McDonald's} the same
-	 * string, so both spellings stay in the table. It maps the curly form onto
-	 * the straight one; it does not delete punctuation.
+	 * Input takes the same normalization the keywords took at compile time. See
+	 * {@link TextNormalizer} for why that has to be one function rather than two
+	 * that agree.
 	 */
 	private static String normalize(String text) {
-		if (text == null) {
-			return null;
-		}
-		String folded = SMART_QUOTES.matcher(text).replaceAll("'");
-		folded = DASHES.matcher(folded).replaceAll("-");
-		String collapsed = WHITESPACE.matcher(folded).replaceAll(" ").strip();
-		return collapsed.isEmpty() ? null : collapsed;
+		return TextNormalizer.normalize(text);
 	}
 
 }

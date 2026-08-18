@@ -99,6 +99,22 @@ class ClassificationRuleTest {
 	}
 
 	@Test
+	@DisplayName("normalizes a keyword the same way it normalizes input")
+	void normalizesKeywordsAndInputAlike() {
+		// A keyword pasted from a brand's own site carries a curly apostrophe.
+		// When only the input side was folded, such a keyword compiled into a
+		// pattern no input could reach — no exception, no failing test, just a
+		// rule that never fired. Both sides now take the same function.
+		ClassificationRule curly = ClassificationRule.onAnyText("test.curly", Category.DINING, "Jollibee\u2019s");
+
+		assertThat(curly.matches(MatchField.MERCHANT, "Jollibee's", 100)).isTrue();
+		// matches() takes text the classifier has already normalized, so the raw
+		// curly form is not what it ever sees. Asserted to keep that contract
+		// visible: the folding happens once, on the way in.
+		assertThat(curly.matches(MatchField.MERCHANT, "Jollibee\u2019s", 100)).isFalse();
+	}
+
+	@Test
 	@DisplayName("ignores case")
 	void ignoresCase() {
 		ClassificationRule rule = ClassificationRule.onAnyText("test.case", Category.DINING, "Jollibee");

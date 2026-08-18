@@ -17,6 +17,24 @@ package com.duanerontos.expensecalc.classification;
  * <p>Amounts here are signed centavos, matching the storage convention in spec
  * §4: <b>negative is money in</b> — a refund, or income.
  *
+ * <p><b>Known limit.</b>
+ * {@code ClassificationRulesTest.keepsGuardedAndUnguardedVocabulariesDisjoint}
+ * keeps a guarded rule from claiming a word some spending rule owns, so refunds
+ * stay with what they refund. It iterates the spending rules' keywords, which
+ * means it cannot see a word whose money-out sense is owned by <em>no</em> rule:
+ * there is no keyword for it to compare against. {@code interest},
+ * {@code commission}, {@code pension} and {@code bonus} are all in that
+ * position — they name things that can be charged as well as received. A
+ * reversed credit-card interest charge is therefore {@code INCOME}, where spec
+ * §5 implies it should keep the {@code UNCLASSIFIED} of the charge it reverses.
+ *
+ * <p>Left as it is rather than narrowed to phrases like "interest earned": bare
+ * "Interest" arriving from a bank is genuinely income and is the far more
+ * common entry, so phrase-scoping would trade a common right answer for an
+ * uncommon one. Recorded here because the boundary is not obvious from the
+ * invariant's name, and pinned by
+ * {@code ExpenseClassifierTest.reversedChargeOnAnUnclassifiedWordBecomesIncome}.
+ *
  * <p>Deliberately an enum of directions rather than an arbitrary predicate. A
  * threshold guard ("over ₱10,000 is CAPITAL") would be legal under the letter of
  * the spec but is a bad idea in practice: it makes classification depend on how

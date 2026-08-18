@@ -280,6 +280,48 @@ class ExpenseClassifierTest {
 
 		assertThat(result.category()).isEqualTo(Category.TRANSPORT);
 		assertThat(result.rule()).isEqualTo("transport.fare-and-fuel");
+
+		// The same mechanism, but this one crosses a line the skill draws in its
+		// own table — TRANSPORT says "Vehicle repair → MAINTENANCE", and fuel
+		// stations here do run service bays. Recorded rather than fixed: the
+		// remedy would be a cross-field exception, and the field order is the
+		// spec's rather than this rule's. Worth revisiting if real data shows
+		// service-bay receipts are common.
+		Classification atTheServiceBay = this.classifier.classify("Petron", "Car service and tune-up", 450_000);
+
+		assertThat(atTheServiceBay.category()).isEqualTo(Category.TRANSPORT);
+		assertThat(atTheServiceBay.rule()).isEqualTo("transport.fuel-brand");
+	}
+
+	@Test
+	@DisplayName("books the reversal of a charge no rule classifies as income, which is a recorded limit")
+	void reversedChargeOnAnUnclassifiedWordBecomesIncome() {
+		// Pinned as a known limit, not asserted as correct. "interest" is owned
+		// by the guarded income rule and by no spending rule, so the
+		// disjointness invariant has no keyword to compare and cannot see this
+		// case. A credit-card interest charge is UNCLASSIFIED going out; its
+		// reversal comes back as INCOME rather than keeping that UNCLASSIFIED,
+		// so a refunded fee inflates income slightly.
+		//
+		// Narrowing "interest" to "interest earned" would fix it and cost the
+		// common case — bare "Interest" from a bank is real income. See
+		// AmountGuard's javadoc. Change this test deliberately, not to make it
+		// pass.
+		assertThat(this.classifier.classify(null, "Credit card interest", 50_000).category())
+			.isEqualTo(Category.UNCLASSIFIED);
+		assertThat(this.classifier.classify(null, "Credit card interest", -50_000).category())
+			.isEqualTo(Category.INCOME);
+	}
+
+	@Test
+	@DisplayName("covers the taxonomy entries the skill names outright")
+	void coversTheSkillsNamedExamples() {
+		// DINING is "Restaurants, cafes, delivery, bars" and TRANSPORT covers
+		// transit; both had a named example no keyword reached.
+		assertThat(this.classifier.classify(null, "Bar tab with friends", 120_000).category())
+			.isEqualTo(Category.DINING);
+		assertThat(this.classifier.classify(null, "Bus fare to Baguio", 85_000).category())
+			.isEqualTo(Category.TRANSPORT);
 	}
 
 	@Test
@@ -374,13 +416,32 @@ class ExpenseClassifierTest {
 					Tolls on the expressway | TRANSPORT
 					Aircon repairs          | MAINTENANCE
 					Weekly groceries        | GROCERIES
+					Property taxes          | HOUSING
+					Pharmacies downtown     | HEALTH
+					Laboratories            | HEALTH
+					Hobbies                 | DISCRETIONARY
+					Bus fares               | TRANSPORT
 					""")
 	@DisplayName("matches ordinary plural phrasings")
 	void matchesPlurals(String description, Category expected) {
-		// Matching allows one trailing "s", so most plurals need no second
-		// keyword. "groceries" is the exception the table spells out, since
-		// grocery plus an s is "grocerys" — this covers both paths.
+		// Three regular patterns, generated rather than spelled out: +s, +es
+		// after a sibilant (tax → taxes), and consonant-y → ies (grocery →
+		// groceries, hobby → hobbies). The table carries no plural keywords at
+		// all, so coverage is predictable from reading it rather than depending
+		// on which entries someone remembered to double up.
 		assertThat(this.classifier.classify(null, description, 100_000).category()).isEqualTo(expected);
+	}
+
+	@Test
+	@DisplayName("generates the plural without swallowing words that merely end in y")
+	void pluralGenerationRespectsVowelY() {
+		// "pay" pluralizes as "pays", not "paies", so the y → ies mapping only
+		// applies after a consonant. Without the check, "13th month pay" would
+		// compile to a pattern matching neither.
+		assertThat(this.classifier.classify(null, "13th month pay", -4_500_000).category())
+			.isEqualTo(Category.INCOME);
+		assertThat(this.classifier.classify(null, "13th month pays", -4_500_000).category())
+			.isEqualTo(Category.INCOME);
 	}
 
 	@Test
