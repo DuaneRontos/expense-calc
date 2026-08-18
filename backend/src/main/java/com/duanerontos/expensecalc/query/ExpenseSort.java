@@ -32,8 +32,18 @@ public enum ExpenseSort {
 	/** Null merchants sort last in both directions — see {@link #orderBy}. */
 	MERCHANT("e.merchant"),
 
-	/** Taxonomy order, not alphabetical. */
-	CATEGORY("current_category");
+	/**
+	 * Taxonomy order, not alphabetical.
+	 *
+	 * <p>Orders by the {@code expense_category} enum rather than by the
+	 * {@code current_category} text alias the projection uses. The alias is
+	 * cast to {@code text} so the row mapper can read it, and ordering by that
+	 * sorts alphabetically — CI caught this returning Capital, Dining, Housing
+	 * while the javadoc claimed essentials first. Postgres compares enum values
+	 * by declaration order, which V2 made the taxonomy's own order precisely so
+	 * that {@code ORDER BY category} means something to a person.
+	 */
+	CATEGORY("COALESCE(cr.category, 'UNCLASSIFIED'::expense_category)");
 
 	private final String column;
 

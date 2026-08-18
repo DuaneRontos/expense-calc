@@ -58,12 +58,24 @@ class ExpenseSortTest {
 	}
 
 	@ParameterizedTest
+	@ValueSource(strings = { "occurredOn; DROP TABLE expense", "amount) OR 1=1 --", "e.id; SELECT 1" })
+	@DisplayName("refuses request text outright rather than letting it reach a fragment")
+	void refusesRequestTextAsAField(String hostile) {
+		// The whole of the dynamic SQL surface is ORDER BY, and this is what
+		// keeps it closed: a field name is matched against the enum's own
+		// constants, so a request either selects one of them or is rejected.
+		// Nothing from the request is ever concatenated.
+		assertThatIllegalArgumentException().isThrownBy(() -> ExpenseSort.parse(hostile));
+	}
+
+	@ParameterizedTest
 	@EnumSource(ExpenseSort.class)
-	@DisplayName("builds its fragment from constants, never from request text")
-	void buildsFromConstants(ExpenseSort sort) {
-		// The whole of the dynamic SQL surface. If a value from the request
-		// could reach here, this is where injection would live.
-		assertThat(sort.orderBy(true)).matches("[A-Za-z_. ,]+");
+	@DisplayName("emits one of a fixed set of fragments, whatever the direction")
+	void emitsOnlyKnownFragments(ExpenseSort sort) {
+		// Belt to the braces above: no statement terminator, no comment marker,
+		// so a fragment cannot end the statement or hide the rest of it.
+		assertThat(sort.orderBy(true)).doesNotContain(";").doesNotContain("--");
+		assertThat(sort.orderBy(false)).doesNotContain(";").doesNotContain("--");
 	}
 
 }
