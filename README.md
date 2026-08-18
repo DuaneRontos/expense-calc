@@ -18,7 +18,7 @@ them into things.
 | --- | --- | --- |
 | **Trigger** | You mention `@claude` | A PR opens or leaves draft |
 | **Purpose** | Does the work — writes code, opens PRs | Reviews a PR and comments |
-| **Runs shell?** | Four git verbs only | `./mvnw` only |
+| **Runs shell?** | Action defaults — reads plus git writes, no repo allowlist | Repo allowlist: `cd` and `./mvnw` only |
 | **Cost control** | `if:` guard on the mention | One review per PR |
 
 ### Reviews happen once per PR
@@ -49,9 +49,11 @@ Every run bills against a Claude Pro/Max subscription through the
 `CLAUDE_CODE_OAUTH_TOKEN` secret. So:
 
 - **`claude.yml` is guarded by an `if:`.** Without it, *every comment in the
-  repo* starts a billed agent. Note the guard matches the literal string
-  `@claude` anywhere in a comment body — including one that merely mentions it
-  while explaining how to request a review. That is easy to do by accident.
+  repo* — and every opened issue — starts a billed agent. The guard matches the
+  literal string `@claude` anywhere in a comment body, a review body, or an
+  issue's **title**. So an issue titled "how do I get `@claude` to re-review?"
+  bills a run, and so does a comment that merely explains how to request one.
+  That is easy to do by accident; it happened during #36.
 - **`claude-code-review.yml` skips drafts** and ignores `.github/**`, which it
   could never review anyway (see below).
 - **Both pin `--model claude-opus-5`.** Dropping the pin is the documented
@@ -63,11 +65,24 @@ an unfunded account fails with "credit balance is too low".
 
 ## Two things that will confuse you
 
-**A workflow cannot review the PR that changes it.** The action requires the
-workflow file to be byte-identical to the copy on the default branch and skips
-itself otherwise. A PR editing its own workflow gets a 13-second no-op, and a
-branch that lags behind `main` loses its reviewer entirely rather than keeping
-the old one — so merge `main` in after changing either workflow.
+**`claude-code-review.yml` cannot review the PR that changes it.** Two separate
+mechanisms land near each other here. `paths-ignore: '.github/**'` means a PR
+touching only workflow files never *triggers* a review at all. Underneath that,
+the action requires the workflow file to be byte-identical to the copy on the
+default branch and *skips* itself otherwise — which is what a PR changing the
+reviewer alongside other files gets, and what #37 spent a 13-second job
+proving. The same rule means a branch lagging behind `main` loses its reviewer
+rather than keeping the old one, so **merge `main` in after changing the
+reviewer.**
+
+None of this applies to `claude.yml`: its events always run the default
+branch's copy of the workflow, so it cannot differ from itself and branch lag
+cannot cost you `@claude`.
+
+**A PR merged before the runner picks up the job is skipped on purpose.** The
+action's closed-PR path 404s on a branch it never pushed, which looks
+identical to a real failure in the checks list. Merge fast and see no review,
+and that is why.
 
 **`@claude` on a PR needs the PR's code checked out.** None of the mention
 events is a `pull_request` event, so `actions/checkout` defaults to the default
@@ -108,5 +123,5 @@ To set the agents up on your own fork: install the
 ## Status
 
 Backend classification is implemented. The query, reporting, and frontend
-phases are open — see [`docs/SPECIFICATION.md` §11](docs/SPECIFICATION.md) for
+phases are open — see [`docs/SPECIFICATION.md` §11](docs/SPECIFICATION.md#11-delivery-plan) for
 the delivery plan and the issue list.
