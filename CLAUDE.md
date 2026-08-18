@@ -39,12 +39,20 @@ starting an issue; most issue bodies name the section that governs them.
 
   **On a PR it checks out the PR head, and that step is load-bearing.** None of
   the four events it listens to is a `pull_request` event, so
-  `actions/checkout` defaults to the default branch — which meant a PR mention
-  landed the agent in a tree containing none of the PR's files and it died
-  computing SHAs in about 30 seconds. That was true from the beginning and only
-  surfaced when #38 made `@claude` the re-review path. Same-repo PRs check out
-  the head branch by name so the agent can push to it; forks get the read-only
-  `refs/pull/N/head`.
+  `actions/checkout` defaults to the default branch — which landed the agent in
+  a tree containing none of the PR's files. Its changed-file SHAs came back
+  `unknown` and it burned nine turns reasoning about code that was not there.
+  The `git hash-object` errors in the log are warnings, not the cause; the run
+  ended on `is_error:true`, which is why `show_full_output: true` is set here
+  too. Broken from the beginning, and only surfaced when #38 made `@claude` the
+  re-review path.
+
+  Only an **open, same-repo** PR resolves to a branch. A merged or closed one
+  falls back to the default branch — the head branch is usually deleted, and
+  checkout fails hard on a missing ref before the agent can report anything.
+  Fork PRs also fall back, deliberately: the action turns a PR-head checkout
+  into a real branch and pushes it to `origin`, which is this repo, so a commit
+  would land here attached to no PR while the fork saw nothing.
 - **`.github/workflows/claude-code-review.yml`** — automatic, but **once per PR,
   not once per push.** It runs when a PR opens or leaves draft. **To re-review
   after pushing fixes, comment `@claude` on the PR** — that goes to
