@@ -32,35 +32,6 @@ public interface ReportRepository extends Repository<Expense, UUID> {
 
 	}
 
-	/**
-	 * Net total per category over {@code [from, to)}, using each expense's
-	 * category as of {@code asOf}.
-	 *
-	 * <p><b>{@code LEFT JOIN LATERAL} with {@code LIMIT 1}</b> is the
-	 * latest-record-wins read from #9, evaluated once per expense by the planner
-	 * against the {@code (expense_id, recorded_at DESC, id DESC)} index, rather
-	 * than once per expense as a round trip. The {@code ORDER BY} matches that
-	 * index exactly, including the {@code id} tiebreaker that keeps a
-	 * same-instant pair resolving the same way every time.
-	 *
-	 * <p><b>{@code LEFT} rather than an inner join, and the {@code COALESCE},
-	 * are load-bearing.</b> An expense with no classification visible at
-	 * {@code asOf} — entered late and classified after that instant, say — would
-	 * be dropped entirely by an inner join, and its money would silently vanish
-	 * from the total. Money disappearing from a report is a worse failure than
-	 * money sitting in {@code UNCLASSIFIED}, which is at least visible and is
-	 * what spec §5 says to do with a category nobody has decided.
-	 *
-	 * <p><b>No {@code abs()}, no filter on sign.</b> {@code SUM} over signed
-	 * centavos is the net that spec §7 wants, and a bucket may come back
-	 * negative.
-	 *
-	 * @param from inclusive lower bound on {@code occurred_on}
-	 * @param to exclusive upper bound — half-open, so month boundaries cannot
-	 *     double-count
-	 * @param asOf resolves each expense's category to the record in force at
-	 *     this instant; pass the current time for the ordinary report
-	 */
 	/** One row per time slice that has expenses in it. Empty slices are absent. */
 	interface BucketTotalRow {
 
@@ -99,6 +70,35 @@ public interface ReportRepository extends Repository<Expense, UUID> {
 	List<BucketTotalRow> totalsByTimeBucket(@Param("from") LocalDate from, @Param("to") LocalDate to,
 			@Param("unit") String unit);
 
+	/**
+	 * Net total per category over {@code [from, to)}, using each expense's
+	 * category as of {@code asOf}.
+	 *
+	 * <p><b>{@code LEFT JOIN LATERAL} with {@code LIMIT 1}</b> is the
+	 * latest-record-wins read from #9, evaluated once per expense by the planner
+	 * against the {@code (expense_id, recorded_at DESC, id DESC)} index, rather
+	 * than once per expense as a round trip. The {@code ORDER BY} matches that
+	 * index exactly, including the {@code id} tiebreaker that keeps a
+	 * same-instant pair resolving the same way every time.
+	 *
+	 * <p><b>{@code LEFT} rather than an inner join, and the {@code COALESCE},
+	 * are load-bearing.</b> An expense with no classification visible at
+	 * {@code asOf} — entered late and classified after that instant, say — would
+	 * be dropped entirely by an inner join, and its money would silently vanish
+	 * from the total. Money disappearing from a report is a worse failure than
+	 * money sitting in {@code UNCLASSIFIED}, which is at least visible and is
+	 * what spec §5 says to do with a category nobody has decided.
+	 *
+	 * <p><b>No {@code abs()}, no filter on sign.</b> {@code SUM} over signed
+	 * centavos is the net that spec §7 wants, and a bucket may come back
+	 * negative.
+	 *
+	 * @param from inclusive lower bound on {@code occurred_on}
+	 * @param to exclusive upper bound — half-open, so month boundaries cannot
+	 *     double-count
+	 * @param asOf resolves each expense's category to the record in force at
+	 *     this instant; pass the current time for the ordinary report
+	 */
 	@Query(value = """
 			SELECT COALESCE(current_record.category::text, 'UNCLASSIFIED') AS category,
 			       SUM(e.amount_minor)                                     AS total_minor

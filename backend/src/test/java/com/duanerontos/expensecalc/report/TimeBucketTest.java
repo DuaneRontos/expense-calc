@@ -84,6 +84,64 @@ class TimeBucketTest {
 		assertThat(label).contains("Jan").isNotBlank();
 	}
 
+	@ParameterizedTest
+	@EnumSource(TimeBucket.class)
+	@DisplayName("counts the same buckets it would generate")
+	void countAgreesWithGeneration(TimeBucket bucket) {
+		// Two ways of saying the same thing, which is exactly where they drift.
+		// The count runs before the allocation the size guard exists to
+		// prevent, so it cannot simply generate and measure.
+		List<ReportPeriod> periods = List.of(JANUARY,
+				new ReportPeriod(LocalDate.of(2026, 1, 1), LocalDate.of(2027, 1, 1)),
+				// Starting mid-week and mid-month, where the leading partial
+				// bucket makes the arithmetic non-obvious.
+				new ReportPeriod(LocalDate.of(2026, 1, 7), LocalDate.of(2026, 3, 15)),
+				new ReportPeriod(LocalDate.of(2026, 2, 26), LocalDate.of(2026, 3, 2)),
+				new ReportPeriod(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 2)));
+
+		for (ReportPeriod period : periods) {
+			assertThat(bucket.bucketCountIn(period)).as("%s over %s", bucket, period)
+				.isEqualTo(bucket.bucketStartsIn(period).size());
+		}
+	}
+
+	@Test
+	@DisplayName("counts a two-century daily window as far more than a response may carry")
+	void countsThePathologicalWindow() {
+		// The case that returned 200 with 4.2 MB from an empty database before
+		// the cap: unbounded through the response rather than through the query.
+		ReportPeriod twoCenturies = new ReportPeriod(LocalDate.of(1900, 1, 1), LocalDate.of(2100, 1, 1));
+
+		assertThat(TimeBucket.DAY.bucketCountIn(twoCenturies)).isEqualTo(73_049);
+		// Two centuries is over the cap at every width — 2,400 months — so this
+		// window is simply too long, and the message's other half ("narrow the
+		// period") is the applicable one.
+		assertThat(TimeBucket.MONTH.bucketCountIn(twoCenturies)).isGreaterThan(TimeBucket.MAX_BUCKETS);
+	}
+
+	@Test
+	@DisplayName("lets a wider slice rescue a window that is too long for a narrow one")
+	void wideningTheSliceRescuesALongWindow() {
+		// The other half of the message. Twenty years is 7,305 days and 240
+		// months, so the same period is refused by day and served by month —
+		// which is why the failure suggests widening the slice as well as
+		// narrowing the period.
+		ReportPeriod twentyYears = new ReportPeriod(LocalDate.of(2006, 1, 1), LocalDate.of(2026, 1, 1));
+
+		assertThat(TimeBucket.DAY.bucketCountIn(twentyYears)).isGreaterThan(TimeBucket.MAX_BUCKETS);
+		assertThat(TimeBucket.MONTH.bucketCountIn(twentyYears)).isEqualTo(240)
+			.isLessThanOrEqualTo(TimeBucket.MAX_BUCKETS);
+	}
+
+	@Test
+	@DisplayName("keeps ordinary windows well inside the cap")
+	void keepsRealisticWindowsUnderTheCap() {
+		assertThat(TimeBucket.DAY.bucketCountIn(new ReportPeriod(LocalDate.of(2026, 1, 1), LocalDate.of(2027, 1, 1))))
+			.isEqualTo(365);
+		assertThat(TimeBucket.WEEK.bucketCountIn(new ReportPeriod(LocalDate.of(2021, 1, 1), LocalDate.of(2026, 1, 1))))
+			.isLessThan(TimeBucket.MAX_BUCKETS);
+	}
+
 	@Test
 	@DisplayName("names the unit Postgres date_trunc expects")
 	void namesTheTruncUnit() {

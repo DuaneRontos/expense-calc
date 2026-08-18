@@ -112,15 +112,46 @@ class ReportPeriodTest {
 	}
 
 	@Test
-	@DisplayName("recognises a whole calendar month, and only a whole one")
+	@DisplayName("recognises whole calendar months, and only whole ones")
 	void recognisesWholeCalendarMonths() {
-		assertThat(ReportPeriod.monthOf(LocalDate.of(2026, 2, 14)).isWholeCalendarMonth()).isTrue();
+		assertThat(ReportPeriod.monthOf(LocalDate.of(2026, 2, 14)).isWholeCalendarMonths()).isTrue();
+		// A quarter and a year are whole calendar months too, which is what
+		// makes Q1 compare against Q4 rather than against a 90-day window.
+		assertThat(new ReportPeriod(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 4, 1)).isWholeCalendarMonths())
+			.isTrue();
 		// Right length, wrong start: a month-long window from the 2nd is not a
-		// calendar month and must not get a calendar-month comparison.
-		assertThat(new ReportPeriod(LocalDate.of(2026, 2, 2), LocalDate.of(2026, 3, 2)).isWholeCalendarMonth())
+		// calendar month and must not get a calendar comparison.
+		assertThat(new ReportPeriod(LocalDate.of(2026, 2, 2), LocalDate.of(2026, 3, 2)).isWholeCalendarMonths())
 			.isFalse();
-		assertThat(new ReportPeriod(LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 15)).isWholeCalendarMonth())
+		assertThat(new ReportPeriod(LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 15)).isWholeCalendarMonths())
 			.isFalse();
+	}
+
+	@Test
+	@DisplayName("compares a quarter against the quarter before it")
+	void comparesQuartersAgainstQuarters() {
+		ReportPeriod q1 = new ReportPeriod(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 4, 1));
+
+		// Equal-length gave [2025-10-03, 2026-01-01) — three days short of Q4.
+		assertThat(q1.previous()).isEqualTo(new ReportPeriod(LocalDate.of(2025, 10, 1), LocalDate.of(2026, 1, 1)));
+	}
+
+	@Test
+	@DisplayName("compares a calendar year against the year before it, leap years included")
+	void comparesYearsAgainstYears() {
+		// The clearer tell for why one-month-only was too narrow: under
+		// equal-length, whether a year landed correctly depended on whether its
+		// neighbour was a leap year. 2024 compared against a window starting
+		// 2022-12-31 — 366 days with a day of 2022 in it.
+		ReportPeriod y2024 = new ReportPeriod(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1));
+		ReportPeriod y2025 = new ReportPeriod(LocalDate.of(2025, 1, 1), LocalDate.of(2026, 1, 1));
+
+		assertThat(y2024.previous())
+			.isEqualTo(new ReportPeriod(LocalDate.of(2023, 1, 1), LocalDate.of(2024, 1, 1)));
+		assertThat(y2025.previous())
+			.isEqualTo(new ReportPeriod(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1)));
+		// And the leap day is inside the comparison window, not spilling out.
+		assertThat(y2025.previous().lengthInDays()).isEqualTo(366);
 	}
 
 	@Test

@@ -3,6 +3,7 @@ package com.duanerontos.expensecalc.report;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.List;
@@ -71,6 +72,23 @@ public enum TimeBucket {
 		}
 	};
 
+	/**
+	 * The most slices one response may carry.
+	 *
+	 * <p>Zero-filling makes an over-time response as large as the window asked
+	 * for rather than as large as the data — unlike the by-category report,
+	 * which the taxonomy bounds at eleven buckets however wide the period.
+	 * Without a cap, {@code from=1900-01-01&to=2100-01-01&bucket=DAY} returns
+	 * 73,049 buckets and 4.2 MB from an empty database, which is the unbounded
+	 * result set spec §6 forbids — arriving through the response rather than
+	 * through the query.
+	 *
+	 * <p>A thousand daily points is already more than a chart can draw legibly,
+	 * so the limit refuses a request that could not have been rendered anyway.
+	 * Two years of days, five years of weeks and eighty years of months all fit.
+	 */
+	public static final long MAX_BUCKETS = 1000;
+
 	private final String truncUnit;
 
 	private final DateTimeFormatter labelFormat;
@@ -91,6 +109,26 @@ public enum TimeBucket {
 
 	public String label(LocalDate bucketStart) {
 		return this.labelFormat.format(bucketStart);
+	}
+
+	/**
+	 * How many slices {@code period} would produce, without building them.
+	 *
+	 * <p>Counted rather than materialised so the size guard can run before the
+	 * allocation it exists to prevent. {@code TimeBucketTest} asserts this
+	 * agrees with {@link #bucketStartsIn} across every width, since two ways of
+	 * saying the same thing is exactly where they drift.
+	 */
+	public long bucketCountIn(ReportPeriod period) {
+		LocalDate start = startOfBucket(period.from());
+		long days = ChronoUnit.DAYS.between(start, period.to());
+		return switch (this) {
+			case DAY -> days;
+			// Ceiling: a partial trailing week is still a bucket.
+			case WEEK -> (days + 6) / 7;
+			case MONTH -> ChronoUnit.MONTHS.between(start, period.to())
+					+ (period.to().getDayOfMonth() > 1 ? 1 : 0);
+		};
 	}
 
 	/**

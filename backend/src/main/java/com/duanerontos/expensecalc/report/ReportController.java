@@ -2,6 +2,7 @@ package com.duanerontos.expensecalc.report;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -65,9 +66,52 @@ public class ReportController {
 	public ResponseEntity<SpendOverTime> overTime(
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-			@RequestParam(defaultValue = "MONTH") TimeBucket bucket) {
+			@RequestParam(defaultValue = "month") String bucket) {
 
-		return ResponseEntity.ok(this.reports.overTime(periodFrom(from, to), bucket));
+		ReportPeriod period = periodFrom(from, to);
+		TimeBucket slice = sliceWidth(bucket);
+		long slices = slice.bucketCountIn(period);
+
+		// Zero-filling makes the response as large as the window asked for
+		// rather than as large as the data, so the period needs a bound that
+		// by-category does not: two centuries of days is 73,049 buckets and
+		// 4.2 MB from an empty database. Checked here rather than in TimeBucket
+		// because the conversion to a 400 only exists at this boundary — thrown
+		// deeper, it surfaces as a 500 blaming the server.
+		if (slices > TimeBucket.MAX_BUCKETS) {
+			throw new InvalidReportPeriodException(
+					"[%s, %s) is %d %s buckets, over the %d a response may carry. Narrow the period or widen the slice."
+						.formatted(period.from(), period.to(), slices, slice.name().toLowerCase(Locale.ENGLISH),
+								TimeBucket.MAX_BUCKETS),
+					List.of("from", "to", "bucket"));
+		}
+
+		return ResponseEntity.ok(this.reports.overTime(period, slice));
+	}
+
+	/**
+	 * Parses {@code bucket} case-insensitively.
+	 *
+	 * <p>Bound as a {@code String} rather than as the enum directly because
+	 * Spring's default converter is case-sensitive: this javadoc documented
+	 * {@code bucket=day|week|month} while only {@code DAY|WEEK|MONTH} bound, so
+	 * a client written against the documentation got a 400 on its first request.
+	 * Every test used the uppercase form, and the unknown-value test passed
+	 * either way, so nothing noticed.
+	 *
+	 * <p>Parsing here also means a bad value produces the same
+	 * {@code problem+json} with violations as every other bad input on these
+	 * endpoints — Spring's own {@code MethodArgumentTypeMismatchException} path
+	 * returns a plainer 400 that spec §8 does not ask for.
+	 */
+	private TimeBucket sliceWidth(String bucket) {
+		try {
+			return TimeBucket.valueOf(bucket.toUpperCase(Locale.ENGLISH));
+		}
+		catch (IllegalArgumentException ex) {
+			throw new InvalidReportPeriodException("%s is not a slice width. Use day, week, or month."
+				.formatted(bucket), List.of("bucket"));
+		}
 	}
 
 	/**
