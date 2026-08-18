@@ -36,12 +36,21 @@ starting an issue; most issue bodies name the section that governs them.
 
 - **`.github/workflows/claude.yml`** — interactive. Mention `@claude` in an
   issue or PR comment and it does the work and opens a PR.
-- **`.github/workflows/claude-code-review.yml`** — automatic. Reviews every PR
-  on open and on each push. It can run `cd backend && ./mvnw -B verify` and is
-  asked to reproduce a bug before reporting it and to run a fix before
-  suggesting one — a reviewer that could only read the code got its diagnoses
-  right but its remedies wrong. Bash is otherwise off; the allowlist covers the
-  build wrapper only.
+- **`.github/workflows/claude-code-review.yml`** — automatic, but **once per PR,
+  not once per push.** It runs when a PR opens or leaves draft. **To re-review
+  after pushing fixes, comment `@claude` on the PR** — that goes to
+  `claude.yml`, so nothing is lost by the narrower trigger.
+
+  It reviewed on every push until #38. One PR cost four rounds of roughly six
+  minutes of Opus each, and reviews share the subscription quota with
+  interactive Claude Code, so the later rounds — which mostly re-verified the
+  earlier rounds' fixes — were taking quota from whoever was at a terminal.
+  Whether a push deserves another round is a judgement only the author has.
+
+  It can run `cd backend && ./mvnw -B -q verify`, and is asked to reproduce a
+  bug before reporting it and to run a fix before suggesting one — a reviewer
+  that could only read the code got its diagnoses right but its remedies wrong.
+  Bash is otherwise off; the allowlist covers the build wrapper only.
 
 Both authenticate with the `CLAUDE_CODE_OAUTH_TOKEN` repository secret, which
 draws on a Claude Pro/Max subscription. Regenerate it with `claude setup-token`
