@@ -164,6 +164,15 @@ even when the test passes.
 layer, converted to `BigDecimal` at the service boundary. This keeps summation
 exact and avoids scale drift across a large expense set.
 
+**Amounts are signed, and totals are net.** A refund is a negative amount that
+keeps the category of what it refunds (spec §5), so a category total is
+spending minus refunds and **may be zero or negative**. No aggregation may
+`abs()` an amount, filter out negatives, or assume a total is non-negative —
+each of those turns a net total back into a gross one silently, and the numbers
+still look plausible until someone reconciles against a bank statement.
+`NoAbsoluteValueInMoneyPathsTest` fails the build on the first of those;
+`SignedAmountAggregationTest` pins the arithmetic the others would break.
+
 **Currency is `PHP` only in v1, enforced at the API boundary.** Anything else
 is a 400 before it reaches the database. `amountMinor` is centavos. The client
 formats with `Intl.NumberFormat("en-PH", …)` — never hardcode `₱`.
