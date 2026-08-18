@@ -46,26 +46,43 @@ class SignedAmountAggregationTest {
 	@Autowired
 	private TestEntityManager entityManager;
 
-	private long totalMinor() {
-		return this.entityManager.getEntityManager()
-			.createQuery("SELECT SUM(e.amountMinor) FROM Expense e", Long.class)
+	/**
+	 * Scoped to one merchant, and null-safe.
+	 *
+	 * <p>Scoped because a whole-table aggregate would make these tests depend on
+	 * the table being empty — true today only because there is no seed data and
+	 * {@code @DataJpaTest} rolls back. The day a seed migration or a committing
+	 * fixture arrives, an unscoped version fails with an arithmetic mismatch
+	 * pointing at the aggregation rather than at the fixture.
+	 *
+	 * <p>Null-safe because JPQL {@code SUM} over zero rows returns null, and
+	 * unboxing that to a {@code long} throws instead of reporting a total. Spec
+	 * §7 has empty periods returning an empty bucket array rather than an error,
+	 * so zero rows is a real case rather than a defensive nicety.
+	 */
+	private long totalMinorFor(String merchant) {
+		Long total = this.entityManager.getEntityManager()
+			.createQuery("SELECT SUM(e.amountMinor) FROM Expense e WHERE e.merchant = :merchant", Long.class)
+			.setParameter("merchant", merchant)
 			.getSingleResult();
+		return total == null ? 0L : total;
 	}
 
-	private void record(String merchant, String amount) {
+	/** Amount first, matching {@link Expense#record}, which this delegates to. */
+	private void record(String amount, String merchant) {
 		this.repository.save(Expense.record(new BigDecimal(amount), "PHP", WHEN, merchant, null));
 	}
 
 	@Test
 	@DisplayName("nets a refund against its expense rather than adding or dropping it")
 	void netsRefundsAgainstSpending() {
-		record("Puregold", "1200.00");
-		record("Puregold", "-350.00");
+		record("1200.00", "Puregold");
+		record("-350.00", "Puregold");
 		this.entityManager.flush();
 
 		// The two wrong answers this is here to exclude: 155000 if the refund
 		// were abs()'d and added, 120000 if negatives were filtered out.
-		assertThat(totalMinor()).isEqualTo(85_000L);
+		assertThat(totalMinorFor("Puregold")).isEqualTo(85_000L);
 	}
 
 	@Test
@@ -74,12 +91,11 @@ class SignedAmountAggregationTest {
 		// Spec §7: "Buckets may be negative. A category with more refunds than
 		// spending in a period nets negative. Charts must render this rather
 		// than clamping at zero."
-		record("Landers", "500.00");
-		record("Landers", "-1250.00");
+		record("500.00", "Landers");
+		record("-1250.00", "Landers");
 		this.entityManager.flush();
 
-		assertThat(totalMinor()).isEqualTo(-75_000L);
-		assertThat(totalMinor()).isNegative();
+		assertThat(totalMinorFor("Landers")).isEqualTo(-75_000L).isNegative();
 	}
 
 	@Test
@@ -88,11 +104,11 @@ class SignedAmountAggregationTest {
 		// Zero is a real total, not an absent one. A report that omits a
 		// zero-netting bucket loses the fact that anything happened at all,
 		// and spec §7 wants contiguous buckets rather than gaps.
-		record("S&R", "899.50");
-		record("S&R", "-899.50");
+		record("899.50", "S&R");
+		record("-899.50", "S&R");
 		this.entityManager.flush();
 
-		assertThat(totalMinor()).isZero();
+		assertThat(totalMinorFor("S&R")).isZero();
 	}
 
 	@Test
@@ -101,14 +117,16 @@ class SignedAmountAggregationTest {
 		// The shape spec §7 returns: buckets with their own totals, one of them
 		// negative here. A GROUP BY that clamped or filtered would flatten the
 		// second bucket into the first's sign.
-		record("Meralco", "3890.50");
-		record("Watsons", "650.00");
-		record("Watsons", "-1200.00");
+		record("3890.50", "Meralco");
+		record("650.00", "Watsons");
+		record("-1200.00", "Watsons");
 		this.entityManager.flush();
 
 		List<Object[]> buckets = this.entityManager.getEntityManager()
-			.createQuery("SELECT e.merchant, SUM(e.amountMinor) FROM Expense e GROUP BY e.merchant ORDER BY e.merchant",
+			.createQuery(
+					"SELECT e.merchant, SUM(e.amountMinor) FROM Expense e WHERE e.merchant IN :merchants GROUP BY e.merchant ORDER BY e.merchant",
 					Object[].class)
+			.setParameter("merchants", List.of("Meralco", "Watsons"))
 			.getResultList();
 
 		assertThat(buckets).hasSize(2);
@@ -121,26 +139,27 @@ class SignedAmountAggregationTest {
 	@Test
 	@DisplayName("sums exactly across a set large enough to expose drift")
 	void sumsExactlyAtScale() {
-		// Integer centavos, so this is exact by construction — the point is to
-		// have a test that fails the day someone routes a total through a
-		// double, which is the failure this storage choice exists to prevent
-		// and which only shows up in aggregate.
+		// Exact by construction: integer centavos, every partial sum far below
+		// 2^53. That is the pin — not a double detector. A double accumulator
+		// returns this same answer, in centavos and via pesos, so claiming
+		// otherwise would be claiming coverage this does not have.
+		// NoAbsoluteValueInMoneyPathsTest is where double is actually excluded.
 		long expected = 0;
 		for (int i = 1; i <= 500; i++) {
 			String amount = "%d.%02d".formatted(i, i % 100);
 			long minor = i * 100L + (i % 100);
 			if (i % 3 == 0) {
-				record("Bulk", "-" + amount);
+				record("-" + amount, "Bulk");
 				expected -= minor;
 			}
 			else {
-				record("Bulk", amount);
+				record(amount, "Bulk");
 				expected += minor;
 			}
 		}
 		this.entityManager.flush();
 
-		assertThat(totalMinor()).isEqualTo(expected);
+		assertThat(totalMinorFor("Bulk")).isEqualTo(expected);
 	}
 
 }
