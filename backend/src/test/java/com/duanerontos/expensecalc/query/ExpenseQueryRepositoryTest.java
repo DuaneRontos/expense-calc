@@ -141,7 +141,13 @@ class ExpenseQueryRepositoryTest {
 		given("200.00", LocalDate.of(2026, 1, 9), "SM", "monthly stock up", Category.GROCERIES);
 		given("300.00", LocalDate.of(2026, 1, 10), "100% Fitness", "gym dues", Category.DISCRETIONARY);
 
-		assertThat(find(filter(Set.of(), null, null, "%", null, null, null))).isEmpty();
+		// A literal % now matches only the merchant that contains one, rather
+		// than matching everything as a wildcard.
+		assertThat(find(filter(Set.of(), null, null, "%", null, null, null))).singleElement()
+			.extracting(ExpenseSummary::merchant)
+			.isEqualTo("100% Fitness");
+		// And _ is a character, not "any character" — so this matches nothing,
+		// where before it matched SM.
 		assertThat(find(filter(Set.of(), null, null, "_M", null, null, null))).isEmpty();
 		assertThat(find(filter(Set.of(), null, null, "100%", null, null, null))).singleElement()
 			.extracting(ExpenseSummary::merchant)
