@@ -2,8 +2,11 @@ package com.duanerontos.expensecalc.report;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import com.duanerontos.expensecalc.expense.Category;
 
@@ -90,12 +93,50 @@ public class ReportService {
 	 */
 	@Transactional(readOnly = true)
 	public CategoryBreakdown byCategory(ReportPeriod period, Instant asOf) {
-		List<CategoryTotal> totals = this.repository.totalsByCategory(period.from(), period.to(), asOf)
+		return CategoryBreakdown.of(period, categoryTotals(period, asOf));
+	}
+
+	/**
+	 * Spend over time, sliced at {@code bucket}.
+	 *
+	 * <p>Not category-resolved: this answers "how much, when", and pulling the
+	 * classification history into it would cost a lateral join for a dimension
+	 * the chart does not draw.
+	 */
+	@Transactional(readOnly = true)
+	public SpendOverTime overTime(ReportPeriod period, TimeBucket bucket) {
+		Map<LocalDate, Long> totals = this.repository
+			.totalsByTimeBucket(period.from(), period.to(), bucket.truncUnit())
+			.stream()
+			.collect(Collectors.toMap(ReportRepository.BucketTotalRow::getBucketStart,
+					ReportRepository.BucketTotalRow::getTotalMinor));
+
+		return SpendOverTime.of(period, bucket, totals);
+	}
+
+	/**
+	 * This period against the one before it (spec §7).
+	 *
+	 * <p><b>Both aggregations run in one transaction and against one {@code asOf}
+	 * instant.</b> Two reads that disagree about either would compare periods as
+	 * they looked at two different moments — and the difference would show up as
+	 * a change in spending, which is precisely the number this report exists to
+	 * report. That is why {@code byCategory}'s single-period form is not called
+	 * twice here.
+	 */
+	@Transactional(readOnly = true)
+	public PeriodComparison compare(ReportPeriod period) {
+		Instant asOf = this.clock.instant();
+		ReportPeriod previous = period.previous();
+
+		return PeriodComparison.of(period, previous, categoryTotals(period, asOf), categoryTotals(previous, asOf));
+	}
+
+	private List<CategoryTotal> categoryTotals(ReportPeriod period, Instant asOf) {
+		return this.repository.totalsByCategory(period.from(), period.to(), asOf)
 			.stream()
 			.map(row -> new CategoryTotal(Category.valueOf(row.getCategory()), row.getTotalMinor()))
 			.toList();
-
-		return CategoryBreakdown.of(period, totals);
 	}
 
 }

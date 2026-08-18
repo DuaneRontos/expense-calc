@@ -3,6 +3,7 @@ package com.duanerontos.expensecalc.report;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAdjusters;
 
 /**
@@ -76,10 +77,54 @@ public record ReportPeriod(LocalDate from, LocalDate to) {
 		return new ReportPeriod(tomorrow.minusDays(days), tomorrow);
 	}
 
-	/** The period of equal length immediately before this one, for §7's comparison report. */
-	public ReportPeriod immediatelyBefore() {
+	/**
+	 * True when this period spans whole calendar months — one, three, twelve.
+	 *
+	 * <p>Deliberately not just one month. An earlier version matched a single
+	 * month only, which meant a quarter or a year fell to the equal-length rule
+	 * and drifted: Q1 2026 compared against {@code [2025-10-03, 2026-01-01)}
+	 * rather than Q4, and whether a calendar year landed correctly depended on
+	 * whether its neighbour was a leap year. The principle was always "calendar
+	 * windows compare against calendar windows"; the test for it was narrower
+	 * than the principle.
+	 */
+	public boolean isWholeCalendarMonths() {
+		return this.from.getDayOfMonth() == 1 && this.to.getDayOfMonth() == 1;
+	}
+
+	/**
+	 * The period this one should be compared against (spec §7's grouped bar).
+	 *
+	 * <p><b>Calendar-aware when this period is a whole month, equal-length
+	 * otherwise.</b> Both rules are wrong for the other's case, which is why the
+	 * shape of the period decides rather than a flag:
+	 *
+	 * <ul>
+	 * <li>Equal-length on March gives {@code [2026-01-29, 2026-03-01)} — 31 days
+	 * ending at February's end, which is not February. A user who picked March
+	 * from a month picker expects February, and would read that as a bug.
+	 * <li>Calendar-aware on "last 30 days" is meaningless: there is no previous
+	 * calendar window for one that straddles two of them.
+	 * </ul>
+	 *
+	 * <p>Comparing February against January is comparing 28 days against 31, and
+	 * that is the honest comparison rather than a defect — a month picker is
+	 * asking about months, and normalising the lengths would report a February
+	 * that never happened. The client should say which months it is showing so
+	 * the reader can see the difference for themselves.
+	 */
+	public ReportPeriod previous() {
+		if (isWholeCalendarMonths()) {
+			long months = ChronoUnit.MONTHS.between(this.from, this.to);
+			return new ReportPeriod(this.from.minusMonths(months), this.from);
+		}
 		long length = this.to.toEpochDay() - this.from.toEpochDay();
 		return new ReportPeriod(this.from.minusDays(length), this.from);
+	}
+
+	/** Days in this period. */
+	public long lengthInDays() {
+		return this.to.toEpochDay() - this.from.toEpochDay();
 	}
 
 	public boolean contains(LocalDate day) {

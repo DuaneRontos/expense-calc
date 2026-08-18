@@ -32,6 +32,44 @@ public interface ReportRepository extends Repository<Expense, UUID> {
 
 	}
 
+	/** One row per time slice that has expenses in it. Empty slices are absent. */
+	interface BucketTotalRow {
+
+		LocalDate getBucketStart();
+
+		long getTotalMinor();
+
+	}
+
+	/**
+	 * Net total per time slice over {@code [from, to)}.
+	 *
+	 * <p>No category resolution here, so no lateral join: this report is spend
+	 * over time, not spend per category over time. That keeps it a single
+	 * grouped scan over the {@code (occurred_on DESC, id)} index.
+	 *
+	 * <p><b>{@code :unit} is bound, never concatenated.</b> It reaches this
+	 * query only from {@link TimeBucket#truncUnit()}, so the value set is closed
+	 * by the enum — but binding it means the query is not string-assembled even
+	 * if a future caller is careless.
+	 *
+	 * <p>Returns only slices that have rows. Spec §7 wants contiguous buckets,
+	 * and the gaps are filled in {@link SpendOverTime} rather than by making the
+	 * database generate a series — the period already knows its own shape, and
+	 * generating it in Java keeps the zero-filling testable without a database.
+	 */
+	@Query(value = """
+			SELECT date_trunc(:unit, e.occurred_on::timestamp)::date AS bucket_start,
+			       SUM(e.amount_minor)                               AS total_minor
+			FROM expense e
+			WHERE e.occurred_on >= :from
+			  AND e.occurred_on <  :to
+			GROUP BY 1
+			ORDER BY 1
+			""", nativeQuery = true)
+	List<BucketTotalRow> totalsByTimeBucket(@Param("from") LocalDate from, @Param("to") LocalDate to,
+			@Param("unit") String unit);
+
 	/**
 	 * Net total per category over {@code [from, to)}, using each expense's
 	 * category as of {@code asOf}.
