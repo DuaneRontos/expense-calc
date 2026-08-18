@@ -41,6 +41,17 @@ jobs:
           echo "state=$state" >> "$GITHUB_OUTPUT"
           echo "PR is $state"
 
+      # The reviewer runs the backend suite, so it needs the same JDK CI uses.
+      # ubuntu-latest ships a JDK, but not necessarily 21 as the default, and a
+      # reviewer testing on a different JDK than CI would report failures the
+      # merge gate never sees. cache: maven keeps the extra minute off the run.
+      - if: steps.pr_state.outputs.state == 'OPEN'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
       - if: steps.pr_state.outputs.state == 'OPEN'
         uses: anthropics/claude-code-action@v1
         with:
@@ -72,4 +83,24 @@ jobs:
             give file:line, the concrete failure case, and a suggested fix. Say
             plainly if you found nothing worth flagging.
 
-          claude_args: --model claude-opus-5
+            You can run the backend suite:
+
+                cd backend && ./mvnw -B verify
+
+            Tests need Docker for the Testcontainers suites; the runner has it.
+            Reproduce a bug before reporting it, and run the fix you are about
+            to suggest before suggesting it. Say which findings you executed and
+            which you only read, so the author knows what is verified.
+
+          # Bash is off by default, so the reviewer could read code but never
+          # run it — and unexecuted remedies have been wrong often enough to
+          # cost more than the runtime saves. Scoped to the build wrapper rather
+          # than opened generally.
+          #
+          # This grants no capability CI does not already exercise: ci.yml runs
+          # the same `./mvnw -B verify` on the same `pull_request` trigger. Note
+          # that trigger is deliberate — `pull_request` withholds secrets from
+          # fork PRs, so the OAuth token, and therefore this job, is unavailable
+          # to a fork. Switching it to `pull_request_target` would hand an
+          # attacker-authored build both the token and a shell.
+          claude_args: --model claude-opus-5 --allowedTools "Bash(cd:*),Bash(./mvnw:*),Bash(backend/mvnw:*)"
