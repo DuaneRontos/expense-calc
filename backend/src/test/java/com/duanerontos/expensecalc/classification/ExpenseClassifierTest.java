@@ -162,6 +162,11 @@ class ExpenseClassifierTest {
 					Starlink subscription   |                  | UTILITIES     | a provider named in a description is a utility
 					Converge subscription   |                  | UTILITIES     | not only the generic word
 					PLDT subscription       |                  | UTILITIES     | merchant-only scoping hid these before
+					Phone subscription      |                  | UTILITIES     | a plan is a utility, not only a bill
+					Mobile subscription     |                  | UTILITIES     | however the user words it
+					Broadband subscription  |                  | UTILITIES     | and whichever word they use for the line
+					Cable subscription      |                  | UTILITIES     | the third spelling of a cable bill
+					Gym subscription        |                  | DISCRETIONARY | while a gym is still discretionary
 					Coffee beans from the grocery |            | GROCERIES     | groceries precede dining
 					Coffee with Ana at the cafe   |            | DINING        | but a cafe is still dining
 					""")
@@ -317,6 +322,39 @@ class ExpenseClassifierTest {
 
 		assertThat(atTheServiceBay.category()).isEqualTo(Category.TRANSPORT);
 		assertThat(atTheServiceBay.rule()).isEqualTo("transport.fuel-brand");
+	}
+
+	@Test
+	@DisplayName("answers a provider name with UTILITIES whatever the description says it bought")
+	void providerNameOutranksWhatWasBought() {
+		// Recorded, not endorsed. A Starlink dish is a five-figure purchase that
+		// holds value past the period, which the skill puts in CAPITAL — but
+		// capital.durable-goods is declared last on the reasoning that its
+		// keywords are nouns an earlier rule qualifies, and a brand name is not
+		// such a noun. The Phone bill / New phone split has no analogue here.
+		//
+		// Same shape as the Grab and Petron cases: a cross-rule exception for
+		// one brand costs more than it earns. Became reachable when cdb6706
+		// moved Starlink off the merchant-only rule; it was UNCLASSIFIED before.
+		assertThat(this.classifier.classify(null, "Starlink hardware kit", 2_900_000).category())
+			.isEqualTo(Category.UTILITIES);
+	}
+
+	@Test
+	@DisplayName("answers an internet cafe with UTILITIES, which is a recorded limit")
+	void internetCafeIsAUtility() {
+		// Pinned as a known wrong answer, not as intent. An afternoon at a
+		// computer shop is DISCRETIONARY, but utilities.household-service owns
+		// "internet" and is declared third, so dining.eating-out's "cafe" is
+		// never consulted.
+		//
+		// Not cheap to fix: the table resolves specificity by declaration order
+		// and no rule ahead of utilities.household-service could carry the
+		// phrase, so it needs a new rule plus its entries in declaresRulesInOrder
+		// and EXAMPLES. Pre-existing rather than introduced here. Revisit if
+		// real data shows computer-shop entries are common.
+		assertThat(this.classifier.classify(null, "Internet cafe with the kids", 15_000).category())
+			.isEqualTo(Category.UTILITIES);
 	}
 
 	@Test

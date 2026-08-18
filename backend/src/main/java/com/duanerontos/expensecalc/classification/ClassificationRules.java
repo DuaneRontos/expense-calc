@@ -52,6 +52,13 @@ public final class ClassificationRules {
 			// to discretionary.leisure's "subscription" and books an internet
 			// bill as discretionary spending. Only pay that cost for a word that
 			// means something else in prose.
+			//
+			// "Converge" is a knowing exception to that criterion: it is an
+			// ordinary English verb, so "Teams converge for the offsite" now
+			// answers UTILITIES where it used to answer UNCLASSIFIED. Taken
+			// deliberately — a monthly Converge bill is a real recurring entry
+			// and the verb is close to hypothetical in an expense description.
+			// DITO, which is the genuinely dangerous one, stayed above.
 			ClassificationRule.onMerchant("utilities.telco-brand", Category.UTILITIES, "Globe", "Smart", "DITO"),
 
 			// Precedes capital.durable-goods, which owns "phone" and "TV". "Phone
@@ -59,8 +66,9 @@ public final class ClassificationRules {
 			// becomes a durable good.
 			ClassificationRule.onAnyText("utilities.household-service", Category.UTILITIES, "Meralco", "Maynilad",
 					"Manila Water", "PLDT", "Converge", "Sky Cable", "Starlink", "electricity", "electric bill",
-					"water bill", "gas bill", "LPG", "internet", "fiber", "phone bill", "postpaid", "cable TV",
-					"cable bill"),
+					"water bill", "gas bill", "LPG", "internet", "fiber", "broadband", "phone bill", "postpaid",
+					"phone subscription", "phone plan", "mobile subscription", "mobile plan", "cable TV",
+					"cable bill", "cable subscription"),
 
 			// Precedes both dining rules. "Coffee beans from the grocery" is
 			// GROCERIES; the dining rule's "coffee" must not reach it first.

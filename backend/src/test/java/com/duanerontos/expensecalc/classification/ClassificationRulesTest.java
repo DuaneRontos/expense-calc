@@ -111,7 +111,12 @@ class ClassificationRulesTest {
 					// DESCRIPTION would let a merchant-scoped guarded rule — an
 					// income brand like a payroll provider, say — pass this loop
 					// without a single keyword being compared.
-					assertThat(matchesAnyField(guardedRule, keyword, -100))
+					// Normalized, because matches() expects text the classifier
+					// has already put through TextNormalizer. Asked raw, this
+					// invariant misses a real overlap the moment a keyword is
+					// pasted with a non-breaking space — the third time in this
+					// PR that two paths disagreed about what normalization means.
+					assertThat(matchesAnyField(guardedRule, TextNormalizer.normalize(keyword), -100))
 						.as("%s claims %s's keyword '%s' on money in, so a refund of a %s expense would be booked as %s",
 								guardedRule.name(), spending.name(), keyword, spending.category(),
 								guardedRule.category())
@@ -173,6 +178,25 @@ class ClassificationRulesTest {
 
 		assertThat(merchantScoped.matches(MatchField.DESCRIPTION, "Netflix", -100)).isFalse();
 		assertThat(matchesAnyField(merchantScoped, "Netflix", -100)).isTrue();
+	}
+
+	@Test
+	@DisplayName("asks the vocabulary question in the form the classifier would, not the raw keyword")
+	void vocabularyCheckNormalizesBeforeAsking() {
+		// Guards the guard, like vocabularyCheckIsNotFieldBlind. A keyword
+		// pasted with a non-breaking space compiles to a pattern over the
+		// normalized text, so asking matches() the raw keyword asks about a
+		// string the classifier would never produce — and the overlap goes
+		// unseen while classify() walks straight into it.
+		ClassificationRule pastedSpending = ClassificationRule.onAnyText("test.pasted", Category.DISCRETIONARY,
+				"gift\u00A0from");
+
+		assertThat(matchesAnyField(pastedSpending, "gift\u00A0from", -100))
+			.as("the raw form misses, which is why asking it raw is not enough")
+			.isFalse();
+		assertThat(matchesAnyField(pastedSpending, TextNormalizer.normalize("gift\u00A0from"), -100))
+			.as("the normalized form is what the classifier actually asks")
+			.isTrue();
 	}
 
 	private static boolean matchesAnyField(ClassificationRule rule, String text, long amountMinor) {
