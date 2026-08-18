@@ -2,6 +2,7 @@ package com.duanerontos.expensecalc.classification;
 
 import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -75,6 +76,56 @@ class ClassificationRulesTest {
 			.toList();
 
 		assertThat(matchingRefund).isEmpty();
+	}
+
+	@Test
+	@DisplayName("keeps guarded and unguarded rules from sharing vocabulary")
+	void keepsGuardedAndUnguardedVocabulariesDisjoint() {
+		// The invariant a shared "gift" keyword broke. An amount guard separates
+		// money in from money out, and that is all it can do — it cannot separate
+		// two money-in meanings of the same word. A refund is money in, so any
+		// word owned by both a MONEY_IN rule and a spending rule sends that
+		// category's refunds to the guarded rule, when spec §5 says a refund
+		// keeps the category it refunds.
+		//
+		// Stated over the whole table rather than as one more example, because
+		// the example-driven tests only exercise the keywords someone thought to
+		// write an example for.
+		List<ClassificationRule> guarded = ClassificationRules.ordered()
+			.stream()
+			.filter(rule -> rule.amountGuard() != AmountGuard.ANY)
+			.toList();
+
+		for (ClassificationRule spending : ClassificationRules.ordered()) {
+			if (spending.amountGuard() != AmountGuard.ANY) {
+				continue;
+			}
+			for (String keyword : spending.keywords()) {
+				for (ClassificationRule guardedRule : guarded) {
+					assertThat(guardedRule.matches(MatchField.DESCRIPTION, keyword, -100))
+						.as("%s claims %s's keyword '%s' on money in, so a refund of a %s expense would be booked as %s",
+								guardedRule.name(), spending.name(), keyword, spending.category(),
+								guardedRule.category())
+						.isFalse();
+				}
+			}
+		}
+	}
+
+	@Test
+	@DisplayName("compares rules by value, not by the identity of a compiled pattern")
+	void comparesRulesByValue() {
+		// Pattern inherits identity equality, so a record holding one would make
+		// these unequal and give the rule a hash that changes run to run — which
+		// would quietly break any Set or Map of rules, and with it the ordering
+		// determinism the engine rests on.
+		ClassificationRule one = ClassificationRule.onAnyText("test.equality", Category.DINING, "coffee");
+		ClassificationRule other = ClassificationRule.onAnyText("test.equality", Category.DINING, "coffee");
+
+		assertThat(one).isEqualTo(other).hasSameHashCodeAs(other);
+		// A HashSet rather than Set.of, which rejects a duplicate by throwing
+		// instead of collapsing it — that would pass for the wrong reason.
+		assertThat(new HashSet<>(List.of(one, other))).hasSize(1);
 	}
 
 	@Test

@@ -41,7 +41,13 @@ public enum AmountGuard {
 		}
 	},
 
-	/** Money out: an ordinary expense. Stored positive. */
+	/**
+	 * Money out: an ordinary expense. Stored positive.
+	 *
+	 * <p>No rule in the current table applies this — it exists for symmetry with
+	 * {@link #MONEY_IN}, which every income rule needs. Said explicitly so the
+	 * next reader does not go looking for the rule that uses it.
+	 */
 	MONEY_OUT {
 		@Override
 		public boolean permits(long amountMinor) {

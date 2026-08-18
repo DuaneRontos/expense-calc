@@ -207,13 +207,27 @@ class ExpenseClassifierTest {
 	// --- Amount as a disambiguator, never as a classifier --------------------
 
 	@Test
-	@DisplayName("separates a gift received from a gift given by the direction of the money")
+	@DisplayName("separates a gift received from a gift given, and both from a refunded gift")
 	void amountDisambiguatesTwoTextMatches() {
-		// Both inputs match the same word in two different rules. Neither the
-		// text nor the amount decides this alone — only the two together, which
-		// is the only role spec §5 gives the amount.
+		// The guard's real job: money out never reaches INCOME, whatever the
+		// text says. What it cannot do is separate two money-in meanings of one
+		// word, which is why the income rule says "gift from" rather than "gift"
+		// and the refund below stays in DISCRETIONARY.
 		assertThat(this.classifier.classify(null, "Gift from tita", -200_000).category()).isEqualTo(Category.INCOME);
+		assertThat(this.classifier.classify(null, "Gift from tita", 200_000).category())
+			.isEqualTo(Category.DISCRETIONARY);
 		assertThat(this.classifier.classify(null, "Gift for mom", 200_000).category())
+			.isEqualTo(Category.DISCRETIONARY);
+	}
+
+	@Test
+	@DisplayName("keeps a returned gift in DISCRETIONARY rather than turning it into income")
+	void refundOfAGiftKeepsItsCategory() {
+		// A gift given and a refund of that gift share both the word and the
+		// direction of the money, so the guard alone cannot separate them —
+		// only keeping the vocabulary of the guarded and unguarded rules
+		// disjoint can. Spec §5: the refund keeps the category it refunds.
+		assertThat(this.classifier.classify(null, "Gift for mom", -200_000).category())
 			.isEqualTo(Category.DISCRETIONARY);
 	}
 
@@ -272,6 +286,40 @@ class ExpenseClassifierTest {
 	}
 
 	// --- Determinism and plumbing -------------------------------------------
+
+	@Test
+	@DisplayName("normalizes a non-breaking space, which pasted statement text carries")
+	void normalizesNonBreakingSpace() {
+		// Java's \s is ASCII-only unless told otherwise, and U+00A0 is not a word
+		// character either — so before UNICODE_CHARACTER_CLASS this text survived
+		// normalization intact, missed the "phone bill" keyword, and then matched
+		// a bare "phone": a monthly bill filed as a durable good.
+		// The separator is written as an escape on purpose: a literal U+00A0 in
+		// the source is indistinguishable from a space, and the next person to
+		// touch this line would "tidy" it and silently retire the test.
+		String pastedFromAStatement = "Phone\u00A0bill for August";
+
+		Classification result = this.classifier.classify(null, pastedFromAStatement, 149_900);
+
+		assertThat(result.category()).isEqualTo(Category.UTILITIES);
+	}
+
+	@ParameterizedTest
+	@CsvSource(delimiter = '|',
+			textBlock = """
+					Monthly subscriptions   | DISCRETIONARY
+					Gifts for the family    | DISCRETIONARY
+					Tolls on the expressway | TRANSPORT
+					Aircon repairs          | MAINTENANCE
+					Weekly groceries        | GROCERIES
+					""")
+	@DisplayName("matches ordinary plural phrasings")
+	void matchesPlurals(String description, Category expected) {
+		// Matching allows one trailing "s", so most plurals need no second
+		// keyword. "groceries" is the exception the table spells out, since
+		// grocery plus an s is "grocerys" — this covers both paths.
+		assertThat(this.classifier.classify(null, description, 100_000).category()).isEqualTo(expected);
+	}
 
 	@Test
 	@DisplayName("returns the same answer for the same input")

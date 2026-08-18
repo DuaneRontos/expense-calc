@@ -40,7 +40,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class ExpenseClassifier {
 
-	private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+	// UNICODE_CHARACTER_CLASS is load-bearing: Java's \s is ASCII-only by
+	// default, so a non-breaking space — which pasted statement text carries
+	// routinely — would survive normalization and then break keyword matching
+	// in a way that files a phone bill under CAPITAL.
+	private static final Pattern WHITESPACE = Pattern.compile("\\s+", Pattern.UNICODE_CHARACTER_CLASS);
 
 	private final List<ClassificationRule> rules;
 

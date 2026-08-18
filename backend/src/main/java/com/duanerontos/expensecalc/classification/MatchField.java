@@ -11,7 +11,8 @@ package com.duanerontos.expensecalc.classification;
  * {@code GROCERIES}, and it is the merchant stage running first that makes it so.
  *
  * <p>{@code ExpenseClassifier} iterates {@link #values()} directly, so reordering
- * this enum silently reverses that precedence. {@code MatchFieldTest} pins the
+ * this enum silently reverses that precedence.
+ * {@code ClassificationRulesTest.matchOrderIsMerchantThenDescription} pins the
  * order for exactly that reason.
  */
 public enum MatchField {

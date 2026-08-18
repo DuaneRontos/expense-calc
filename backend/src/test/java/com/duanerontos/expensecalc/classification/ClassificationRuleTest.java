@@ -1,5 +1,6 @@
 package com.duanerontos.expensecalc.classification;
 
+import java.util.List;
 import java.util.Set;
 
 import com.duanerontos.expensecalc.expense.Category;
@@ -45,8 +46,8 @@ class ClassificationRuleTest {
 	@DisplayName("refuses a rule that reads no field")
 	void refusesRuleWithoutFields() {
 		assertThatIllegalArgumentException()
-			.isThrownBy(() -> new ClassificationRule("bad.no-fields", Category.DINING, Set.of(),
-					ClassificationRule.onAnyText("x", Category.DINING, "x").keywords(), AmountGuard.ANY))
+			.isThrownBy(() -> new ClassificationRule("bad.no-fields", Category.DINING, Set.of(), List.of("coffee"),
+					AmountGuard.ANY))
 			.withMessageContaining("reads no field");
 	}
 

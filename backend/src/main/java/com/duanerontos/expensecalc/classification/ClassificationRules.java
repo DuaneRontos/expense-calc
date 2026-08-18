@@ -56,6 +56,10 @@ public final class ClassificationRules {
 
 			// Precedes both dining rules. "Coffee beans from the grocery" is
 			// GROCERIES; the dining rule's "coffee" must not reach it first.
+			//
+			// "groceries" is spelled out because matching handles a trailing "s"
+			// and nothing more — grocery plus an s is "grocerys". Regular plurals
+			// elsewhere in this table need no second keyword.
 			ClassificationRule.onAnyText("groceries.market", Category.GROCERIES, "SM Supermarket", "Puregold",
 					"Robinsons Supermarket", "S&R", "Landers", "WalterMart", "grocery", "groceries", "palengke",
 					"wet market", "sari-sari"),
@@ -70,8 +74,11 @@ public final class ClassificationRules {
 					"McDonald's", "McDonalds", "KFC", "Starbucks", "restaurant", "cafe", "coffee", "lunch", "dinner",
 					"merienda", "milk tea"),
 
-			// Merchant-only: "shell out", "phoenix", and "total" are ordinary
-			// description words. As merchants they are fuel stations.
+			// Merchant-only: "shell out" and "phoenix" are ordinary description
+			// words. As merchants they are fuel stations. "Total" is left out
+			// entirely — TotalEnergies does operate here, but the word is common
+			// enough in a merchant field ("Total") that the rule would cost more
+			// than it earns.
 			ClassificationRule.onMerchant("transport.fuel-brand", Category.TRANSPORT, "Shell", "Petron", "Caltex",
 					"Seaoil", "Phoenix", "Unioil"),
 
@@ -86,7 +93,7 @@ public final class ClassificationRules {
 			// upkeep; buying one is a durable good. Both say "aircon", so the
 			// order is what separates them (skill: improvements that add value
 			// are CAPITAL, repairs are MAINTENANCE).
-			ClassificationRule.onAnyText("maintenance.upkeep", Category.MAINTENANCE, "repair", "repairs", "plumber",
+			ClassificationRule.onAnyText("maintenance.upkeep", Category.MAINTENANCE, "repair", "plumber",
 					"electrician", "aircon cleaning", "tune-up", "preventive maintenance", "car service",
 					"spare parts"),
 
@@ -94,18 +101,23 @@ public final class ClassificationRules {
 			// housing and transport have already claimed their own kinds above.
 			ClassificationRule.onAnyText("health.care-and-pharmacy", Category.HEALTH, "Mercury Drug", "Watsons",
 					"clinic", "hospital", "dental", "dentist", "pharmacy", "drugstore", "medicine", "laboratory",
-					"consultation", "HMO", "insurance premium", "insurance"),
+					"consultation", "HMO", "insurance"),
 
-			// The amount guard is the point of this rule's position. It sits
-			// before discretionary.leisure, which owns "gift", so that a gift
-			// received (money in) is INCOME while a gift given (money out) fails
-			// the guard and falls through to DISCRETIONARY. Two rules match the
-			// same word and only the direction of the money separates them —
-			// which is exactly the disambiguating role spec §5 allows amount.
+			// The guard is what keeps this rule off ordinary expenses: paying a
+			// helper's salary is money out, so "salary" alone never reaches
+			// INCOME — it falls through to UNCLASSIFIED, which is honest.
 			//
-			// The guard also means this rule cannot fire on an ordinary expense:
-			// paying a helper's salary is money out, so "salary" alone never
-			// reaches INCOME.
+			// It says "gift from" and "gift received" rather than a bare "gift",
+			// and that phrasing is load-bearing. A refund is money in, so a
+			// returned gift purchase satisfies MONEY_IN exactly as a gift
+			// received does; if this rule owned the bare word it would take both,
+			// and spec §5 says the refund keeps the category it refunds. The
+			// guard separates money in from money out, but nothing can separate
+			// two money-in meanings of one word — so the vocabularies of a
+			// guarded and an unguarded rule have to stay disjoint. Bare "gift"
+			// belongs to discretionary.leisure below, refunds included.
+			// ClassificationRulesTest.keepsGuardedAndUnguardedVocabulariesDisjoint
+			// enforces this for the whole table rather than for "gift" alone.
 			//
 			// No "refund" or "reimbursement" keyword, on purpose. A reimbursed
 			// client dinner is negative DINING, not INCOME (skill) — recording it
@@ -113,7 +125,7 @@ public final class ClassificationRules {
 			// for, offset invisibly in another bucket.
 			ClassificationRule
 				.onAnyText("income.money-in", Category.INCOME, "salary", "payroll", "13th month pay", "bonus",
-						"interest", "dividend", "pension", "commission", "gift")
+						"interest", "dividend", "pension", "commission", "gift from", "gift received")
 				.guardedBy(AmountGuard.MONEY_IN),
 
 			// Owns "subscription", which is why utilities.household-service has to
