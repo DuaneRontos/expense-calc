@@ -35,11 +35,62 @@ jobs:
       issues: write          # comment back on the issue
       id-token: write        # OIDC token for the action
     steps:
+      # Which ref to check out, resolved before checkout so the answer is
+      # available to it.
+      #
+      # `pull_request` events hand actions/checkout the PR's merge commit; none
+      # of this job's four events is one, so checkout falls back to the default
+      # branch. On a PR mention that landed the agent in a tree holding none of
+      # the PR's files: its changed-file SHAs came back "unknown" and it spent
+      # nine turns on code that was not there. Issue mentions were unaffected,
+      # since branching from the default branch is right for those.
+      #
+      # Only an open, same-repo PR resolves to a branch. The other two cases
+      # both resolve to empty, which leaves checkout on the default branch and
+      # lets the action create a fresh branch itself:
+      #
+      #  - Merged or closed: the head branch is usually deleted here, and
+      #    checkout fails hard on a missing ref ("A branch or tag with the name
+      #    X could not be found") before the action can post anything. The
+      #    action already handles these by branching from the default branch.
+      #  - Forks: the action converts a detached PR-head checkout into a real
+      #    branch and pushes to `origin`, which is *this* repo — so a commit
+      #    would land here as a branch attached to no PR while the fork saw
+      #    nothing. Until someone needs that case, do not pretend to support it.
+      - id: target
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          IS_PR: ${{ github.event.issue.pull_request != null || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment' }}
+        run: |
+          ref=''
+          if [ "$IS_PR" = "true" ]; then
+            # One API call, and gh's own --jq rather than the jq binary, so
+            # this does not depend on what the runner image happens to ship.
+            IFS=$'\t' read -r state cross head < <(
+              gh pr view "$PR_NUMBER" --repo "$REPO" \
+                --json state,isCrossRepository,headRefName \
+                --jq '[.state, (.isCrossRepository | tostring), .headRefName] | @tsv'
+            )
+            if [ "$state" = "OPEN" ] && [ "$cross" = "false" ]; then
+              ref="$head"
+            fi
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "checkout ref: ${ref:-<default branch>}"
+
       # The agent needs a working tree to read and edit the repo, and full
       # history so it can branch from the right base.
+      #
+      # fetch-depth: 0 is doubly load-bearing now that `ref` is set explicitly:
+      # a positive depth narrows the refspec to the checked-out branch alone,
+      # and `origin/main` — which the action's own prompt tells the agent to
+      # diff against — would not exist in the tree.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ steps.target.outputs.ref }}
 
       - uses: anthropics/claude-code-action@v1
         with:
@@ -47,6 +98,13 @@ jobs:
           # credit — platform.claude.com billing is separate from a claude.ai
           # Pro/Max subscription, and the subscription does not fund it.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # Without this the SDK result field is stripped, so a run that fails
+          # on is_error:true reports only whatever noise preceded it — which is
+          # how a wrong-tree checkout came to look like a git hash-object
+          # failure. claude-code-review.yml has carried this since #29; this
+          # workflow needed it for the same reason and did not have it.
+          show_full_output: true
 
           # Opus costs more of the shared subscription pool per run than the
           # action's Sonnet default. CI and interactive Claude Code draw on the
