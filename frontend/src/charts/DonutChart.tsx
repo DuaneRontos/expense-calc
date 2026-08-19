@@ -33,9 +33,11 @@ export function DonutChart({
   const [available, onLayout] = useMeasuredWidth();
   const size = Math.min(available, MAX_DIAMETER);
 
-  // Memoized because `AppShell` reads `useWindowDimensions`, so every resize
-  // frame on web re-renders this subtree — and each render otherwise rebuilds
-  // a trigonometric path string per arc.
+  // Memoized because the *screen* reads `useLayout()` and re-renders its panels
+  // on every resize frame on web — each render otherwise rebuilds a
+  // trigonometric path string per arc. Not the shell: it wraps the navigator
+  // now, and its `children` element is referentially stable, so React bails out
+  // of this subtree when the shell alone re-renders.
   //
   // The dependency is identity-based. It holds for the module-level fixtures
   // and stops holding the moment a caller passes `response.buckets.filter(…)`
