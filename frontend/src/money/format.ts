@@ -146,6 +146,18 @@ function group(integer: string, separator: string): string {
 }
 
 /**
+ * True when the rounded digits are all zero, sign ignored.
+ *
+ * The single predicate {@link formatMoney} and {@link isNegative} both answer
+ * from. They used to decide independently, and disagreed: `isNegative("-0.00")`
+ * was false while `formatMoney("-0.00")` still emitted the minus, so one legend
+ * row could show a minus sign in the non-negative text colour.
+ */
+function isZeroDigits(integer: string, fraction: string): boolean {
+  return /^0+$/.test(integer) && /^0+$/.test(fraction);
+}
+
+/**
  * Formats a decimal-string amount as Philippine pesos.
  *
  * Negative amounts keep a leading minus rather than parentheses or a red
@@ -159,7 +171,10 @@ export function formatMoney(amount: string): string {
   const parts = localeParts();
 
   const digits = `${group(integer, parts.group)}${parts.decimal}${fraction}`;
-  const signed = negative ? `${parts.minusSign}` : '';
+  // Not `negative` alone: "-0.00" is what a category nets to when its refunds
+  // exactly cancel its spending, and "-₱0.00" reads as a rendering bug to
+  // everyone who sees it. "-0.001" rounds into the same place.
+  const signed = negative && !isZeroDigits(integer, fraction) ? `${parts.minusSign}` : '';
 
   return parts.symbolFirst
     ? `${signed}${parts.currency}${parts.literal}${digits}`
@@ -184,9 +199,5 @@ export function toChartNumber(amount: string): number {
 /** True when the amount is below zero — a refund, or a net-negative bucket. */
 export function isNegative(amount: string): boolean {
   const { negative, integer, fraction } = splitAmount(amount);
-  // "-0.00" is not negative. It reaches here whenever a category's refunds
-  // exactly cancel its spending, and rendering that as "-₱0.00" looks like a
-  // bug to everyone who sees it.
-  const isZero = /^0+$/.test(integer) && /^0+$/.test(fraction);
-  return negative && !isZero;
+  return negative && !isZeroDigits(integer, fraction);
 }

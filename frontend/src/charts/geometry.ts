@@ -23,6 +23,17 @@ export interface Arc {
 export interface DonutModel {
   arcs: Arc[];
   /**
+   * The buckets that actually got an arc — positive, non-zero, server order.
+   *
+   * Returned rather than left for the caller to re-derive. `DonutChart` used to
+   * compute its legend set as "buckets minus excluded", which quietly differs:
+   * `excluded` holds only the negatives, so a category netting exactly `"0.00"`
+   * kept a coloured swatch implying a slice this module had deliberately
+   * refused to draw. One source for "what is in the ring" is the only way the
+   * ring and the legend cannot drift.
+   */
+  drawable: ReportBucket[];
+  /**
    * Buckets excluded from the arc because they are net negative.
    *
    * **Spec §7: a donut cannot show a negative slice**, so the category
@@ -37,6 +48,22 @@ export interface DonutModel {
 }
 
 const TAU = Math.PI * 2;
+
+/** The smallest fraction of the radius the hole may shrink to. */
+const MIN_HOLE_RATIO = 0.3;
+
+/**
+ * The hole radius for a donut of the given outer radius and ring thickness.
+ *
+ * Clamped to a positive floor. `radius - thickness` goes negative in a
+ * container narrower than twice the thickness, and a negative `A` radius is
+ * invalid SVG — the renderer errors rather than clamping for you. A `size > 0`
+ * guard does not catch it, because a 60px donut has a positive size and a
+ * negative hole.
+ */
+export function holeRadius(radius: number, thickness: number): number {
+  return Math.max(radius * MIN_HOLE_RATIO, radius - thickness);
+}
 
 /** Cartesian point on a circle, with 0 radians at 12 o'clock, going clockwise. */
 function pointOn(cx: number, cy: number, radius: number, angle: number): [number, number] {
@@ -110,7 +137,7 @@ export function donutModel(
   const positiveTotal = drawable.reduce((sum, bucket) => sum + toChartNumber(bucket.total), 0);
 
   if (positiveTotal <= 0) {
-    return { arcs: [], excluded, positiveTotal: 0 };
+    return { arcs: [], drawable, excluded, positiveTotal: 0 };
   }
 
   let angle = 0;
@@ -130,7 +157,7 @@ export function donutModel(
     };
   });
 
-  return { arcs, excluded, positiveTotal };
+  return { arcs, drawable, excluded, positiveTotal };
 }
 
 /** One bar, resolved to a rectangle in chart space. */

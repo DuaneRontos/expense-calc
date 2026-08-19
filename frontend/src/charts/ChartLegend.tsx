@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Text, View } from 'react-native';
 
 import { formatMoney, isNegative } from '../money/format';
@@ -17,7 +18,7 @@ import type { ReportBucket } from '../api/types';
  * value is the point. A legend that only maps colour to name still leaves a
  * screen-reader user with no numbers.
  */
-export function ChartLegend({
+function ChartLegendComponent({
   buckets,
   excluded = [],
   title,
@@ -90,3 +91,9 @@ export function ChartLegend({
     </View>
   );
 }
+
+/**
+ * Memoized: `AppShell` re-renders this subtree on every resize frame, and the
+ * legend's props are unchanged across all of them.
+ */
+export const ChartLegend = memo(ChartLegendComponent);

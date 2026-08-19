@@ -10,8 +10,12 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <Stack
         screenOptions={{
-          headerStyle: { backgroundColor: palette.background },
-          headerTintColor: palette.text,
+          // `AppShell` renders the app's own header on every screen, so the
+          // navigator's would be a second one — and it labels screens with the
+          // route file name, so it read "index" and "expenses" in lower case
+          // above the real title. It also drew a back chevron between two peer
+          // destinations that have no parent/child relationship.
+          headerShown: false,
           contentStyle: { backgroundColor: palette.background },
         }}
       />

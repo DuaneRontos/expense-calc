@@ -22,10 +22,10 @@ export type LayoutSize = 'compact' | 'medium' | 'expanded';
 /**
  * Which layout a width selects.
  *
- * The spec writes the bands as `< 600`, `600–1024`, `> 1024`, which leaves 1024
- * itself named twice. Resolved to `medium`, matching the `<` at the other
- * boundary: each band owns its lower edge. An iPad in landscape is exactly
- * 1024pt, so this is a real device, not a hypothetical.
+ * The spec writes the bands as `< 600`, `600–1024`, `> 1024`, so 1024 falls in
+ * medium's inclusive range and outside expanded's exclusive one. Medium keeps
+ * it. An iPad in landscape is exactly 1024pt, so this is a real device rather
+ * than a hypothetical, and the test pins it deliberately.
  */
 export function layoutSizeFor(width: number): LayoutSize {
   if (width < BREAKPOINTS.compact) {

@@ -1,8 +1,9 @@
+import { useMemo } from 'react';
 import { Text, View } from 'react-native';
 import Svg, { G, Path } from 'react-native-svg';
 
 import { ChartLegend } from './ChartLegend';
-import { donutModel } from './geometry';
+import { donutModel, holeRadius } from './geometry';
 import { useMeasuredWidth } from './useMeasuredWidth';
 import { formatMoney } from '../money/format';
 import { colorForCategory, palette, spacing } from '../theme/tokens';
@@ -31,15 +32,21 @@ export function DonutChart({
 }) {
   const [available, onLayout] = useMeasuredWidth();
   const size = Math.min(available, MAX_DIAMETER);
-  const radius = size / 2;
 
-  const { arcs, excluded } = donutModel(buckets, radius, radius, radius, radius - thickness);
-  const drawn = buckets.filter((bucket) => !excluded.includes(bucket));
+  // Memoized because `AppShell` reads `useWindowDimensions`, so every resize
+  // frame on web re-renders this subtree — and each render otherwise rebuilds
+  // a trigonometric path string per arc.
+  const { arcs, drawable, excluded } = useMemo(() => {
+    const radius = size / 2;
+    return donutModel(buckets, radius, radius, radius, holeRadius(radius, thickness));
+  }, [buckets, size, thickness]);
+
+  const hasRing = size > 0 && arcs.length > 0;
 
   return (
     <View style={{ gap: spacing.md }} onLayout={onLayout}>
       <View style={{ alignItems: 'center' }}>
-        {size > 0 && arcs.length > 0 ? (
+        {hasRing ? (
           <Svg
             width={size}
             height={size}
@@ -60,13 +67,7 @@ export function DonutChart({
               ))}
             </G>
           </Svg>
-        ) : (
-          <View style={{ paddingVertical: spacing.lg }}>
-            <Text style={{ color: palette.textMuted, textAlign: 'center' }}>
-              Nothing to plot for this period.
-            </Text>
-          </View>
-        )}
+        ) : null}
 
         <Text style={{ fontSize: 20, fontWeight: '600', color: palette.text }}>
           {formatMoney(total)}
@@ -74,7 +75,12 @@ export function DonutChart({
         <Text style={{ color: palette.textMuted }}>Net for the period</Text>
       </View>
 
-      <ChartLegend buckets={drawn} excluded={excluded} />
+      {/*
+        `drawable` rather than "buckets minus excluded". The two differ for a
+        category netting exactly "0.00": it has no arc, but it is not excluded
+        either, so it used to keep a coloured swatch claiming a slice.
+      */}
+      <ChartLegend buckets={drawable} excluded={excluded} />
 
       {excluded.length > 0 ? (
         <Text style={{ color: palette.textMuted, fontSize: 12 }}>

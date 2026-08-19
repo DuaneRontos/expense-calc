@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,10 +9,16 @@ import { palette, spacing } from '../theme/tokens';
 /**
  * The one layout system of spec §2, expressed as a single component.
  *
- * Three breakpoints, one tree. The navigation moves — bottom tabs when compact,
- * a persistent sidebar when expanded — but the content is the same children in
- * all three, which is what keeps iOS, Android and desktop web from drifting
- * into three different apps.
+ * Three breakpoints, one tree. The navigation and the filter panel each move —
+ * bottom tabs and a hidden drawer when compact, a top row and a disclosure when
+ * medium, a persistent sidebar when expanded — but the content is the same
+ * children in all three, which is what keeps iOS, Android and desktop web from
+ * drifting into three different apps.
+ *
+ * **Every band gets an explicit answer for both.** The first version gave
+ * bottom tabs to compact and the sidebar to expanded, and medium — every tablet
+ * in portrait — silently inherited neither. A band that is not named anywhere
+ * does not fall back to something sensible; its content is simply dropped.
  */
 
 export interface NavItem {
@@ -30,21 +36,15 @@ export function AppShell({
 }: {
   title: string;
   nav: NavItem[];
-  /** Filter controls. A drawer when medium, always-visible when expanded. */
+  /** Filter controls. Persistent when expanded, a collapsible drawer below it. */
   sidebar?: ReactNode;
   children: ReactNode;
 }) {
   const layout = useLayout();
   const insets = useSafeAreaInsets();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const content = (
-    <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={{ padding: spacing.md, gap: spacing.lg }}
-    >
-      {children}
-    </ScrollView>
-  );
+  const showsDrawer = !layout.isExpanded && sidebar !== undefined;
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.background, paddingTop: insets.top }}>
@@ -63,22 +63,53 @@ export function AppShell({
           {layout.size} layout · {Math.round(layout.width)}px
         </Text>
 
-        {/*
-          The medium band's navigation.
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+          {/* The medium band's navigation: no bottom tabs, no sidebar to put it in. */}
+          {layout.isMedium ? (
+            <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm, flex: 1 }}>
+              {nav.map((item) => (
+                <NavButton key={item.key} item={item} />
+              ))}
+            </View>
+          ) : null}
 
-          Bottom tabs belong to compact and the sidebar belongs to expanded,
-          which leaves 600–1024px — every tablet in portrait — with no way to
-          change screen at all. Each band needs its own answer rather than two
-          bands having one and the third inheriting nothing.
-        */}
-        {layout.isMedium ? (
-          <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm }}>
-            {nav.map((item) => (
-              <NavButton key={item.key} item={item} />
-            ))}
-          </View>
-        ) : null}
+          {showsDrawer ? (
+            <Text
+              accessibilityRole="button"
+              accessibilityState={{ expanded: drawerOpen }}
+              accessibilityLabel={drawerOpen ? 'Hide filters' : 'Show filters'}
+              onPress={() => setDrawerOpen((open) => !open)}
+              style={{
+                minHeight: MIN_TOUCH_TARGET,
+                paddingTop: spacing.md,
+                color: palette.accent,
+                fontWeight: '600',
+              }}
+            >
+              {drawerOpen ? 'Hide filters' : 'Filters'}
+            </Text>
+          ) : null}
+        </View>
       </View>
+
+      {/*
+        The collapsible drawer of spec §2. Rendered inline above the content
+        rather than as an overlay: an overlay needs focus trapping and a
+        scrim to be correct, and #14 owns the real filter UI. What matters
+        here is that the panel is reachable at all — it used to be dropped.
+      */}
+      {showsDrawer && drawerOpen ? (
+        <View
+          style={{
+            padding: spacing.md,
+            backgroundColor: palette.surface,
+            borderBottomWidth: 1,
+            borderBottomColor: palette.border,
+          }}
+        >
+          {sidebar}
+        </View>
+      ) : null}
 
       <View style={{ flex: 1, flexDirection: layout.isExpanded ? 'row' : 'column' }}>
         {layout.isExpanded ? (
@@ -100,7 +131,12 @@ export function AppShell({
           </View>
         ) : null}
 
-        {content}
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: spacing.md, gap: spacing.lg }}
+        >
+          {children}
+        </ScrollView>
       </View>
 
       {layout.isCompact ? (

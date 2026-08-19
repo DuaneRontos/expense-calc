@@ -1,4 +1,3 @@
-import { router, usePathname } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { BarChart } from '../src/charts/BarChart';
@@ -6,6 +5,7 @@ import { DonutChart } from '../src/charts/DonutChart';
 import { sampleBreakdown, sampleOverTime } from '../src/charts/fixtures';
 import { AppShell } from '../src/layout/AppShell';
 import { useLayout } from '../src/layout/useLayout';
+import { useNavItems } from '../src/layout/useNavItems';
 import { palette, spacing } from '../src/theme/tokens';
 
 /**
@@ -18,20 +18,12 @@ import { palette, spacing } from '../src/theme/tokens';
  */
 export default function Overview() {
   const layout = useLayout();
-  const pathname = usePathname();
+  const nav = useNavItems();
 
   return (
     <AppShell
       title="Expense Calc"
-      nav={[
-        { key: 'overview', label: 'Overview', active: pathname === '/', onPress: () => router.push('/') },
-        {
-          key: 'expenses',
-          label: 'Expenses',
-          active: pathname === '/expenses',
-          onPress: () => router.push('/expenses'),
-        },
-      ]}
+      nav={nav}
       sidebar={
         <View style={{ gap: spacing.sm }}>
           <Text style={{ fontWeight: '600', color: palette.text }}>Filters</Text>

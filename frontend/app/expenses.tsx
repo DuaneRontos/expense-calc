@@ -1,7 +1,7 @@
-import { router, usePathname } from 'expo-router';
 import { Text, View } from 'react-native';
 
 import { AppShell } from '../src/layout/AppShell';
+import { useNavItems } from '../src/layout/useNavItems';
 import { palette, spacing } from '../src/theme/tokens';
 
 /**
@@ -12,21 +12,10 @@ import { palette, spacing } from '../src/theme/tokens';
  * assumes without being told. The list itself is #14.
  */
 export default function Expenses() {
-  const pathname = usePathname();
+  const nav = useNavItems();
 
   return (
-    <AppShell
-      title="Expenses"
-      nav={[
-        { key: 'overview', label: 'Overview', active: pathname === '/', onPress: () => router.push('/') },
-        {
-          key: 'expenses',
-          label: 'Expenses',
-          active: pathname === '/expenses',
-          onPress: () => router.push('/expenses'),
-        },
-      ]}
-    >
+    <AppShell title="Expenses" nav={nav}>
       <View style={{ gap: spacing.sm }}>
         <Text style={{ color: palette.text, fontWeight: '600' }}>Expense list</Text>
         <Text style={{ color: palette.textMuted }}>

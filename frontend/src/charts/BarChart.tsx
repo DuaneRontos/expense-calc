@@ -1,4 +1,5 @@
-import { Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { View } from 'react-native';
 import Svg, { Line, Rect } from 'react-native-svg';
 
 import { ChartLegend } from './ChartLegend';
@@ -24,7 +25,12 @@ export function BarChart({
   legendTitle?: string;
 }) {
   const [width, onLayout] = useMeasuredWidth();
-  const { bars, baselineY } = barModel(buckets, width, height);
+  // Memoized for the same reason as the donut: a window resize re-renders this
+  // subtree on every frame, and each render otherwise reallocates every rect.
+  const { bars, baselineY } = useMemo(
+    () => barModel(buckets, width, height),
+    [buckets, width, height],
+  );
 
   return (
     <View style={{ gap: spacing.md }} onLayout={onLayout}>
@@ -56,10 +62,6 @@ export function BarChart({
             />
           ))}
         </Svg>
-      ) : null}
-
-      {bars.length === 0 ? (
-        <Text style={{ color: palette.textMuted }}>No periods to plot.</Text>
       ) : null}
 
       <ChartLegend buckets={buckets} title={legendTitle} />

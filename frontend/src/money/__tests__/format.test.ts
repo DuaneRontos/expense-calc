@@ -52,6 +52,18 @@ describe('formatMoney', () => {
     expect(formatMoney('-500.00')).toMatch(/^-/);
   });
 
+  it('does not render negative zero with a minus', () => {
+    // `isNegative` already refused to call this negative; `formatMoney` used to
+    // disagree, so one legend row showed a minus sign in the non-negative text
+    // colour. Both now answer from the same predicate.
+    expect(formatMoney('-0.00')).not.toMatch(/^-/);
+    expect(formatMoney('-0.00')).toBe(formatMoney('0.00'));
+  });
+
+  it('does not render a sign for a negative that rounds away to zero', () => {
+    expect(formatMoney('-0.001')).not.toMatch(/^-/);
+  });
+
   it('groups thousands and leaves smaller amounts ungrouped', () => {
     expect(formatMoney('999.00')).toContain('999.00');
     expect(formatMoney('1000.00')).toContain('1,000.00');
