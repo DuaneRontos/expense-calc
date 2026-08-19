@@ -51,7 +51,29 @@ public class ExpenseController {
 	public ResponseEntity<ExpenseDetail> update(@PathVariable UUID id,
 			@Valid @RequestBody ExpenseRequests.Update request) {
 		return ResponseEntity.ok(this.expenses.update(id, amount(request.amount()), request.currency(),
-				request.occurredOn(), request.merchant(), request.description()));
+				request.occurredOn(), text(request.merchant(), "merchant"),
+				text(request.description(), "description")));
+	}
+
+	/**
+	 * Rejects a blank text field rather than storing it.
+	 *
+	 * <p>Null means "leave alone" in a {@code PATCH}, and {@code ""} is not
+	 * null — so a blank merchant used to be stored as an empty string, count as
+	 * a text change, and drop the expense to {@code UNCLASSIFIED}. That is
+	 * neither leaving it alone nor clearing it: it is a half-expression of the
+	 * clear semantics this API deliberately does not offer. Rejecting it keeps
+	 * the two meanings from blurring into a third nobody chose.
+	 */
+	private static String text(String value, String field) {
+		if (value == null) {
+			return null;
+		}
+		if (value.isBlank()) {
+			throw new InvalidExpenseException(
+					"%s cannot be blank. Omit it to leave it unchanged.".formatted(field), field);
+		}
+		return value;
 	}
 
 	/** {@code POST /expenses/{id}/classification} — appends a user reclassification. */

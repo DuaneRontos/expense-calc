@@ -32,6 +32,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * different claims, and only one of them is what someone starting the app cares
  * about. It is also the closest thing to a smoke test a deployment has.
  *
+ * <p><b>Each test owns a year.</b> {@code RANDOM_PORT} means these writes
+ * commit rather than roll back, and all of them share one schema — so an
+ * assertion counting rows counts every test's rows. Giving each method its own
+ * year keeps the counts meaningful and, more to the point, makes this file safe
+ * to add to: the reviewer of this PR hit exactly that, adding a case whose
+ * fixture broke an unrelated method's {@code hasSize(1)}.
+ *
  * <p>Requires Docker.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -72,7 +79,7 @@ class BackendOperabilityTest {
 		//    groceries without anyone saying so.
 		ResponseEntity<Map<String, Object>> created = this.http.exchange(
 				json("POST", "/api/v1/expenses",
-						Map.of("amount", "1234.56", "currency", "PHP", "occurredOn", "2026-01-15", "merchant",
+						Map.of("amount", "1234.56", "currency", "PHP", "occurredOn", "2031-01-15", "merchant",
 								"Puregold", "description", "weekly shop")),
 				new org.springframework.core.ParameterizedTypeReference<>() {
 				});
@@ -92,7 +99,7 @@ class BackendOperabilityTest {
 
 		// 2. List. The category is resolved in the query, not fetched per row.
 		ResponseEntity<Map<String, Object>> listed = this.http.exchange(
-				RequestEntity.get("/api/v1/expenses?category=GROCERIES&from=2026-01-01&to=2026-02-01").build(),
+				RequestEntity.get("/api/v1/expenses?category=GROCERIES&from=2031-01-01&to=2031-02-01").build(),
 				new org.springframework.core.ParameterizedTypeReference<>() {
 				});
 
@@ -102,7 +109,7 @@ class BackendOperabilityTest {
 
 		// 3. Report. The expense should be in January's groceries bucket.
 		ResponseEntity<Map<String, Object>> report = this.http.exchange(
-				RequestEntity.get("/api/v1/reports/by-category?from=2026-01-01&to=2026-02-01").build(),
+				RequestEntity.get("/api/v1/reports/by-category?from=2031-01-01&to=2031-02-01").build(),
 				new org.springframework.core.ParameterizedTypeReference<>() {
 				});
 
@@ -124,7 +131,7 @@ class BackendOperabilityTest {
 		// 5. The report follows the correction, because it reads the current
 		//    category (the as-of read exists for reproducing a closed period).
 		ResponseEntity<Map<String, Object>> afterReclassification = this.http.exchange(
-				RequestEntity.get("/api/v1/reports/by-category?from=2026-01-01&to=2026-02-01").build(),
+				RequestEntity.get("/api/v1/reports/by-category?from=2031-01-01&to=2031-02-01").build(),
 				new org.springframework.core.ParameterizedTypeReference<>() {
 				});
 
@@ -145,7 +152,7 @@ class BackendOperabilityTest {
 		// sum across currencies.
 		ResponseEntity<Map<String, Object>> response = this.http.exchange(
 				json("POST", "/api/v1/expenses",
-						Map.of("amount", "10.00", "currency", "USD", "occurredOn", "2026-01-15")),
+						Map.of("amount", "10.00", "currency", "USD", "occurredOn", "2031-01-15")),
 				new org.springframework.core.ParameterizedTypeReference<>() {
 				});
 
@@ -159,16 +166,16 @@ class BackendOperabilityTest {
 	void netsRefundsAgainstSpending() {
 		// The rule this whole codebase is built around (issue #8), end to end.
 		this.http.exchange(json("POST", "/api/v1/expenses", Map.of("amount", "2000.00", "currency", "PHP",
-				"occurredOn", "2026-03-10", "merchant", "SM Supermarket")),
+				"occurredOn", "2032-03-10", "merchant", "SM Supermarket")),
 				new org.springframework.core.ParameterizedTypeReference<Map<String, Object>>() {
 				});
 		this.http.exchange(json("POST", "/api/v1/expenses", Map.of("amount", "-500.00", "currency", "PHP",
-				"occurredOn", "2026-03-11", "merchant", "SM Supermarket", "description", "returned items")),
+				"occurredOn", "2032-03-11", "merchant", "SM Supermarket", "description", "returned items")),
 				new org.springframework.core.ParameterizedTypeReference<Map<String, Object>>() {
 				});
 
 		ResponseEntity<Map<String, Object>> report = this.http.exchange(
-				RequestEntity.get("/api/v1/reports/by-category?from=2026-03-01&to=2026-04-01").build(),
+				RequestEntity.get("/api/v1/reports/by-category?from=2032-03-01&to=2032-04-01").build(),
 				new org.springframework.core.ParameterizedTypeReference<>() {
 				});
 
@@ -179,12 +186,88 @@ class BackendOperabilityTest {
 	}
 
 	@Test
+	@DisplayName("keeps a manual reclassification when the text is later edited")
+	@SuppressWarnings("unchecked")
+	void doesNotOverruleAPersonWithTheEngine() {
+		// The engine's guess is a default; a person's decision is not. Appending
+		// a RULE_ENGINE record after a USER one silently overrules it, because
+		// the current category is the latest record — so fixing a typo in the
+		// description used to throw away the category somebody had corrected,
+		// with nothing to say it happened and the reports following along.
+		ResponseEntity<Map<String, Object>> created = this.http.exchange(
+				json("POST", "/api/v1/expenses", Map.of("amount", "800.00", "currency", "PHP", "occurredOn",
+						"2035-05-02", "merchant", "Puregold", "description", "wekly shop")),
+				new org.springframework.core.ParameterizedTypeReference<>() {
+				});
+		String id = (String) created.getBody().get("id");
+		assertThat(created.getBody()).containsEntry("category", "GROCERIES");
+
+		this.http.exchange(
+				json("POST", "/api/v1/expenses/" + id + "/classification",
+						Map.of("category", "DINING", "reason", "it was a restaurant meal")),
+				new org.springframework.core.ParameterizedTypeReference<Map<String, Object>>() {
+				});
+
+		// Fix the typo. The category must survive it.
+		ResponseEntity<Map<String, Object>> patched = this.http.exchange(
+				json("PATCH", "/api/v1/expenses/" + id, Map.of("description", "weekly shop")),
+				new org.springframework.core.ParameterizedTypeReference<>() {
+				});
+
+		assertThat(patched.getBody()).containsEntry("category", "DINING").containsEntry("description", "weekly shop");
+		assertThat((List<?>) patched.getBody().get("classifications")).hasSize(2);
+	}
+
+	@Test
+	@DisplayName("refuses a blank reclassification reason as a 400, not a 500")
+	void refusesABlankReason() {
+		ResponseEntity<Map<String, Object>> created = this.http.exchange(
+				json("POST", "/api/v1/expenses",
+						Map.of("amount", "100.00", "currency", "PHP", "occurredOn", "2036-06-01")),
+				new org.springframework.core.ParameterizedTypeReference<>() {
+				});
+		String id = (String) created.getBody().get("id");
+
+		// @NotNull let whitespace through to the domain guard, which threw and
+		// escaped Boot's default handler as a bare 500 — no problem+json, no
+		// violations, and a stack trace logged for plainly bad input.
+		ResponseEntity<Map<String, Object>> response = this.http.exchange(
+				json("POST", "/api/v1/expenses/" + id + "/classification",
+						Map.of("category", "DINING", "reason", "   ")),
+				new org.springframework.core.ParameterizedTypeReference<>() {
+				});
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+		assertThat(response.getBody()).containsEntry("title", "Invalid expense");
+	}
+
+	@Test
+	@DisplayName("refuses a blank merchant rather than storing one")
+	void refusesABlankMerchant() {
+		ResponseEntity<Map<String, Object>> created = this.http.exchange(
+				json("POST", "/api/v1/expenses", Map.of("amount", "100.00", "currency", "PHP", "occurredOn",
+						"2037-07-01", "merchant", "Puregold")),
+				new org.springframework.core.ParameterizedTypeReference<>() {
+				});
+		String id = (String) created.getBody().get("id");
+
+		// "" is neither "leave alone" nor a clean clear — it used to store an
+		// empty string and drop the expense to UNCLASSIFIED.
+		ResponseEntity<Map<String, Object>> response = this.http.exchange(
+				json("PATCH", "/api/v1/expenses/" + id, Map.of("merchant", "")),
+				new org.springframework.core.ParameterizedTypeReference<>() {
+				});
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+	}
+
+	@Test
 	@DisplayName("re-runs classification when the text changes, and not when it does not")
 	@SuppressWarnings("unchecked")
 	void reclassifiesOnTextChangeOnly() {
 		ResponseEntity<Map<String, Object>> created = this.http.exchange(
 				json("POST", "/api/v1/expenses", Map.of("amount", "300.00", "currency", "PHP", "occurredOn",
-						"2026-04-01", "merchant", "Jollibee")),
+						"2033-04-01", "merchant", "Jollibee")),
 				new org.springframework.core.ParameterizedTypeReference<>() {
 				});
 		String id = (String) created.getBody().get("id");

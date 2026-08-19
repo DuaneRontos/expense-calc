@@ -53,6 +53,25 @@ public class ExpenseProblemHandler {
 	}
 
 	/**
+	 * The domain layer's own guards, as a net.
+	 *
+	 * <p>{@code Money.toMinorUnits} rejects sub-centavo amounts and long
+	 * overflow; {@code ClassificationRecord.fromUser} rejects a reason past
+	 * {@code MAX_REASON_LENGTH}. Each is currently shadowed by a controller
+	 * pre-check or a bean-validation annotation — which is fine until the two
+	 * copies drift. {@code MAX_REASON_LENGTH = 200} and {@code @Size(max = 200)}
+	 * are independent literals with nothing tying them together; raise one and
+	 * the other becomes a 500 for what is still bad input.
+	 *
+	 * <p>Scoped to this controller, so it cannot swallow a precondition failure
+	 * from elsewhere in the application and report it as the caller's fault.
+	 */
+	@ExceptionHandler(IllegalArgumentException.class)
+	public ProblemDetail handleDomainRejection(IllegalArgumentException problem) {
+		return asProblem(problem.getMessage(), List.of("body"));
+	}
+
+	/**
 	 * Bean-validation failures, one violation per offending field.
 	 *
 	 * <p>Each violation carries the message for <em>its own</em> field rather

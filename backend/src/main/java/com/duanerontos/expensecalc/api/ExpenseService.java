@@ -8,6 +8,7 @@ import java.util.UUID;
 import com.duanerontos.expensecalc.classification.Classification;
 import com.duanerontos.expensecalc.classification.ClassificationRecord;
 import com.duanerontos.expensecalc.classification.ClassificationRecordRepository;
+import com.duanerontos.expensecalc.classification.ClassificationSource;
 import com.duanerontos.expensecalc.classification.ExpenseClassifier;
 import com.duanerontos.expensecalc.expense.Category;
 import com.duanerontos.expensecalc.expense.Expense;
@@ -78,19 +79,40 @@ public class ExpenseService {
 	 * The rule engine reads nothing else as text, so re-classifying on an amount
 	 * or date edit would append a record asserting a decision nobody made and
 	 * bury the real ones in the history.
+	 *
+	 * <p><b>And not at all once a person has classified it by hand.</b> The
+	 * current category is the latest record, so an engine record appended after
+	 * a {@code USER} one silently overrules it: correcting a typo in the
+	 * description would throw away the correction somebody made to the category,
+	 * with nothing to say it happened and the reports following along. The
+	 * engine's guess is a default, and a default does not get to overwrite a
+	 * decision.
 	 */
 	@Transactional
 	public ExpenseDetail update(UUID id, BigDecimal amount, String currency, java.time.LocalDate occurredOn,
 			String merchant, String description) {
 		Expense expense = require(id);
 
-		if (expense.applyUpdate(amount, currency, occurredOn, merchant, description)) {
+		if (expense.applyUpdate(amount, currency, occurredOn, merchant, description) && !classifiedByHand(id)) {
 			Classification classification = this.classifier.classify(expense);
 			this.records
 				.save(ClassificationRecord.fromRuleEngine(expense.getId(), classification, this.clock.instant()));
 		}
 
 		return detail(this.expenses.save(expense));
+	}
+
+	/**
+	 * Whether the decision in force was a person's rather than the engine's.
+	 *
+	 * <p>One indexed lookup, served by V3's {@code (expense_id, recorded_at
+	 * DESC, id DESC)}, on a path that already reads the history to build its
+	 * response.
+	 */
+	private boolean classifiedByHand(UUID id) {
+		return this.records.findFirstByExpenseIdOrderByRecordedAtDescIdDesc(id)
+			.filter(record -> record.getSource() == ClassificationSource.USER)
+			.isPresent();
 	}
 
 	/**

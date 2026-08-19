@@ -5,6 +5,7 @@ import java.time.LocalDate;
 
 import com.duanerontos.expensecalc.expense.Category;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
@@ -46,10 +47,13 @@ public final class ExpenseRequests {
 	/**
 	 * {@code POST /expenses/{id}/classification}.
 	 *
-	 * @param reason required — an unexplained category change is exactly the
-	 *     question the history exists to answer
+	 * @param reason required and non-blank — an unexplained category change is
+	 *     exactly the question the history exists to answer, and {@code "   "}
+	 *     answers it no better than {@code null}. {@code @NotNull} let
+	 *     whitespace through to the domain guard, which threw and escaped as a
+	 *     bare 500 for what is plainly bad input.
 	 */
-	public record Reclassify(@NotNull Category category, @NotNull @Size(max = 200) String reason) {
+	public record Reclassify(@NotNull Category category, @NotBlank @Size(max = 200) String reason) {
 	}
 
 }
