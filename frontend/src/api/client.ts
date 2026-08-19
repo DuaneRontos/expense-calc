@@ -1,23 +1,36 @@
 import { Platform } from 'react-native';
 
 import { ApiError, readProblem } from './problem';
+import { Session } from './session';
 import type {
   CategoryBreakdown,
   CategoryView,
+  CreateExpenseRequest,
   ExpenseDetail,
   ExpensePage,
   ExpenseQuery,
+  LoginRequest,
+  LogoutResult,
   PeriodComparison,
+  ReclassifyRequest,
   SpendOverTime,
   TimeBucket,
+  Tokens,
+  UpdateExpenseRequest,
 } from './types';
+import { assertSendableAmount } from '../money/format';
 
 /**
- * The typed API client layer (issue #3; the full client and models are #13).
+ * The typed API client (issue #13).
  *
  * Everything the app knows about HTTP lives here. Screens call methods that
  * return the wire types in `./types` and throw {@link ApiError} on failure —
  * they never see a `Response`, a status code, or a query string.
+ *
+ * **Money crosses this boundary as a decimal string in both directions.** No
+ * method takes or returns a `number` for an amount, and none does arithmetic on
+ * one: the backend owns every total (spec §3), so there is nothing here to add
+ * up. That is the whole reason this layer can be type-safe about money at all.
  */
 
 /**
@@ -40,30 +53,6 @@ function defaultBaseUrl(): string {
 }
 
 export const API_BASE_PATH = '/api/v1';
-
-/**
- * Holds the access token in memory for the life of the process.
- *
- * **Spec §9.2 forbids `localStorage` outright**, and by extension
- * `AsyncStorage`, which is `localStorage` on web. A token there is readable by
- * any script that achieves XSS. The refresh token's storage differs per target
- * — SecureStore on device, an `httpOnly` cookie on web — and belongs to #13;
- * this holder deliberately covers only the access token, which is in memory on
- * every target.
- */
-class AccessTokenHolder {
-  private token: string | null = null;
-
-  get(): string | null {
-    return this.token;
-  }
-
-  set(token: string | null): void {
-    this.token = token;
-  }
-}
-
-export const accessToken = new AccessTokenHolder();
 
 /**
  * Serializes {@link ExpenseQuery} into the shape the server parses (spec §6).
@@ -110,6 +99,12 @@ export interface ClientOptions {
   baseUrl?: string;
   /** Injected in tests. Defaults to the platform `fetch`. */
   fetchImpl?: typeof fetch;
+  session?: Session;
+}
+
+interface RequestOptions extends RequestInit {
+  /** Endpoints that must not carry a token or trigger a refresh. */
+  anonymous?: boolean;
 }
 
 export class ExpenseCalcClient {
@@ -117,20 +112,38 @@ export class ExpenseCalcClient {
 
   private readonly fetchImpl: typeof fetch;
 
+  readonly session: Session;
+
+  /**
+   * The in-flight refresh, shared by every caller that needs one.
+   *
+   * Without this, a screen that fires three requests on mount with an expired
+   * token starts three refreshes. Rotation makes that actively harmful rather
+   * than merely wasteful: each exchange invalidates the previous token, so the
+   * second and third arrive holding a token the first just killed, and the user
+   * is signed out by their own app loading a screen.
+   */
+  private refreshing: Promise<void> | null = null;
+
   constructor(options: ClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? defaultBaseUrl()).replace(/\/$/, '');
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
+    this.session = options.session ?? new Session();
   }
 
-  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const token = accessToken.get();
+  private async send<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    const { anonymous, ...init } = options;
     const headers = new Headers(init.headers);
     headers.set('Accept', 'application/json, application/problem+json');
     if (init.body !== undefined) {
       headers.set('Content-Type', 'application/json');
     }
-    if (token) {
-      headers.set('Authorization', `Bearer ${token}`);
+
+    if (!anonymous) {
+      const token = this.session.currentAccessToken();
+      if (token) {
+        headers.set('Authorization', `Bearer ${token}`);
+      }
     }
 
     const response = await this.fetchImpl(`${this.baseUrl}${API_BASE_PATH}${path}`, {
@@ -151,6 +164,110 @@ export class ExpenseCalcClient {
     return (await response.json()) as T;
   }
 
+  /**
+   * Sends a request, refreshing the access token around it when needed.
+   *
+   * Refreshes proactively when the token is at or near expiry — the API returns
+   * `expiresInSeconds` precisely so a client can do that rather than wait for a
+   * failure — and reactively, exactly once, on a 401. The single retry matters:
+   * retrying a 401 that a fresh token also fails is an infinite loop against the
+   * server, and the second failure is real.
+   */
+  private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    if (options.anonymous) {
+      return this.send<T>(path, options);
+    }
+
+    if (this.session.needsRefresh() && (await this.session.isResumable())) {
+      await this.refreshOnce();
+    }
+
+    try {
+      return await this.send<T>(path, options);
+    } catch (error) {
+      if (!(error instanceof ApiError) || !error.isUnauthorized) {
+        throw error;
+      }
+      if (!(await this.session.isResumable())) {
+        throw error;
+      }
+
+      await this.refreshOnce();
+      return this.send<T>(path, options);
+    }
+  }
+
+  /** Collapses concurrent refreshes into one exchange. */
+  private refreshOnce(): Promise<void> {
+    this.refreshing ??= this.refresh()
+      .catch(async (error: unknown) => {
+        // A rejected refresh token is not recoverable: it has either expired or
+        // been rotated away. Clearing here means the next request presents no
+        // credential and gets a clean 401 rather than replaying a dead token.
+        if (error instanceof ApiError && error.isUnauthorized) {
+          await this.session.clear();
+        }
+        throw error;
+      })
+      .finally(() => {
+        this.refreshing = null;
+      });
+
+    return this.refreshing;
+  }
+
+  // ---- auth (spec §9.2) -------------------------------------------------
+
+  /** `POST /auth/login`. Stores both halves per the spec's per-target table. */
+  async login(credentials: LoginRequest): Promise<void> {
+    const tokens = await this.send<Tokens>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+      anonymous: true,
+    });
+    await this.session.adopt(tokens);
+  }
+
+  /**
+   * `POST /auth/refresh` — exchanges the stored refresh token for a new pair.
+   *
+   * The old token dies the moment this succeeds, so a client that loses the
+   * response has to sign in again. That is the correct trade: a refresh token
+   * that survives being used never expires in practice once captured.
+   */
+  async refresh(): Promise<void> {
+    const refreshToken = await this.session.refreshToken();
+    if (!refreshToken) {
+      throw new ApiError({ status: 401, title: 'Session expired' });
+    }
+
+    const tokens = await this.send<Tokens>('/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
+      anonymous: true,
+    });
+    await this.session.adopt(tokens);
+  }
+
+  /**
+   * `POST /auth/logout` — revokes every refresh token server-side.
+   *
+   * Local state is cleared even if the call fails. A user who pressed sign out
+   * on a flaky connection should not be left holding a usable token because the
+   * request timed out.
+   */
+  async logout(): Promise<LogoutResult | null> {
+    try {
+      return await this.request<LogoutResult>('/auth/logout', { method: 'POST' });
+    } catch {
+      return null;
+    } finally {
+      await this.session.clear();
+    }
+  }
+
+  // ---- reads ------------------------------------------------------------
+
   /** `GET /categories` — the taxonomy, so no screen hardcodes a label. */
   categories(): Promise<CategoryView[]> {
     return this.request<CategoryView[]>('/categories');
@@ -165,6 +282,59 @@ export class ExpenseCalcClient {
   expense(id: string): Promise<ExpenseDetail> {
     return this.request<ExpenseDetail>(`/expenses/${encodeURIComponent(id)}`);
   }
+
+  // ---- writes -----------------------------------------------------------
+
+  /**
+   * `POST /expenses` — creates and classifies.
+   *
+   * `async` so that a rejected amount arrives as a rejected promise like every
+   * other failure here. Validating in a non-async method threw synchronously,
+   * which a caller written as `create(...).catch(showFieldError)` would miss
+   * entirely — the throw escapes before there is a promise to catch on.
+   */
+  async createExpense(request: CreateExpenseRequest): Promise<ExpenseDetail> {
+    return this.request<ExpenseDetail>('/expenses', {
+      method: 'POST',
+      body: JSON.stringify({ ...request, amount: assertSendableAmount(request.amount) }),
+    });
+  }
+
+  /**
+   * `PATCH /expenses/{id}` — partial update.
+   *
+   * Undefined fields are dropped rather than serialized as `null`. Both mean
+   * "leave alone" to this API, but only one of them says so without relying on
+   * the server reading a null the same way.
+   */
+  async updateExpense(id: string, request: UpdateExpenseRequest): Promise<ExpenseDetail> {
+    const body: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(request)) {
+      if (value !== undefined) {
+        body[key] = key === 'amount' ? assertSendableAmount(value) : value;
+      }
+    }
+
+    return this.request<ExpenseDetail>(`/expenses/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** `POST /expenses/{id}/classification` — appends a user reclassification. */
+  reclassify(id: string, request: ReclassifyRequest): Promise<ExpenseDetail> {
+    return this.request<ExpenseDetail>(`/expenses/${encodeURIComponent(id)}/classification`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  /** `DELETE /expenses/{id}` — 204, classification history cascaded. */
+  deleteExpense(id: string): Promise<void> {
+    return this.request<void>(`/expenses/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  // ---- reports (spec §7) ------------------------------------------------
 
   /**
    * `GET /reports/by-category`.

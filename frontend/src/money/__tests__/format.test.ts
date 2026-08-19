@@ -1,4 +1,5 @@
 import {
+  assertSendableAmount,
   formatMoney,
   isNegative,
   resetMoneyFormatCache,
@@ -164,5 +165,27 @@ describe('toChartNumber', () => {
   it('keeps the sign, because a negative bucket is drawn below the baseline', () => {
     expect(toChartNumber('-4200.00')).toBe(-4200);
     expect(toChartNumber('18420.25')).toBeCloseTo(18420.25, 2);
+  });
+});
+
+describe('assertSendableAmount', () => {
+  it('passes an amount through untouched', () => {
+    expect(assertSendableAmount('1234.56')).toBe('1234.56');
+    expect(assertSendableAmount('-500')).toBe('-500');
+    expect(assertSendableAmount('  12.5  ')).toBe('12.5');
+  });
+
+  it('rejects sub-centavo precision rather than rounding it', () => {
+    // The contrast with splitAmount is the point: rounding is correct at the
+    // display boundary and wrong on the wire, where the server rejects a value
+    // it would otherwise have to move on the user's behalf.
+    expect(() => assertSendableAmount('10.005')).toThrow(TypeError);
+    expect(splitAmount('10.005').fraction).toBe('01');
+  });
+
+  it('rejects anything that is not a decimal string', () => {
+    expect(() => assertSendableAmount('1,234.56')).toThrow(TypeError);
+    expect(() => assertSendableAmount('')).toThrow(TypeError);
+    expect(() => assertSendableAmount('abc')).toThrow(TypeError);
   });
 });

@@ -252,6 +252,38 @@ export function formatMoney(amount: string): string {
 }
 
 /**
+ * Validates an amount the client is about to *send*, without altering it.
+ *
+ * **Distinct from {@link splitAmount}, and the difference is the point.**
+ * `splitAmount` rounds HALF_UP at scale 2 because that is correct at the
+ * presentation boundary. The API is not a presentation boundary: it rejects
+ * sub-centavo precision with a 400 rather than rounding it, on the grounds that
+ * an amount the server quietly moved is money the user did not enter. Rounding
+ * on the way out would hide that difference and send a number nobody typed.
+ *
+ * Checked client-side as well as server-side so a typo is a field error the
+ * moment focus leaves the input, rather than a round trip later.
+ *
+ * @throws TypeError if the amount is not a decimal string, or carries more than
+ *     {@link SCALE} decimal places
+ */
+export function assertSendableAmount(amount: string): string {
+  const trimmed = amount.trim();
+  if (!DECIMAL.test(trimmed)) {
+    throw new TypeError(`${amount} is not an amount.`);
+  }
+
+  const fraction = trimmed.split('.')[1] ?? '';
+  if (fraction.length > SCALE) {
+    throw new TypeError(
+      `${amount} is more precise than a centavo. Amounts carry at most ${SCALE} decimal places.`,
+    );
+  }
+
+  return trimmed;
+}
+
+/**
  * The exact amount as a `number`, for chart geometry only.
  *
  * **Never use this for display, comparison, or arithmetic that a user sees.**

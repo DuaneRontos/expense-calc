@@ -1,10 +1,51 @@
 import { buildExpenseQuery, ExpenseCalcClient } from '../client';
 import { ApiError } from '../problem';
+import { Session } from '../session';
+import type { RefreshTokenStore } from '../refreshTokenStore';
+
+/** An in-memory stand-in for the Keychain, so tests never touch a native module. */
+function memoryStore(initial: string | null = null): RefreshTokenStore {
+  let token = initial;
+  return {
+    read: () => Promise.resolve(token),
+    write: (value: string) => {
+      token = value;
+      return Promise.resolve();
+    },
+    clear: () => {
+      token = null;
+      return Promise.resolve();
+    },
+  };
+}
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+const problem = (status: number, body: Record<string, unknown> = {}) =>
+  new Response(JSON.stringify({ status, ...body }), {
+    status,
+    headers: { 'Content-Type': 'application/problem+json' },
+  });
+
+const TOKENS = { accessToken: 'access-1', refreshToken: 'refresh-1', expiresInSeconds: 900 };
+
+function clientWith(fetchImpl: jest.Mock, store: RefreshTokenStore = memoryStore()) {
+  return new ExpenseCalcClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: fetchImpl as unknown as typeof fetch,
+    session: new Session(store),
+  });
+}
 
 describe('buildExpenseQuery', () => {
   it('repeats category rather than joining it, which the server would reject', () => {
-    const query = buildExpenseQuery({ category: ['DINING', 'GROCERIES'] });
-    expect(query).toBe('?category=DINING&category=GROCERIES');
+    expect(buildExpenseQuery({ category: ['DINING', 'GROCERIES'] })).toBe(
+      '?category=DINING&category=GROCERIES',
+    );
   });
 
   it('serializes sort as field,dir', () => {
@@ -16,8 +57,8 @@ describe('buildExpenseQuery', () => {
   it('keeps page 0 and a zero amount bound, which falsiness would drop', () => {
     const query = buildExpenseQuery({ page: 0, minAmount: '0' });
     expect(query).toContain('page=0');
-    // minAmount=0 is the filter that excludes refunds; dropping it silently
-    // returns them and the totals stop matching the report.
+    // minAmount=0 excludes refunds; dropping it silently returns them and the
+    // totals stop matching the report.
     expect(query).toContain('minAmount=0');
   });
 
@@ -26,36 +67,25 @@ describe('buildExpenseQuery', () => {
   });
 });
 
-describe('ExpenseCalcClient', () => {
-  const ok = (body: unknown) =>
-    new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
-
+describe('reads', () => {
   it('calls the versioned base path', async () => {
-    const fetchImpl = jest.fn().mockResolvedValue(ok([]));
-    const client = new ExpenseCalcClient({ baseUrl: 'http://api.test', fetchImpl });
-
-    await client.categories();
+    const fetchImpl = jest.fn().mockResolvedValue(json([]));
+    await clientWith(fetchImpl).categories();
 
     expect(fetchImpl).toHaveBeenCalledWith('http://api.test/api/v1/categories', expect.anything());
   });
 
   it('throws ApiError carrying field violations for a 400', async () => {
-    const problem = {
-      type: 'https://expense-calc.invalid/problems/invalid-expense',
-      title: 'Invalid expense',
-      status: 400,
-      detail: 'PHP is the only supported currency.',
-      violations: [{ field: 'currency', message: 'PHP is the only supported currency.' }],
-    };
     const fetchImpl = jest.fn().mockResolvedValue(
-      new Response(JSON.stringify(problem), {
-        status: 400,
-        headers: { 'Content-Type': 'application/problem+json' },
+      problem(400, {
+        detail: 'PHP is the only supported currency.',
+        violations: [{ field: 'currency', message: 'PHP is the only supported currency.' }],
       }),
     );
-    const client = new ExpenseCalcClient({ baseUrl: 'http://api.test', fetchImpl });
 
-    const error = await client.expenses().catch((thrown: unknown) => thrown);
+    const error = await clientWith(fetchImpl)
+      .expenses()
+      .catch((thrown: unknown) => thrown);
 
     expect(error).toBeInstanceOf(ApiError);
     // Spec §8: surfaced inline against the offending field, not in a toast.
@@ -63,14 +93,172 @@ describe('ExpenseCalcClient', () => {
   });
 
   it('sends both report bounds together, since the server rejects one alone', async () => {
-    const fetchImpl = jest.fn().mockResolvedValue(ok({ buckets: [] }));
-    const client = new ExpenseCalcClient({ baseUrl: 'http://api.test', fetchImpl });
-
-    await client.overTime({ from: '2026-01-01', to: '2026-02-01' }, 'MONTH');
+    const fetchImpl = jest.fn().mockResolvedValue(json({ buckets: [] }));
+    await clientWith(fetchImpl).overTime({ from: '2026-01-01', to: '2026-02-01' }, 'MONTH');
 
     const url = fetchImpl.mock.calls[0]![0] as string;
     expect(url).toContain('from=2026-01-01');
     expect(url).toContain('to=2026-02-01');
     expect(url).toContain('bucket=month');
+  });
+});
+
+describe('writes', () => {
+  it('rejects a sub-centavo amount before it reaches the network', async () => {
+    const fetchImpl = jest.fn();
+    // The API rejects this rather than rounding, so the client does too — a
+    // rounded amount is money the user did not enter.
+    await expect(
+      clientWith(fetchImpl).createExpense({
+        amount: '10.005',
+        currency: 'PHP',
+        occurredOn: '2026-08-01',
+      }),
+    ).rejects.toThrow(TypeError);
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('sends the amount verbatim rather than reformatting it', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(json({ id: 'e1' }, 201));
+    await clientWith(fetchImpl).createExpense({
+      amount: '-1234.5',
+      currency: 'PHP',
+      occurredOn: '2026-08-01',
+    });
+
+    const body = JSON.parse(fetchImpl.mock.calls[0]![1].body as string);
+    // Not "-1234.50": presentation rounding belongs at the display boundary,
+    // and this is not one.
+    expect(body.amount).toBe('-1234.5');
+  });
+
+  it('omits undefined fields from a PATCH rather than sending null', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(json({ id: 'e1' }));
+    await clientWith(fetchImpl).updateExpense('e1', { merchant: 'SM' });
+
+    const body = JSON.parse(fetchImpl.mock.calls[0]![1].body as string);
+    expect(body).toEqual({ merchant: 'SM' });
+    expect('amount' in body).toBe(false);
+  });
+
+  it('returns nothing for a 204 rather than failing to parse an empty body', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    await expect(clientWith(fetchImpl).deleteExpense('e1')).resolves.toBeUndefined();
+  });
+});
+
+describe('auth', () => {
+  it('stores both halves on login and sends the access token thereafter', async () => {
+    const fetchImpl = jest.fn().mockResolvedValueOnce(json(TOKENS)).mockResolvedValueOnce(json([]));
+    const store = memoryStore();
+    const client = clientWith(fetchImpl, store);
+
+    await client.login({ username: 'duane', password: 'hunter2' });
+    await client.categories();
+
+    expect(await store.read()).toBe('refresh-1');
+    const headers = fetchImpl.mock.calls[1]![1].headers as Headers;
+    expect(headers.get('Authorization')).toBe('Bearer access-1');
+  });
+
+  it('does not attach a token to login itself', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(json(TOKENS));
+    await clientWith(fetchImpl).login({ username: 'duane', password: 'hunter2' });
+
+    const headers = fetchImpl.mock.calls[0]![1].headers as Headers;
+    expect(headers.has('Authorization')).toBe(false);
+  });
+
+  it('refreshes before the request when the token is missing but resumable', async () => {
+    // `expiresInSeconds` is returned so a client can refresh ahead of a failure
+    // rather than after one, so a resumable session with no access token in
+    // memory — a cold start on a device — exchanges first and never spends a
+    // request on a 401 it could have predicted.
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(TOKENS))
+      .mockResolvedValueOnce(json([]));
+
+    const client = clientWith(fetchImpl, memoryStore('refresh-0'));
+    await expect(client.categories()).resolves.toEqual([]);
+
+    expect(fetchImpl.mock.calls[0]![0]).toBe('http://api.test/api/v1/auth/refresh');
+    expect(fetchImpl.mock.calls[1]![0]).toBe('http://api.test/api/v1/categories');
+  });
+
+  it('refreshes once on a 401 and retries the original request', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(problem(401))
+      .mockResolvedValueOnce(json({ ...TOKENS, accessToken: 'access-2' }))
+      .mockResolvedValueOnce(json([]));
+
+    const client = clientWith(fetchImpl, memoryStore('refresh-0'));
+    // A live access token, so this exercises the reactive path rather than the
+    // proactive one above.
+    await client.session.adopt(TOKENS);
+
+    await expect(client.categories()).resolves.toEqual([]);
+
+    expect(fetchImpl.mock.calls[1]![0]).toBe('http://api.test/api/v1/auth/refresh');
+    const retried = fetchImpl.mock.calls[2]![1].headers as Headers;
+    expect(retried.get('Authorization')).toBe('Bearer access-2');
+  });
+
+  it('gives up after one refresh rather than looping on a persistent 401', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(problem(401))
+      .mockResolvedValueOnce(json(TOKENS))
+      .mockResolvedValueOnce(problem(401));
+
+    const client = clientWith(fetchImpl, memoryStore('refresh-0'));
+    await client.session.adopt(TOKENS);
+
+    await expect(client.categories()).rejects.toBeInstanceOf(ApiError);
+
+    // Three calls, not an unbounded retry loop against the server.
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it('collapses concurrent refreshes into one exchange', async () => {
+    // Rotation makes this correctness, not efficiency: each exchange kills the
+    // previous refresh token, so three parallel refreshes would sign the user
+    // out with tokens their own app invalidated.
+    const fetchImpl = jest.fn().mockImplementation((url: string) => {
+      if (url.endsWith('/auth/refresh')) {
+        return Promise.resolve(json(TOKENS));
+      }
+      return Promise.resolve(json([]));
+    });
+
+    const client = clientWith(fetchImpl, memoryStore('refresh-0'));
+    await Promise.all([client.categories(), client.expenses(), client.categories()]);
+
+    const refreshes = fetchImpl.mock.calls.filter(([url]) => String(url).endsWith('/auth/refresh'));
+    expect(refreshes).toHaveLength(1);
+  });
+
+  it('clears the session when the refresh token is rejected', async () => {
+    const fetchImpl = jest.fn().mockResolvedValueOnce(problem(401)).mockResolvedValueOnce(problem(401));
+    const store = memoryStore('refresh-dead');
+    const client = clientWith(fetchImpl, store);
+
+    await expect(client.categories()).rejects.toBeInstanceOf(ApiError);
+
+    // A rotated-away token is not recoverable; replaying it forever is worse
+    // than presenting no credential at all.
+    expect(await store.read()).toBeNull();
+  });
+
+  it('clears local state on logout even when the call fails', async () => {
+    const fetchImpl = jest.fn().mockRejectedValue(new Error('offline'));
+    const store = memoryStore('refresh-1');
+    const client = clientWith(fetchImpl, store);
+
+    await expect(client.logout()).resolves.toBeNull();
+    expect(await store.read()).toBeNull();
+    expect(client.session.currentAccessToken()).toBeNull();
   });
 });
