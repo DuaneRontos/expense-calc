@@ -1,8 +1,6 @@
 import Head from 'expo-router/head';
-import { Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 
-import { AppShell } from '../src/layout/AppShell';
-import { useNavItems } from '../src/layout/useNavItems';
 import { palette, spacing } from '../src/theme/tokens';
 
 /**
@@ -13,10 +11,8 @@ import { palette, spacing } from '../src/theme/tokens';
  * assumes without being told. The list itself is #14.
  */
 export default function Expenses() {
-  const nav = useNavItems();
-
   return (
-    <AppShell title="Expenses" nav={nav}>
+    <ScrollView contentContainerStyle={{ padding: spacing.md, gap: spacing.lg }}>
       <Head>
         <title>Expenses · Expense Calc</title>
       </Head>
@@ -28,6 +24,6 @@ export default function Expenses() {
           demonstrate a deep-linkable URL on the web target.
         </Text>
       </View>
-    </AppShell>
+    </ScrollView>
   );
 }
