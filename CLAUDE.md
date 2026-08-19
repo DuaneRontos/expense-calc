@@ -19,7 +19,9 @@ scaffolding around it.
 | `.github/workflows/` | The agents themselves (see below) |
 
 `backend/` is scaffolded and carries the expense model, the money conversions,
-and the classification rule engine. `frontend/` is still to be scaffolded (#3).
+and the classification rule engine. `frontend/` is scaffolded as an Expo app
+(#3) — see [`frontend/README.md`](frontend/README.md) for its layout and the
+charting decision.
 
 ## Start with the specification
 
@@ -110,6 +112,19 @@ cd backend && ./mvnw verify              # compile + test (tests need Docker)
 cd backend && ./mvnw -DskipTests package # compile only, no Docker required
 cd backend && ./mvnw spring-boot:run     # needs a Postgres on localhost:5432
 ```
+
+```bash
+cd frontend && npm run web               # desktop web target
+cd frontend && npm run lint              # the three checks CI runs, on Node 22
+cd frontend && npm run typecheck
+cd frontend && npm test
+cd frontend && npx expo export --platform all   # bundles iOS, Android, and web
+```
+
+`expo export --platform all` is the cheapest proof the JS compiles for iOS and
+Android: it produces Hermes bytecode for both without Xcode or Android Studio
+installed. It is **not** a substitute for running on a simulator — it cannot
+catch a native module that is missing or misconfigured.
 
 Spring Boot 4.1 on Java 21, Maven. `spring-boot-starter-parent` supplies
 dependency management, which is why no dependency in `pom.xml` carries a
