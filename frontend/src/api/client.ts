@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 import { ApiError, readProblem } from './problem';
-import { Session } from './session';
+import { Session, type AdoptResult } from './session';
 import type {
   CategoryBreakdown,
   CategoryView,
@@ -47,6 +47,17 @@ import { assertSendableAmount } from '../money/format';
 function defaultBaseUrl(): string {
   const configured = process.env.EXPO_PUBLIC_API_URL;
   if (configured) {
+    // A release build pointed at `http://` sends the password from `login()`
+    // and the refresh token from `refresh()` in cleartext, and nothing in the
+    // build, the tests or CI would say a word — a one-character omission in a
+    // CI variable is all it takes. Spec §10 requires TLS everywhere once
+    // deployed; this is that rule with a way to fail loudly.
+    if (!__DEV__ && !configured.startsWith('https://')) {
+      throw new Error(
+        'EXPO_PUBLIC_API_URL must be https:// in a release build; got ' +
+          `${configured}. Tokens and passwords would otherwise cross the network in cleartext.`,
+      );
+    }
     return configured.replace(/\/$/, '');
   }
   return Platform.OS === 'android' ? 'http://10.0.2.2:8080' : 'http://localhost:8080';
@@ -73,8 +84,12 @@ export function buildExpenseQuery(query: ExpenseQuery = {}): string {
     ['to', query.to],
     ['merchant', query.merchant],
     ['q', query.q],
-    ['minAmount', query.minAmount],
-    ['maxAmount', query.maxAmount],
+    // Validated like a write amount, and for the same reason: the server runs
+    // these through the same `Money.toMinorUnits` and 400s on sub-centavo
+    // precision, so a typo in #15's filter inputs should be a field error
+    // rather than a round trip.
+    ['minAmount', query.minAmount && assertSendableAmount(query.minAmount)],
+    ['maxAmount', query.maxAmount && assertSendableAmount(query.maxAmount)],
     ['page', query.page],
     ['size', query.size],
   ];
@@ -127,7 +142,16 @@ export class ExpenseCalcClient {
 
   constructor(options: ClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? defaultBaseUrl()).replace(/\/$/, '');
-    this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
+    // Wrapped rather than captured bare so `fetch` is always invoked on the
+    // global rather than as a method on this instance.
+    //
+    // Note this is defensive, not a fix for an observed bug: the "Illegal
+    // invocation" this guards against does **not** reproduce in current Chrome,
+    // checked directly — `globalThis.fetch` there is native and indifferent to
+    // its receiver, while `document.querySelector` called the same way throws,
+    // so the brand-check exists and `fetch` is simply not subject to it. The
+    // wrap costs a closure and makes the property independent of that.
+    this.fetchImpl = options.fetchImpl ?? ((input, init) => globalThis.fetch(input, init));
     this.session = options.session ?? new Session();
   }
 
@@ -179,8 +203,27 @@ export class ExpenseCalcClient {
     }
 
     if (this.session.needsRefresh() && (await this.session.isResumable())) {
-      await this.refreshOnce();
+      try {
+        await this.refresh();
+      } catch (error) {
+        // A proactive refresh is an optimisation, not a precondition. It runs
+        // during the last 30 seconds of a token that still works, so a 503 or a
+        // dropped connection from /auth/refresh used to fail every request on
+        // the screen while a perfectly good token sat in memory — and the 401
+        // path below, which exists for exactly this, never ran.
+        //
+        // With nothing in memory there is no fallback, so that still propagates.
+        if (!this.session.currentAccessToken()) {
+          throw error;
+        }
+      }
     }
+
+    // Snapshotted before the request so a 401 that arrives after another
+    // caller already refreshed retries with the new token instead of rotating
+    // again. The single-flight guard only covers refreshes that overlap; two
+    // requests failing in sequence on the same dead token do not.
+    const attemptedWith = this.session.currentAccessToken();
 
     try {
       return await this.send<T>(path, options);
@@ -192,14 +235,28 @@ export class ExpenseCalcClient {
         throw error;
       }
 
-      await this.refreshOnce();
+      // Deliberately not `needsRefresh()`: the server can reject a token the
+      // client believes is fresh — clock skew, or an instance restarted with a
+      // new signing key — and that is the case this path exists for.
+      if (this.session.currentAccessToken() === attemptedWith) {
+        await this.refresh();
+      }
       return this.send<T>(path, options);
     }
   }
 
-  /** Collapses concurrent refreshes into one exchange. */
-  private refreshOnce(): Promise<void> {
-    this.refreshing ??= this.refresh()
+  /**
+   * `POST /auth/refresh` — exchanges the stored refresh token for a new pair,
+   * collapsing concurrent callers into one exchange.
+   *
+   * **This is the public entry point, and the guard is the reason.** The
+   * unguarded exchange used to be the public method while the guard was
+   * private, so a screen calling `api.refresh()` directly — a plausible thing
+   * to reach for — raced any in-flight refresh and produced exactly the
+   * rotation collision the guard exists to prevent.
+   */
+  refresh(): Promise<void> {
+    this.refreshing ??= this.exchangeRefreshToken()
       .catch(async (error: unknown) => {
         // A rejected refresh token is not recoverable: it has either expired or
         // been rotated away. Clearing here means the next request presents no
@@ -218,24 +275,31 @@ export class ExpenseCalcClient {
 
   // ---- auth (spec §9.2) -------------------------------------------------
 
-  /** `POST /auth/login`. Stores both halves per the spec's per-target table. */
-  async login(credentials: LoginRequest): Promise<void> {
+  /**
+   * `POST /auth/login`. Stores both halves per the spec's per-target table.
+   *
+   * Returns whether the refresh token was persisted. A device with no secure
+   * lock screen has no Keystore to write to, and the session then ends silently
+   * when the access token expires — so the caller gets told rather than the
+   * user discovering it fifteen minutes later at a sign-in screen.
+   */
+  async login(credentials: LoginRequest): Promise<AdoptResult> {
     const tokens = await this.send<Tokens>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials),
       anonymous: true,
     });
-    await this.session.adopt(tokens);
+    return this.session.adopt(tokens);
   }
 
   /**
-   * `POST /auth/refresh` — exchanges the stored refresh token for a new pair.
+   * The refresh exchange itself. Always reached through {@link refresh}.
    *
    * The old token dies the moment this succeeds, so a client that loses the
    * response has to sign in again. That is the correct trade: a refresh token
    * that survives being used never expires in practice once captured.
    */
-  async refresh(): Promise<void> {
+  private async exchangeRefreshToken(): Promise<void> {
     const refreshToken = await this.session.refreshToken();
     if (!refreshToken) {
       throw new ApiError({ status: 401, title: 'Session expired' });
@@ -273,8 +337,13 @@ export class ExpenseCalcClient {
     return this.request<CategoryView[]>('/categories');
   }
 
-  /** `GET /expenses` — filtered, sorted, paginated (spec §6). */
-  expenses(query: ExpenseQuery = {}): Promise<ExpensePage> {
+  /**
+   * `GET /expenses` — filtered, sorted, paginated (spec §6).
+   *
+   * `async` because the amount bounds are validated while building the query,
+   * and a synchronous throw would escape a caller's `.catch`.
+   */
+  async expenses(query: ExpenseQuery = {}): Promise<ExpensePage> {
     return this.request<ExpensePage>(`/expenses${buildExpenseQuery(query)}`);
   }
 

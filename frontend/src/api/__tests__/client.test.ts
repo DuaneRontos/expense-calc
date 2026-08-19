@@ -1,7 +1,8 @@
 import { buildExpenseQuery, ExpenseCalcClient } from '../client';
 import { ApiError } from '../problem';
+import { RefreshTokenUnavailableError } from '../refreshTokenStore.types';
 import { Session } from '../session';
-import type { RefreshTokenStore } from '../refreshTokenStore';
+import type { RefreshTokenStore } from '../refreshTokenStore.types';
 
 /** An in-memory stand-in for the Keychain, so tests never touch a native module. */
 function memoryStore(initial: string | null = null): RefreshTokenStore {
@@ -33,11 +34,15 @@ const problem = (status: number, body: Record<string, unknown> = {}) =>
 
 const TOKENS = { accessToken: 'access-1', refreshToken: 'refresh-1', expiresInSeconds: 900 };
 
-function clientWith(fetchImpl: jest.Mock, store: RefreshTokenStore = memoryStore()) {
+function clientWith(
+  fetchImpl: jest.Mock,
+  store: RefreshTokenStore = memoryStore(),
+  now?: () => number,
+) {
   return new ExpenseCalcClient({
     baseUrl: 'http://api.test',
     fetchImpl: fetchImpl as unknown as typeof fetch,
-    session: new Session(store),
+    session: new Session(store, now),
   });
 }
 
@@ -260,5 +265,118 @@ describe('auth', () => {
     await expect(client.logout()).resolves.toBeNull();
     expect(await store.read()).toBeNull();
     expect(client.session.currentAccessToken()).toBeNull();
+  });
+
+  it('serves the request on a live token when the proactive refresh fails', async () => {
+    // The proactive refresh runs in the last 30 seconds of a token that still
+    // works. A 503 there used to fail every request on the screen while a
+    // perfectly good token sat in memory.
+    let now = 1_000_000;
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(problem(503))
+      .mockResolvedValueOnce(json([]));
+
+    const client = clientWith(fetchImpl, memoryStore('refresh-0'), () => now);
+    await client.session.adopt(TOKENS);
+    now += 900_000 - 10_000; // inside the skew, token still valid
+
+    await expect(client.categories()).resolves.toEqual([]);
+
+    const attempted = fetchImpl.mock.calls[1]![1].headers as Headers;
+    expect(attempted.get('Authorization')).toBe('Bearer access-1');
+  });
+
+  it('propagates a failed refresh when there is no token to fall back on', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(problem(503));
+    const client = clientWith(fetchImpl, memoryStore('refresh-0'));
+
+    // Cold start: nothing in memory, so there is no stale-but-live fallback.
+    await expect(client.categories()).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it('does not rotate twice when two requests 401 in sequence', async () => {
+    // The single-flight guard only covers refreshes that overlap. Two requests
+    // failing one after the other on the same dead token do not overlap, and
+    // each late 401 used to burn another rotation.
+    const fetchImpl = jest.fn().mockImplementation((url: string) => {
+      if (String(url).endsWith('/auth/refresh')) {
+        return Promise.resolve(json({ ...TOKENS, accessToken: 'access-2' }));
+      }
+      const headers = fetchImpl.mock.calls.at(-1)![1].headers as Headers;
+      return Promise.resolve(
+        headers.get('Authorization') === 'Bearer access-2' ? json([]) : problem(401),
+      );
+    });
+
+    const client = clientWith(fetchImpl, memoryStore('refresh-0'));
+    await client.session.adopt(TOKENS);
+
+    await client.categories();
+    await client.expenses();
+
+    const refreshes = fetchImpl.mock.calls.filter(([url]) => String(url).endsWith('/auth/refresh'));
+    expect(refreshes).toHaveLength(1);
+  });
+
+  it('routes the public refresh through the single-flight guard', async () => {
+    // `refresh()` used to be the unguarded exchange while the guard was
+    // private, so a screen calling it directly raced any in-flight refresh —
+    // the exact rotation collision the guard exists to prevent.
+    const fetchImpl = jest.fn().mockResolvedValue(json(TOKENS));
+    const client = clientWith(fetchImpl, memoryStore('refresh-0'));
+
+    await Promise.all([client.refresh(), client.refresh(), client.refresh()]);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports that a session was not persisted', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(json(TOKENS));
+    const store: RefreshTokenStore = {
+      ...memoryStore(),
+      write: () => Promise.reject(new RefreshTokenUnavailableError()),
+    };
+
+    // A device with no secure lock screen: the session works until the access
+    // token expires and then ends silently. Sign-in succeeds and says so.
+    await expect(clientWith(fetchImpl, store).login({ username: 'd', password: 'p' })).resolves.toEqual(
+      { persisted: false },
+    );
+  });
+});
+
+describe('filter validation', () => {
+  it('rejects a sub-centavo filter bound before the request', async () => {
+    // The server runs these through the same Money.toMinorUnits as a write
+    // amount, so the same typo deserves the same field error.
+    const fetchImpl = jest.fn();
+    await expect(clientWith(fetchImpl).expenses({ minAmount: '10.005' })).rejects.toThrow(TypeError);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('base URL', () => {
+  const original = process.env.EXPO_PUBLIC_API_URL;
+
+  afterEach(() => {
+    process.env.EXPO_PUBLIC_API_URL = original;
+    (globalThis as { __DEV__?: boolean }).__DEV__ = true;
+  });
+
+  it('refuses a cleartext API URL in a release build', () => {
+    // One missing character in a CI variable would send the password and the
+    // refresh token over the wire in the clear, with nothing to say so.
+    process.env.EXPO_PUBLIC_API_URL = 'http://api.example.com';
+    (globalThis as { __DEV__?: boolean }).__DEV__ = false;
+
+    expect(() => new ExpenseCalcClient()).toThrow(/https/);
+  });
+
+  it('allows http in development, where the backend is local', () => {
+    process.env.EXPO_PUBLIC_API_URL = 'http://localhost:8080';
+    (globalThis as { __DEV__?: boolean }).__DEV__ = true;
+
+    expect(() => new ExpenseCalcClient()).not.toThrow();
   });
 });

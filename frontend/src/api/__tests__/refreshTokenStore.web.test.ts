@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { refreshTokenStore } from '../refreshTokenStore.web';
@@ -28,26 +28,37 @@ describe('web refresh token store', () => {
     expect(await refreshTokenStore.read()).toBeNull();
   });
 
-  it('never reaches for script-readable storage', () => {
+  it('never reaches for script-readable storage, anywhere in src', () => {
     // Asserted against the source rather than by spying, in the spirit of the
     // backend's NoAbsoluteValueInMoneyPathsTest: spec §9.2 and §10 forbid
     // localStorage outright, sessionStorage is the same script-readable
     // exposure with a shorter life, and a non-httpOnly cookie buys persistence
     // without the protection that made the spec ask for a cookie.
     //
-    // The tempting fix for "a refresh signs the user out" is exactly one of
-    // these three, which is why the rule is pinned rather than trusted.
+    // Scanned across the whole tree rather than a list of files. The tempting
+    // fix for "a reload signs me out" lands wherever the person hitting the
+    // problem happens to be — a useAuth hook, a layout, a new sessionCache.ts —
+    // and a hardcoded list stays green precisely there. This keeps working as
+    // #14 to #16 add screens, with no edit that the person adding localStorage
+    // would have to remember to make.
     const forbidden = ['localStorage', 'sessionStorage', 'document.cookie'];
+    const root = join(__dirname, '..', '..');
 
-    for (const file of ['refreshTokenStore.web.ts', 'refreshTokenStore.ts', 'session.ts']) {
-      const source = readFileSync(join(__dirname, '..', file), 'utf8');
-      // Strip comments — this file's own docs name all three while explaining
-      // why none of them is used, and a naive scan would fail on the argument
-      // for the rule it is enforcing.
-      const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    const sources = readdirSync(root, { recursive: true, encoding: 'utf8' })
+      .filter((file) => /\.tsx?$/.test(file) && !file.includes('__tests__'));
+
+    // Guards the guard: a glob that matched nothing would pass silently.
+    expect(sources.length).toBeGreaterThan(10);
+
+    for (const file of sources) {
+      // Strip comments — several files name all three while explaining why none
+      // is used, and a naive scan would fail on the argument for its own rule.
+      const code = readFileSync(join(root, file), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/.*$/gm, '');
 
       for (const api of forbidden) {
-        expect(code).not.toContain(api);
+        expect({ file, contains: code.includes(api) }).toEqual({ file, contains: false });
       }
     }
   });

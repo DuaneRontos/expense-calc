@@ -1,5 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 
+import { RefreshTokenUnavailableError, type RefreshTokenStore } from './refreshTokenStore.types';
+
 /**
  * Refresh-token storage for iOS and Android (spec §9.2).
  *
@@ -16,26 +18,23 @@ import * as SecureStore from 'expo-secure-store';
 
 const KEY = 'expense-calc.refreshToken';
 
-export interface RefreshTokenStore {
-  read(): Promise<string | null>;
-  write(token: string): Promise<void>;
-  clear(): Promise<void>;
+/**
+ * Whether the device can store a secret, resolved once per process.
+ *
+ * Cached because availability cannot change while the app is running, and it
+ * was previously re-checked on every operation — so a single refresh cost four
+ * native bridge round-trips instead of the two reads it actually needed.
+ */
+let availability: Promise<boolean> | null = null;
+
+function usable(): Promise<boolean> {
+  availability ??= SecureStore.isAvailableAsync().catch(() => false);
+  return availability;
 }
 
-/**
- * True when the device can actually store a secret.
- *
- * An Android device with no secure lock screen has no Keystore to write to, and
- * a simulator can be configured the same way. `expo-secure-store` throws rather
- * than degrading, and a sign-in that fails with a native exception reads as a
- * broken app rather than an unusual device.
- */
-async function usable(): Promise<boolean> {
-  try {
-    return await SecureStore.isAvailableAsync();
-  } catch {
-    return false;
-  }
+/** Test seam; the cache is process-lifetime otherwise. */
+export function resetAvailabilityCache(): void {
+  availability = null;
 }
 
 export const refreshTokenStore: RefreshTokenStore = {
@@ -55,15 +54,31 @@ export const refreshTokenStore: RefreshTokenStore = {
     }
   },
 
+  /**
+   * Persists the refresh token, or says it could not.
+   *
+   * **Reports failure in both directions**, unlike `read` and `clear`, which
+   * degrade quietly because their failure modes are recoverable. This one is
+   * not: a token that was not written means the session silently ends at the
+   * access token's fifteen-minute expiry. The caller can then tell the user
+   * that rather than letting them discover it.
+   */
   async write(token: string) {
     if (!(await usable())) {
-      return;
+      throw new RefreshTokenUnavailableError();
     }
-    await SecureStore.setItemAsync(KEY, token, {
-      // The token is only useful to a running app, so it does not need to be
-      // readable before the first unlock after a reboot.
-      keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-    });
+    try {
+      await SecureStore.setItemAsync(KEY, token, {
+        // The token is only useful to a running app, so it does not need to be
+        // readable before the first unlock after a reboot.
+        keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+      });
+    } catch (error) {
+      // The Android Keystore invalidates its key when the user adds or changes
+      // a lock-screen credential, which is common and recoverable — but only if
+      // somebody is told.
+      throw new RefreshTokenUnavailableError(error);
+    }
   },
 
   async clear() {
@@ -77,3 +92,5 @@ export const refreshTokenStore: RefreshTokenStore = {
     }
   },
 };
+
+export type { RefreshTokenStore };

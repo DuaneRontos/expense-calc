@@ -1,4 +1,4 @@
-import type { RefreshTokenStore } from './refreshTokenStore';
+import type { RefreshTokenStore } from './refreshTokenStore.types';
 
 /**
  * Refresh-token storage for the web target (spec §9.2) — deliberately in memory.
@@ -27,6 +27,9 @@ import type { RefreshTokenStore } from './refreshTokenStore';
  * protection, which the API currently disables), not a client one — tracked as
  * issue #57. Until then this is the only option that does not trade the spec's
  * security rule for convenience.
+ *
+ * The contract is imported from `refreshTokenStore.types` rather than from
+ * `./refreshTokenStore`, which in a web bundle resolves to this file itself.
  *
  * **When #57 lands, this file mostly goes away rather than changing.** A cookie
  * the client can neither read nor write means the browser holds the token and

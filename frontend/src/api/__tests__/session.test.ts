@@ -1,5 +1,5 @@
 import { Session } from '../session';
-import type { RefreshTokenStore } from '../refreshTokenStore';
+import { RefreshTokenUnavailableError, type RefreshTokenStore } from '../refreshTokenStore.types';
 
 function memoryStore(initial: string | null = null): RefreshTokenStore {
   let token = initial;
@@ -70,5 +70,37 @@ describe('Session', () => {
     expect(session.currentAccessToken()).toBeNull();
     expect(await store.read()).toBeNull();
     expect(session.needsRefresh()).toBe(true);
+  });
+
+  it('reports persistence failure instead of half-building the session', async () => {
+    // The write used to happen after the in-memory assignment and its exception
+    // escaped, so login() rejected — "sign-in failed" on screen — while the
+    // client held a working access token it would attach to the next request.
+    const store: RefreshTokenStore = {
+      ...memoryStore(),
+      write: () => Promise.reject(new RefreshTokenUnavailableError()),
+    };
+    const session = new Session(store);
+
+    await expect(session.adopt(TOKENS)).resolves.toEqual({ persisted: false });
+
+    // The session is usable for this access token's life, and honest about it.
+    expect(session.currentAccessToken()).toBe('access-1');
+    expect(await session.isResumable()).toBe(false);
+  });
+
+  it('reports a persisted session', async () => {
+    await expect(new Session(memoryStore()).adopt(TOKENS)).resolves.toEqual({ persisted: true });
+  });
+
+  it('lets an unexpected storage error escape rather than reporting success', async () => {
+    // Only the typed unavailability case is recoverable. A programming error in
+    // the store should not be laundered into "the session is fine".
+    const store: RefreshTokenStore = {
+      ...memoryStore(),
+      write: () => Promise.reject(new Error('boom')),
+    };
+
+    await expect(new Session(store).adopt(TOKENS)).rejects.toThrow('boom');
   });
 });
