@@ -20,7 +20,7 @@ One command, no database setup, no configuration:
 cd backend && ./mvnw -B verify
 ```
 
-That compiles everything and runs all 377 tests, including nine suites that
+That compiles everything and runs the whole suite — over 400 tests, including a dozen that
 start a real PostgreSQL in Docker. The one worth watching is
 `BackendOperabilityTest` — it boots the whole application on a random port
 against that database, then drives it over HTTP: creates an expense, watches
@@ -66,23 +66,22 @@ Three settings, none of which have defaults — a default secret is a published
 secret, so the app refuses to start without them rather than falling back to
 something that works and is worthless.
 
-Generate a password hash (Argon2id, which is what the app verifies against):
-
-```bash
-cd backend && ./mvnw -q compile exec:java -Dexec.mainClass=org.springframework.security.crypto.argon2.Argon2PasswordEncoder -Dexec.args="" 2>/dev/null || echo "see the note below"
-```
-
-That encoder has no main method, so the practical way is a throwaway JShell:
+Generate a password hash. Spring's Argon2 encoder has no command-line entry
+point, so this builds the classpath and runs it directly:
 
 ```bash
 cd backend && ./mvnw -q dependency:build-classpath -Dmdep.outputFile=/tmp/cp.txt && jshell --class-path "$(cat /tmp/cp.txt)" -
 ```
 
-then paste:
+Then paste this and copy the line it prints:
 
 ```java
 System.out.println(org.springframework.security.crypto.argon2.Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8().encode("your-password-here"));
 ```
+
+The output starts `$argon2id$v=19$…`. **Do not add a `{argon2id}` prefix** — that
+is `DelegatingPasswordEncoder` syntax, and this application configures a bare
+`Argon2PasswordEncoder`, which cannot parse it.
 
 Then run with the three values set:
 

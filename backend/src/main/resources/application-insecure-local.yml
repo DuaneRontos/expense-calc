@@ -14,6 +14,11 @@
 app:
   auth:
     username: dev
-    # Argon2id hash of "dev". Not a secret, and not meant to be.
-    password-hash: "{argon2id}$argon2id$v=19$m=4096,t=3,p=1$c29tZXNhbHRzb21lc2FsdA$RdescudvJCsgt3ub+b+dWRWJTmaaJObG"
+    # Argon2id hash of "dev", generated with the encoder this application
+    # verifies against and checked to match. No {argon2id} prefix: that is
+    # DelegatingPasswordEncoder syntax, and the bean here is a bare
+    # Argon2PasswordEncoder which cannot parse it. Not a secret, and not meant
+    # to be — but a hash that does not verify is worse than no hash, because
+    # nothing under this profile authenticates so nobody would find out.
+    password-hash: "$argon2id$v=19$m=16384,t=2,p=1$/y0Z208t+oz4OhYYgaHzQg$Vr+ZV/rjwZ5FIv4OXLbZxE4JQxmP+r6bUZaN3LojvWQ"
     jwt-secret: "insecure-local-development-signing-key-not-a-secret"

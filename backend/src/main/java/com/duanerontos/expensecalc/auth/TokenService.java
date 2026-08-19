@@ -17,6 +17,7 @@ import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,9 +35,19 @@ import javax.crypto.spec.SecretKeySpec;
  * <p>The access token's 15-minute life is the whole revocation story: it cannot
  * be withdrawn, so its lifetime <em>is</em> the window in which a leaked one
  * works.
+ *
+ * <p>{@code @DependsOn} the guard because this constructor builds a
+ * {@link SecretKeySpec} eagerly: with no signing key configured it fails first,
+ * with {@code IllegalArgumentException: Empty key}, and that message names no
+ * property, no profile and no document. The guard exists to say the useful
+ * thing, and it has to run first to get the chance.
  */
 @Service
+@DependsOn("securityStartupGuard")
 public class TokenService {
+
+	/** Claimed by every access token and required by the decoder. */
+	public static final String ISSUER = "expense-calc";
 
 	/** 256 bits of CSPRNG output. Long enough that guessing is not a strategy. */
 	private static final int REFRESH_TOKEN_BYTES = 32;
@@ -85,15 +96,13 @@ public class TokenService {
 	@Transactional
 	public Tokens rotate(String presentedToken) {
 		Instant now = this.clock.instant();
-		RefreshToken stored = this.refreshTokens.findByTokenHash(hash(presentedToken))
-			.orElseThrow(InvalidRefreshTokenException::new);
 
-		if (!stored.isUsableAt(now)) {
+		// One statement, not read-check-write. Two concurrent refreshes of the
+		// same token would otherwise both pass the check and both mint a
+		// session; exactly one of them gets the 1 back from this.
+		if (this.refreshTokens.revokeIfUsable(hash(presentedToken), now) != 1) {
 			throw new InvalidRefreshTokenException();
 		}
-
-		stored.revoke(now);
-		this.refreshTokens.save(stored);
 
 		return new Tokens(accessToken(now), newRefreshToken(now), this.properties.accessTokenTtl().toSeconds());
 	}
@@ -106,7 +115,7 @@ public class TokenService {
 
 	private String accessToken(Instant now) {
 		JwtClaimsSet claims = JwtClaimsSet.builder()
-			.issuer("expense-calc")
+			.issuer(ISSUER)
 			.subject(this.properties.username())
 			.issuedAt(now)
 			.expiresAt(now.plus(this.properties.accessTokenTtl()))

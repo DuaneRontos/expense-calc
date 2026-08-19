@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -12,6 +13,7 @@ import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 
@@ -35,7 +37,18 @@ import javax.crypto.spec.SecretKeySpec;
 @EnableConfigurationProperties(AuthProperties.class)
 public class SecurityConfiguration {
 
+	/**
+	 * The real chain, absent under the bypass profile.
+	 *
+	 * <p><b>Excluded by profile rather than out-ordered.</b> Both chains are
+	 * built with no {@code securityMatcher}, so both match every request, and
+	 * Spring Security refuses to publish a chain it can prove unreachable —
+	 * {@code UnreachableFilterChainException} at startup. Ordering the bypass
+	 * first does not help: the second chain still exists and is still
+	 * unreachable. Only one of the two may be defined at a time.
+	 */
 	@Bean
+	@Profile("!" + SecurityStartupGuard.INSECURE_PROFILE)
 	public SecurityFilterChain apiSecurity(HttpSecurity http) throws Exception {
 		return http.csrf(csrf -> csrf.disable())
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -61,10 +74,18 @@ public class SecurityConfiguration {
 	 */
 	@Bean
 	public JwtDecoder jwtDecoder(AuthProperties properties) {
-		return NimbusJwtDecoder
+		NimbusJwtDecoder decoder = NimbusJwtDecoder
 			.withSecretKey(new SecretKeySpec(properties.jwtSecret().getBytes(StandardCharsets.UTF_8), "HmacSHA256"))
 			.macAlgorithm(MacAlgorithm.HS256)
 			.build();
+
+		// The encoder sets iss; without this the claim is decoration. Validating
+		// it means a token signed with this key for some other purpose — a
+		// future service sharing the secret, a copied config — is not silently
+		// accepted here.
+		decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(TokenService.ISSUER));
+
+		return decoder;
 	}
 
 	/**

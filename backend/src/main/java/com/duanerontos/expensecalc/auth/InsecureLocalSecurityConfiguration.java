@@ -3,7 +3,6 @@ package com.duanerontos.expensecalc.auth;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
-import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
@@ -25,10 +24,13 @@ import org.springframework.security.web.SecurityFilterChain;
 public class InsecureLocalSecurityConfiguration {
 
 	/**
-	 * Ordered ahead of the real chain so it wins when the profile is active.
+	 * The only chain when this profile is active.
+	 *
+	 * <p>{@code SecurityConfiguration.apiSecurity} is excluded by profile rather
+	 * than merely out-ordered, because two chains that both match every request
+	 * is a startup failure in Spring Security, not a precedence question.
 	 */
 	@Bean
-	@Order(1)
 	public SecurityFilterChain insecureLocalSecurity(HttpSecurity http) throws Exception {
 		return http.csrf(csrf -> csrf.disable())
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

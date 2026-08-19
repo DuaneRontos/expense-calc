@@ -53,10 +53,17 @@ public class RefreshToken {
 	/**
 	 * Whether this token can still be exchanged.
 	 *
-	 * <p>Revoked and expired are checked separately from "not found" by the
-	 * caller, because a presented-but-revoked token is a different event from a
-	 * token that never existed: the first can mean a stolen token being
-	 * replayed after the real client already rotated it.
+	 * <p><b>Not on the rotation path.</b> {@code TokenService.rotate} decides
+	 * with a single conditional UPDATE, because a read-then-check here leaves a
+	 * window two concurrent refreshes can both pass through.
+	 *
+	 * <p>The row keeps {@code revokedAt} rather than being deleted, so a
+	 * replayed token can be told apart from one that never existed. <b>Nothing
+	 * currently acts on that distinction</b> — every failure is one error to the
+	 * caller, on purpose, so as not to confirm which tokens exist. Presenting a
+	 * revoked token is the canonical signal to revoke the whole family, and this
+	 * is where that would be built; the data is recorded for it, the behaviour
+	 * is not implemented.
 	 */
 	public boolean isUsableAt(Instant now) {
 		return this.revokedAt == null && now.isBefore(this.expiresAt);

@@ -25,7 +25,11 @@ class SecurityStartupGuardTest {
 
 	private static final String LOCAL_DB = "jdbc:postgresql://localhost:5432/expensecalc";
 
-	private static final AuthProperties CONFIGURED = new AuthProperties("duane", "{argon2id}$argon2id$v=19$whatever",
+	// Shaped like a real Argon2id hash rather than a plausible-looking string.
+	// The guard only checks for blankness, so any value passes — which is
+	// exactly why a wrong-format literal here would teach the wrong format.
+	private static final AuthProperties CONFIGURED = new AuthProperties("duane",
+			"$argon2id$v=19$m=16384,t=2,p=1$c2FsdHNhbHRzYWx0c2E$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGg",
 			"a-signing-key-that-is-comfortably-over-32-bytes", Duration.ofMinutes(15), Duration.ofDays(30));
 
 	private static MockEnvironment environmentWith(String... profiles) {
@@ -113,8 +117,7 @@ class SecurityStartupGuardTest {
 			.withMessageContaining("app.auth.username");
 
 		assertThatIllegalStateException()
-			.isThrownBy(() -> new SecurityStartupGuard(environmentWith(), new AuthProperties("duane", null,
-					"a".repeat(32), null, null), LOCAL_DB, "production").afterPropertiesSet())
+			.isThrownBy(() -> new SecurityStartupGuard(environmentWith(), new AuthProperties("duane", null, "a".repeat(32), null, null), LOCAL_DB, "production").afterPropertiesSet())
 			.withMessageContaining("app.auth.password-hash");
 
 		assertThatIllegalStateException()
