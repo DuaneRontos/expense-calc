@@ -31,9 +31,11 @@ describe('matchDestination', () => {
   });
 
   it('returns nothing for routes that are not destinations', () => {
-    // Both render inside the shell chrome, and neither has anything to filter.
+    // A route with nothing to filter, so the shell hides its filter chrome. The
+    // built-in `_sitemap` is the reachable example; note that `+not-found` is a
+    // route *file* name rather than anything `usePathname` returns — an
+    // unmatched URL yields the URL itself, which the `/anything` case covers.
     expect(matchDestination('/_sitemap')).toBeUndefined();
-    expect(matchDestination('/+not-found')).toBeUndefined();
   });
 });
 

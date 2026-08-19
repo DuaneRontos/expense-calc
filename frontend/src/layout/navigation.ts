@@ -15,8 +15,9 @@ import { useCallback, useMemo } from 'react';
 export interface NavItem {
   key: string;
   label: string;
-  onPress?: () => void;
-  active?: boolean;
+  /** Required: `useNavItems` is the only producer and always supplies both. */
+  onPress: () => void;
+  active: boolean;
 }
 
 export const APP_NAME = 'Expense Calc';
@@ -70,7 +71,7 @@ function normalize(pathname: string): string {
 
 /**
  * The destination a pathname belongs to, or undefined for a route that is not
- * one of them — `+not-found` and `_sitemap` both render inside this chrome.
+ * one of them — a custom `app/+not-found.tsx` would be one such route.
  *
  * Pure, so it can be tested without a renderer. The index route matches exactly
  * and the others by prefix: `/expenses/123` is a detail view of the expense
@@ -90,17 +91,6 @@ export function matchDestination(pathname: string): Destination | undefined {
 
 export function useActiveDestination(): Destination | undefined {
   return matchDestination(usePathname());
-}
-
-/**
- * The title for the shared header.
- *
- * Falls back to the app name rather than to an empty string: `+not-found` and
- * `_sitemap` are real routes that render inside this chrome, and a header with
- * no text reads as a rendering failure.
- */
-export function useActiveTitle(): string {
-  return useActiveDestination()?.label ?? APP_NAME;
 }
 
 export function useNavItems(): NavItem[] {

@@ -3,7 +3,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MIN_TOUCH_TARGET } from './breakpoints';
-import { useActiveDestination, useActiveTitle, useNavItems, type NavItem } from './navigation';
+import { APP_NAME, useActiveDestination, useNavItems, type NavItem } from './navigation';
 import { useLayout } from './useLayout';
 import { palette, spacing } from '../theme/tokens';
 
@@ -26,22 +26,37 @@ import { palette, spacing } from '../theme/tokens';
  * native: `native-stack` animates the whole screen, so switching destinations
  * slid the header, the nav row and the tab bar off while an identical copy slid
  * on. Persistent chrome that animates like content is one of the clearest
- * "this was built for the browser" tells on a device. Two smaller consequences
- * went with it — the drawer closed itself on every navigation, and the charts
- * re-measured from zero each time because the shell remounted.
+ * "this was built for the browser" tells on a device. It also closed the filter
+ * drawer on every navigation, because that state lived in a component that
+ * remounted.
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const layout = useLayout();
   const insets = useSafeAreaInsets();
   const nav = useNavItems();
-  const title = useActiveTitle();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Not every route under this layout has something to filter. `+not-found`
-  // and `_sitemap` render inside this chrome too — the title hook already
-  // reasons about exactly those two — and a "Filters" button on a not-found
-  // page opens a panel describing controls for a list that is not there.
-  const onDestination = useActiveDestination() !== undefined;
+  // One `usePathname` subscription for the whole shell. The title, the active
+  // nav state and the filter guard all derive from this — asking three
+  // different hooks for it re-ran the same match three times per render, on
+  // the component that is now the root of the tree.
+  const active = useActiveDestination();
+
+  // Falls back to the app name rather than an empty string: a route that is not
+  // a destination still renders inside this chrome, and a header with no text
+  // reads as a rendering failure.
+  const title = active?.label ?? APP_NAME;
+
+  // Not every route under this layout has something to filter, and a "Filters"
+  // button on one opens a panel describing controls for a list that is not
+  // there.
+  //
+  // Defensive rather than observed: Expo's built-in `_sitemap` and
+  // unmatched-route screens replace the layout entirely rather than rendering
+  // inside it, so neither shows the affordance today — both were checked. A
+  // *custom* `app/+not-found.tsx` would render inside this chrome, and the web
+  // export already emits that page, which is the case this guard exists for.
+  const onDestination = active !== undefined;
   const showsDrawer = !layout.isExpanded && onDestination;
 
   return (
@@ -49,11 +64,18 @@ export function AppShell({ children }: { children: ReactNode }) {
       style={{
         flex: 1,
         backgroundColor: palette.background,
+        // All four insets live here rather than on the pieces that happen to
+        // touch an edge. The bottom one used to sit on the tab bar, which only
+        // renders when compact — so medium and expanded had none at all, and a
+        // landscape iPhone is 852×393, which lands in *medium*. The last row of
+        // a screen's scroll view ran under the home indicator.
+        //
+        // The trade of insetting the container: the header's hairline border
+        // stops short of the physical edges on a notched phone instead of
+        // running full-bleed. That is deliberate — don't "fix" it back without
+        // moving the insets onto the content first.
         paddingTop: insets.top,
-        // Horizontal insets matter here specifically because a landscape phone
-        // lands in the *medium* band, which this shell designs for: without
-        // them the header and the tab row run under an iPhone's display cutout
-        // and rounded corners. The tab bar keeps its own `paddingBottom`.
+        paddingBottom: insets.bottom,
         paddingLeft: insets.left,
         paddingRight: insets.right,
       }}
@@ -175,7 +197,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             flexDirection: 'row',
             borderTopWidth: 1,
             borderTopColor: palette.border,
-            paddingBottom: insets.bottom,
           }}
         >
           {nav.map((item) => (
