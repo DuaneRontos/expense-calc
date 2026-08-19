@@ -101,6 +101,18 @@
 			<artifactId>spring-boot-resttestclient</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<!--
+			TestRestTemplate builds on RestTemplateBuilder, which Boot 4 split
+			into spring-boot-restclient. Without it the context fails at startup
+			with NoClassDefFoundError: RestTemplateBuilder, surfacing as
+			"@ConditionalOnMissingBean ... failed to deduce the bean's type" —
+			a message naming neither the missing class nor the missing module.
+		-->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-restclient</artifactId>
+			<scope>test</scope>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-testcontainers</artifactId>
