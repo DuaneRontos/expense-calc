@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { ExpenseQueryProvider } from '../src/expenses/ExpenseQueryProvider';
 import { AppShell } from '../src/layout/AppShell';
 import { labelFor } from '../src/layout/navigation';
 import { palette } from '../src/theme/tokens';
@@ -28,7 +29,13 @@ export default function RootLayout() {
         the header, the nav controls and the tab bar are mounted once and stay
         put while only the screen beneath them animates.
       */}
-      <AppShell>
+      {/*
+        Above the shell because the filter controls are chrome and the list is a
+        screen — they are not in the same subtree, so a shared query needs a
+        provider that contains both.
+      */}
+      <ExpenseQueryProvider>
+        <AppShell>
         <Stack
           screenOptions={{
             // `AppShell` renders the app's own header, so the navigator's would
@@ -61,7 +68,8 @@ export default function RootLayout() {
           <Stack.Screen name="index" options={{ title: labelFor('overview') }} />
           <Stack.Screen name="expenses" options={{ title: labelFor('expenses') }} />
         </Stack>
-      </AppShell>
+        </AppShell>
+      </ExpenseQueryProvider>
     </SafeAreaProvider>
   );
 }

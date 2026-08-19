@@ -23,8 +23,13 @@ export interface NavItem {
 export const APP_NAME = 'Expense Calc';
 
 export const DESTINATIONS = [
-  { key: 'overview', label: 'Overview', href: '/' },
-  { key: 'expenses', label: 'Expenses', href: '/expenses' },
+  /**
+   * `filterable` gates the shell's filter chrome. The Overview renders reports
+   * over their own periods and has no expense query behind it, so a "Filters"
+   * button there opens controls that would change nothing on screen.
+   */
+  { key: 'overview', label: 'Overview', href: '/', filterable: false },
+  { key: 'expenses', label: 'Expenses', href: '/expenses', filterable: true },
 ] as const;
 
 export type Destination = (typeof DESTINATIONS)[number];

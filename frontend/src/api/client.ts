@@ -142,15 +142,25 @@ export class ExpenseCalcClient {
 
   constructor(options: ClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? defaultBaseUrl()).replace(/\/$/, '');
-    // Wrapped rather than captured bare so `fetch` is always invoked on the
-    // global rather than as a method on this instance.
+    // Wrapped rather than captured bare, so `fetch` is invoked on the global
+    // instead of as a method on this instance.
     //
-    // Note this is defensive, not a fix for an observed bug: the "Illegal
-    // invocation" this guards against does **not** reproduce in current Chrome,
-    // checked directly — `globalThis.fetch` there is native and indifferent to
-    // its receiver, while `document.querySelector` called the same way throws,
-    // so the brand-check exists and `fetch` is simply not subject to it. The
-    // wrap costs a closure and makes the property independent of that.
+    // **This is load-bearing on web, not defensive.** Calling the browser's
+    // native `fetch` with `this` bound to anything else rejects with
+    // `TypeError: Failed to execute 'fetch' on 'Window': Illegal invocation`,
+    // and every request from this client would fail before reaching the
+    // network. Confirmed in Chrome against the running dev server:
+    //
+    //     const holder = { f: globalThis.fetch };
+    //     await holder.f('/favicon.ico');   // → Illegal invocation
+    //     await ((i) => globalThis.fetch(i))('/favicon.ico');  // → fine
+    //
+    // The `await` matters: `fetch` surfaces this as a **rejected promise**, not
+    // a synchronous throw. An earlier check of this used an un-awaited call
+    // inside try/catch, saw nothing, and wrongly reported the problem as not
+    // reproducing. Native tests cannot catch it either — RN's `fetch` is the
+    // whatwg-fetch polyfill, a plain function that ignores its receiver — and
+    // neither can jest, which injects a mock.
     this.fetchImpl = options.fetchImpl ?? ((input, init) => globalThis.fetch(input, init));
     this.session = options.session ?? new Session();
   }

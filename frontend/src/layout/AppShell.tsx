@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MIN_TOUCH_TARGET } from './breakpoints';
 import { APP_NAME, useActiveDestination, useNavItems, type NavItem } from './navigation';
 import { useLayout } from './useLayout';
+import { ExpenseFilters } from '../expenses/ExpenseFilters';
 import { palette, spacing } from '../theme/tokens';
 
 /**
@@ -48,16 +49,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   const title = active?.label ?? APP_NAME;
 
   // Not every route under this layout has something to filter, and a "Filters"
-  // button on one opens a panel describing controls for a list that is not
-  // there.
+  // button on one opens controls that would change nothing on screen. The
+  // Overview is a real destination with no expense query behind it, so this is
+  // a per-destination flag rather than "is this a destination at all".
   //
   // Defensive rather than observed: Expo's built-in `_sitemap` and
   // unmatched-route screens replace the layout entirely rather than rendering
   // inside it, so neither shows the affordance today — both were checked. A
   // *custom* `app/+not-found.tsx` would render inside this chrome, and the web
   // export already emits that page, which is the case this guard exists for.
-  const onDestination = active !== undefined;
-  const showsDrawer = !layout.isExpanded && onDestination;
+  const filterable = active?.filterable ?? false;
+  const showsDrawer = !layout.isExpanded && filterable;
 
   return (
     <View
@@ -157,7 +159,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           }}
         >
           <ScrollView contentContainerStyle={{ padding: spacing.md }}>
-            <FilterPlaceholder />
+            <ExpenseFilters />
           </ScrollView>
         </View>
       ) : null}
@@ -178,7 +180,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <NavButton key={item.key} item={item} align="left" />
               ))}
             </View>
-            {onDestination ? <FilterPlaceholder /> : null}
+            {filterable ? <ExpenseFilters /> : null}
           </View>
         ) : null}
 
@@ -204,25 +206,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           ))}
         </View>
       ) : null}
-    </View>
-  );
-}
-
-/**
- * Stands in for the filter controls until #14.
- *
- * Owned by the shell rather than passed in by a screen. Spec §2 describes the
- * filter sidebar as part of the chrome at every breakpoint, and a screen cannot
- * hand a node to a shell that is mounted above it in the tree. If #14 needs the
- * panel to differ per route, the mechanism is context rather than a prop.
- */
-function FilterPlaceholder() {
-  return (
-    <View style={{ gap: spacing.sm }}>
-      <Text style={{ fontWeight: '600', color: palette.text }}>Filters</Text>
-      <Text style={{ color: palette.textMuted, fontSize: 12 }}>
-        The filter controls of spec §2. Populated by #14.
-      </Text>
     </View>
   );
 }
