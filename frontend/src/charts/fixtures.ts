@@ -34,7 +34,10 @@ export const sampleOverTime: SpendOverTime = {
   period: { from: '2026-03-01', to: '2026-08-01' },
   bucket: 'MONTH',
   currency: 'PHP',
-  total: '182640.00',
+  // The net of the buckets below, to the centavo. A fixture whose total does
+  // not reconcile with its own buckets teaches the wrong thing about the API
+  // it imitates, and is the exact discrepancy the reports exist to catch.
+  total: '117395.50',
   buckets: [
     { key: '2026-03-01', label: 'Mar 2026', total: '38200.00' },
     { key: '2026-04-01', label: 'Apr 2026', total: '41050.00' },

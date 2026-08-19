@@ -83,11 +83,6 @@ function localeParts(): Parts {
   return cached;
 }
 
-/** Test seam — the parts are cached because `Intl` construction is not free. */
-export function resetLocaleCache(): void {
-  cached = null;
-}
-
 /**
  * Splits a decimal string into sign and digits, rounding to {@link SCALE} with
  * HALF_UP.
