@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MIN_TOUCH_TARGET } from './breakpoints';
+import { useActiveTitle, useNavItems, type NavItem } from './navigation';
 import { useLayout } from './useLayout';
 import { palette, spacing } from '../theme/tokens';
 
@@ -15,39 +16,28 @@ import { palette, spacing } from '../theme/tokens';
  * children in all three, which is what keeps iOS, Android and desktop web from
  * drifting into three different apps.
  *
- * **Every band gets an explicit answer for both.** The first version gave
+ * **Every band gets an explicit answer for both.** An earlier version gave
  * bottom tabs to compact and the sidebar to expanded, and medium — every tablet
  * in portrait — silently inherited neither. A band that is not named anywhere
  * does not fall back to something sensible; its content is simply dropped.
+ *
+ * **Mounted once, in the layout route, wrapping the navigator.** It used to be
+ * mounted inside each screen, which looked identical on web and was wrong on
+ * native: `native-stack` animates the whole screen, so switching destinations
+ * slid the header, the nav row and the tab bar off while an identical copy slid
+ * on. Persistent chrome that animates like content is one of the clearest
+ * "this was built for the browser" tells on a device. Two smaller consequences
+ * went with it — the drawer closed itself on every navigation, and the charts
+ * re-measured from zero each time because the shell remounted.
  */
-
-export interface NavItem {
-  key: string;
-  label: string;
-  onPress?: () => void;
-  active?: boolean;
-}
-
-export function AppShell({
-  title,
-  nav,
-  sidebar,
-  children,
-}: {
-  title: string;
-  nav: NavItem[];
-  /** Filter controls. Persistent when expanded, a collapsible drawer below it. */
-  sidebar?: ReactNode;
-  children: ReactNode;
-}) {
+export function AppShell({ children }: { children: ReactNode }) {
   const layout = useLayout();
   const insets = useSafeAreaInsets();
+  const nav = useNavItems();
+  const title = useActiveTitle();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Truthiness, not `!== undefined`: #14 is likely to write
-  // `sidebar={hasFilters && <Filters />}`, and `false` would otherwise put a
-  // toggle on screen that opens an empty panel.
-  const showsDrawer = !layout.isExpanded && Boolean(sidebar);
+  const showsDrawer = !layout.isExpanded;
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.background, paddingTop: insets.top }}>
@@ -104,16 +94,18 @@ export function AppShell({
 
       {/*
         The collapsible drawer of spec §2. Rendered inline above the content
-        rather than as an overlay: an overlay needs focus trapping and a
-        scrim to be correct, and #14 owns the real filter UI. What matters
-        here is that the panel is reachable at all — it used to be dropped.
+        rather than as an overlay: an overlay needs focus trapping and a scrim
+        to be correct, and #14 owns the real filter UI. What matters here is
+        that the panel is reachable at all.
+
+        Now that the shell outlives navigation, an open drawer stays open when
+        the destination changes — which is the behaviour a filter panel wants.
       */}
       {showsDrawer && drawerOpen ? (
         <View
           // Announces the panel's arrival on Android and web. Landing on the
           // toggle tells a screen-reader user its state; nothing otherwise
-          // tells them content appeared elsewhere on the screen. #14 can do
-          // real focus management.
+          // tells them content appeared elsewhere on the screen.
           accessibilityLiveRegion="polite"
           style={{
             // Bounded and scrollable: a phone in landscape is 667×375, which
@@ -125,7 +117,9 @@ export function AppShell({
             borderBottomColor: palette.border,
           }}
         >
-          <ScrollView contentContainerStyle={{ padding: spacing.md }}>{sidebar}</ScrollView>
+          <ScrollView contentContainerStyle={{ padding: spacing.md }}>
+            <FilterPlaceholder />
+          </ScrollView>
         </View>
       ) : null}
 
@@ -145,16 +139,17 @@ export function AppShell({
                 <NavButton key={item.key} item={item} align="left" />
               ))}
             </View>
-            {sidebar}
+            <FilterPlaceholder />
           </View>
         ) : null}
 
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ padding: spacing.md, gap: spacing.lg }}
-        >
-          {children}
-        </ScrollView>
+        {/*
+          The navigator. Screens bring their own scrolling — a `ScrollView` here
+          would wrap the whole stack, so every screen would share one scroll
+          offset and a screen that needs a `FlatList` (#14's expense list, which
+          must not render 200 rows eagerly) could not have one.
+        */}
+        <View style={{ flex: 1 }}>{children}</View>
       </View>
 
       {layout.isCompact ? (
@@ -171,6 +166,25 @@ export function AppShell({
           ))}
         </View>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * Stands in for the filter controls until #14.
+ *
+ * Owned by the shell rather than passed in by a screen. Spec §2 describes the
+ * filter sidebar as part of the chrome at every breakpoint, and a screen cannot
+ * hand a node to a shell that is mounted above it in the tree. If #14 needs the
+ * panel to differ per route, the mechanism is context rather than a prop.
+ */
+function FilterPlaceholder() {
+  return (
+    <View style={{ gap: spacing.sm }}>
+      <Text style={{ fontWeight: '600', color: palette.text }}>Filters</Text>
+      <Text style={{ color: palette.textMuted, fontSize: 12 }}>
+        The filter controls of spec §2. Populated by #14.
+      </Text>
     </View>
   );
 }
