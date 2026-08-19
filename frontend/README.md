@@ -111,4 +111,21 @@ is why `ChartLegend` is rendered by the chart components rather than by callers
 — a caller cannot forget it or turn it off. Colour never carries meaning alone.
 
 **Tokens are never in `localStorage`** (spec §9.2). The access token lives in
-memory only; refresh-token storage is per-target and lands with #13.
+memory on every target and is never written to storage. The refresh token goes
+to the Keychain / Keystore on device via `expo-secure-store`
+(`src/api/refreshTokenStore.ts`), and stays **in memory only** on web
+(`refreshTokenStore.web.ts`) — Metro picks the variant per platform.
+
+The web half does not match spec §9.2, and cannot from the client alone. The
+spec asks for an `httpOnly; Secure; SameSite=Strict` cookie, and an `httpOnly`
+cookie is by definition unwritable from JavaScript — only the server can set
+one, and the API deliberately returns both tokens in the body instead. That
+leaves `localStorage` (forbidden), `sessionStorage` (the same script-readable
+exposure), a non-`httpOnly` cookie (ditto), or memory. Memory is the only one
+that keeps the security rule, and the cost is real: **a page reload signs a web
+user out.** Closing it needs a backend change — `Set-Cookie` on `/auth/login`
+and `/auth/refresh` for web callers, plus CSRF protection, which the API
+currently disables — tracked as
+[#57](https://github.com/DuaneRontos/expense-calc/issues/57).
+`refreshTokenStore.web.ts` carries the full argument, and a test pins the rule
+against the source so the tempting fix cannot land quietly.

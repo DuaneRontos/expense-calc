@@ -198,3 +198,63 @@ export interface ExpenseSortSpec {
   field: ExpenseSortField;
   direction: SortDirection;
 }
+
+/**
+ * `POST /expenses`.
+ *
+ * @param amount a signed decimal string; negative is a refund (spec §5). Sent
+ *     verbatim — never rounded on the way out, because the API rejects
+ *     sub-centavo precision rather than accepting a moved number.
+ * @param currency must be `PHP` in v1; anything else is a 400 before the
+ *     database sees it (spec §9.6)
+ */
+export interface CreateExpenseRequest {
+  amount: DecimalString;
+  currency: string;
+  occurredOn: IsoDate;
+  merchant?: string;
+  description?: string;
+}
+
+/**
+ * `PATCH /expenses/{id}`. Every field is optional and **omitting one means
+ * "leave it alone"**.
+ *
+ * There is no way to clear a merchant or a description through this API, and
+ * that is deliberate on the server's side: `""` is rejected rather than stored,
+ * because a blank is neither leaving the field alone nor clearing it. Model
+ * fields as absent rather than sending an empty string.
+ *
+ * Changing the merchant or description re-runs classification; changing the
+ * amount or the date does not, because the rule engine reads neither as text.
+ */
+export interface UpdateExpenseRequest {
+  amount?: DecimalString;
+  currency?: string;
+  occurredOn?: IsoDate;
+  merchant?: string;
+  description?: string;
+}
+
+/**
+ * `POST /expenses/{id}/classification`.
+ *
+ * @param reason required and non-blank — an unexplained category change is
+ *     exactly the question the append-only history exists to answer
+ */
+export interface ReclassifyRequest {
+  category: Category;
+  reason: string;
+}
+
+/** `POST /auth/login`. */
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+/** `POST /auth/logout` — access tokens already issued run to their expiry. */
+export interface LogoutResult {
+  revokedSessions: number;
+  note: string;
+}
