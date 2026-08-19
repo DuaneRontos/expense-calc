@@ -4,6 +4,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BarChart } from '../src/charts/BarChart';
 import { DonutChart } from '../src/charts/DonutChart';
 import { sampleBreakdown, sampleOverTime } from '../src/charts/fixtures';
+import { webTitleFor } from '../src/layout/navigation';
 import { useLayout } from '../src/layout/useLayout';
 import { palette, spacing } from '../src/theme/tokens';
 
@@ -25,7 +26,7 @@ export default function Overview() {
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <Head>
-        <title>Overview · Expense Calc</title>
+        <title>{webTitleFor('overview')}</title>
       </Head>
 
       <View style={styles.notice}>

@@ -107,7 +107,7 @@ function ChartLegendComponent({
 }
 
 /**
- * Memoized: `AppShell` re-renders this subtree on every resize frame, and the
+ * Memoized: the screen re-renders its panels on every resize frame, and the
  * legend's props are unchanged across all of them.
  */
 export const ChartLegend = memo(ChartLegendComponent);

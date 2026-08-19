@@ -3,7 +3,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MIN_TOUCH_TARGET } from './breakpoints';
-import { useActiveTitle, useNavItems, type NavItem } from './navigation';
+import { useActiveDestination, useActiveTitle, useNavItems, type NavItem } from './navigation';
 import { useLayout } from './useLayout';
 import { palette, spacing } from '../theme/tokens';
 
@@ -37,10 +37,27 @@ export function AppShell({ children }: { children: ReactNode }) {
   const title = useActiveTitle();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const showsDrawer = !layout.isExpanded;
+  // Not every route under this layout has something to filter. `+not-found`
+  // and `_sitemap` render inside this chrome too — the title hook already
+  // reasons about exactly those two — and a "Filters" button on a not-found
+  // page opens a panel describing controls for a list that is not there.
+  const onDestination = useActiveDestination() !== undefined;
+  const showsDrawer = !layout.isExpanded && onDestination;
 
   return (
-    <View style={{ flex: 1, backgroundColor: palette.background, paddingTop: insets.top }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: palette.background,
+        paddingTop: insets.top,
+        // Horizontal insets matter here specifically because a landscape phone
+        // lands in the *medium* band, which this shell designs for: without
+        // them the header and the tab row run under an iPhone's display cutout
+        // and rounded corners. The tab bar keeps its own `paddingBottom`.
+        paddingLeft: insets.left,
+        paddingRight: insets.right,
+      }}
+    >
       <View
         style={{
           paddingHorizontal: spacing.md,
@@ -139,7 +156,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <NavButton key={item.key} item={item} align="left" />
               ))}
             </View>
-            <FilterPlaceholder />
+            {onDestination ? <FilterPlaceholder /> : null}
           </View>
         ) : null}
 

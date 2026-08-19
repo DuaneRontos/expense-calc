@@ -1,6 +1,7 @@
 import Head from 'expo-router/head';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { webTitleFor } from '../src/layout/navigation';
 import { palette, spacing } from '../src/theme/tokens';
 
 /**
@@ -12,9 +13,9 @@ import { palette, spacing } from '../src/theme/tokens';
  */
 export default function Expenses() {
   return (
-    <ScrollView contentContainerStyle={{ padding: spacing.md, gap: spacing.lg }}>
+    <ScrollView contentContainerStyle={styles.screen}>
       <Head>
-        <title>Expenses · Expense Calc</title>
+        <title>{webTitleFor('expenses')}</title>
       </Head>
 
       <View style={{ gap: spacing.sm }}>
@@ -27,3 +28,10 @@ export default function Expenses() {
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    padding: spacing.md,
+    gap: spacing.lg,
+  },
+});
