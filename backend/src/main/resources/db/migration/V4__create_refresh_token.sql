@@ -16,7 +16,12 @@
 
 CREATE TABLE refresh_token (
     id          UUID        PRIMARY KEY,
-    token_hash  CHAR(64)    NOT NULL UNIQUE,
+    -- VARCHAR, not CHAR(64), even though a hex SHA-256 is exactly 64 characters.
+    -- Expense.currency is CHAR because spec §4 dictates CHAR(3) for ISO 4217;
+    -- nothing dictates it here, and Postgres compares bpchar ignoring trailing
+    -- spaces — so 'abc' and 'abc   ' are equal. For a value used as a lookup
+    -- key that is a silent-match waiting for the day something trims.
+    token_hash  VARCHAR(64) NOT NULL UNIQUE,
     issued_at   TIMESTAMPTZ NOT NULL,
     expires_at  TIMESTAMPTZ NOT NULL,
     -- Set on rotation and on logout. Kept rather than deleted so a replayed
