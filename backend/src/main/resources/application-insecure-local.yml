@@ -1,0 +1,19 @@
+# Local development only. Activated with:
+#
+#     ./mvnw spring-boot:run -Dspring-boot.run.profiles=insecure-local
+#
+# This profile disables authentication entirely. SecurityStartupGuard refuses to
+# start if it is active alongside app.deployment=production, or against any
+# database that is not local — see spec §9.2.
+#
+# The credentials below exist so the app can construct its token machinery
+# without anyone generating a hash to poke at a local API. They are worthless by
+# design and published in the repository, which is precisely why the guard above
+# exists: this profile is not a thing to make "a bit safer", it is a thing to
+# make impossible to deploy.
+app:
+  auth:
+    username: dev
+    # Argon2id hash of "dev". Not a secret, and not meant to be.
+    password-hash: "{argon2id}$argon2id$v=19$m=4096,t=3,p=1$c29tZXNhbHRzb21lc2FsdA$RdescudvJCsgt3ub+b+dWRWJTmaaJObG"
+    jwt-secret: "insecure-local-development-signing-key-not-a-secret"

@@ -32,6 +32,24 @@ spring:
 # Nothing reads them yet; the consuming issue is noted on each.
 # ---------------------------------------------------------------------------
 app:
+  # Set to "production" wherever this is deployed. With the insecure-local
+  # profile active it makes the application refuse to start rather than serve
+  # an unauthenticated API (spec §9.2, SecurityStartupGuard).
+  deployment: ${APP_DEPLOYMENT:local}
+
+  # spec §9.2 — single-user credentials and token settings. No defaults: a
+  # default secret is a published secret, so the app refuses to start without
+  # these rather than falling back to something that works and is worthless.
+  # docs/RUNNING-LOCALLY.md has the command that generates a password hash.
+  auth:
+    username: ${APP_AUTH_USERNAME:}
+    password-hash: ${APP_AUTH_PASSWORD_HASH:}
+    jwt-secret: ${APP_AUTH_JWT_SECRET:}
+    # Short because an access token cannot be revoked; its lifetime is the
+    # window a leaked one works in.
+    access-token-ttl: 15m
+    refresh-token-ttl: 30d
+
   # spec §4 / §9.6 — v1 is Philippine Peso only. Anything else is rejected at
   # the API boundary with a 400, before persistence. Consumed by #5.
   currency: PHP

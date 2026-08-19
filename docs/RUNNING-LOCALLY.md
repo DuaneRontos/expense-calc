@@ -30,6 +30,87 @@ report, reclassifies it, watches the report follow, and deletes it.
 **If that passes, the backend works.** Everything below is for poking at it by
 hand.
 
+## Authentication changed how you run this
+
+The API now requires a token on every request except signing in (#21, spec
+§9.2). That gives you two ways to run it locally, and **the first is what you
+want unless you are specifically testing auth.**
+
+### Option A — turn authentication off (recommended for local poking)
+
+```bash
+cd backend && ./mvnw spring-boot:run -Dspring-boot.run.profiles=insecure-local
+```
+
+Every `curl` below then works with no token. The profile ships credentials that
+are published in this repository and worthless by design.
+
+**This profile cannot be deployed, and that is enforced rather than documented.**
+`SecurityStartupGuard` refuses to start the application if the profile is active
+alongside `app.deployment=production`, *or* against any database that is not
+`localhost`. The second check is the one that matters: the realistic accident is
+not declaring production and forgetting, it is running the local profile against
+a remote database because the URL was still in your environment.
+
+If you see this, that is the guard working:
+
+```
+Refusing to start: the insecure-local profile disables authentication entirely,
+and spring.datasource.url (jdbc:postgresql://db.internal:5432/expensecalc) is not
+a local database.
+```
+
+### Option B — run it secured, the way it deploys
+
+Three settings, none of which have defaults — a default secret is a published
+secret, so the app refuses to start without them rather than falling back to
+something that works and is worthless.
+
+Generate a password hash (Argon2id, which is what the app verifies against):
+
+```bash
+cd backend && ./mvnw -q compile exec:java -Dexec.mainClass=org.springframework.security.crypto.argon2.Argon2PasswordEncoder -Dexec.args="" 2>/dev/null || echo "see the note below"
+```
+
+That encoder has no main method, so the practical way is a throwaway JShell:
+
+```bash
+cd backend && ./mvnw -q dependency:build-classpath -Dmdep.outputFile=/tmp/cp.txt && jshell --class-path "$(cat /tmp/cp.txt)" -
+```
+
+then paste:
+
+```java
+System.out.println(org.springframework.security.crypto.argon2.Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8().encode("your-password-here"));
+```
+
+Then run with the three values set:
+
+```bash
+cd backend && APP_AUTH_USERNAME=you APP_AUTH_PASSWORD_HASH='<the hash>' APP_AUTH_JWT_SECRET='at-least-32-bytes-of-random-text-here' ./mvnw spring-boot:run
+```
+
+Sign in to get a token:
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/auth/login -H 'Content-Type: application/json' -d '{"username":"you","password":"your-password-here"}'
+```
+
+That returns `accessToken`, `refreshToken` and `expiresInSeconds` (900 — fifteen
+minutes, because an access token cannot be revoked, so its lifetime *is* the
+window a leaked one works in). Put the access token on every other request:
+
+```bash
+curl -s http://localhost:8080/api/v1/categories -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+When it expires, exchange the refresh token — **which invalidates it**, so keep
+the new one:
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/auth/refresh -H 'Content-Type: application/json' -d '{"refreshToken":"<the refresh token>"}'
+```
+
 ## Running the app for real
 
 The application needs a PostgreSQL on `localhost:5432`. The quickest one:
@@ -55,8 +136,8 @@ docker rm -f expensecalc-db
 
 ## Trying the API
 
-**There is no authentication yet** (issue #21, deliberately deferred to first
-deployment per spec §9.2), so these work as-is.
+These assume **Option A** above (the `insecure-local` profile). If you are
+running secured, add `-H "Authorization: Bearer $ACCESS_TOKEN"` to every one.
 
 Create an expense — note the amount is a **string**, not a number:
 
@@ -131,6 +212,14 @@ and an unclassified row is visible and fixable.
 **The app fails to start complaining about schema validation.** The database has
 an older schema than the code. Simplest fix locally is to drop the container and
 let Flyway rebuild it: `docker rm -f expensecalc-db` and start again.
+
+**Every request returns 401.** You are running secured without a token, or the
+token expired — they last fifteen minutes. Either sign in again, refresh, or use
+the `insecure-local` profile.
+
+**The app refuses to start, saying `app.auth.jwt-secret is not set`.** You are
+running secured (Option B) without the three settings. Either set them or use
+the `insecure-local` profile.
 
 **Tests pass locally but fail in CI, or the reverse.** CI runs JDK 21; you may
 be on something newer. Hibernate's bytecode generation is JDK-sensitive, so a
