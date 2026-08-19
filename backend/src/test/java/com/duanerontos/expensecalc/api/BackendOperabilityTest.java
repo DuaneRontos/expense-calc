@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.duanerontos.expensecalc.TestcontainersConfiguration;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -12,6 +13,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.RequestEntity;
@@ -46,20 +50,68 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Import(TestcontainersConfiguration.class)
 class BackendOperabilityTest {
 
+	private static final String USERNAME = "operability";
+
+	private static final String PASSWORD = "correct horse battery staple";
+
+	/**
+	 * Credentials for the run, with the hash computed rather than pasted.
+	 *
+	 * <p>A literal hash in a test file is a hash nobody can change the password
+	 * of, and the first person who tries discovers the encoder's parameters are
+	 * baked into a string. Computing it here also means this test exercises the
+	 * same encoder the application verifies with — a mismatch between the two
+	 * would otherwise show up as "wrong password" with nothing to point at.
+	 */
+	@DynamicPropertySource
+	static void credentials(DynamicPropertyRegistry registry) {
+		registry.add("app.auth.username", () -> USERNAME);
+		registry.add("app.auth.password-hash",
+				() -> Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8().encode(PASSWORD));
+		registry.add("app.auth.jwt-secret", () -> "operability-test-signing-key-well-over-32-bytes-long");
+	}
+
 	@Autowired
 	private TestRestTemplate http;
 
-	private static RequestEntity<Object> json(String method, String path, Object body) {
+	private String accessToken;
+
+	/**
+	 * Signs in before each test.
+	 *
+	 * <p>Every endpoint below now requires a token, which is the point: these
+	 * tests would have kept passing against an unauthenticated API, and after
+	 * #21 that is exactly what must not happen silently.
+	 */
+	@BeforeEach
+	void signIn() {
+		ResponseEntity<Map<String, Object>> response = this.http.exchange(
+				RequestEntity.post("/api/v1/auth/login")
+					.contentType(MediaType.APPLICATION_JSON)
+					.body(Map.of("username", USERNAME, "password", PASSWORD)),
+				new org.springframework.core.ParameterizedTypeReference<>() {
+				});
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+		this.accessToken = (String) response.getBody().get("accessToken");
+	}
+
+	private RequestEntity<Object> json(String method, String path, Object body) {
 		return RequestEntity.method(org.springframework.http.HttpMethod.valueOf(method), path)
+			.header("Authorization", "Bearer " + this.accessToken)
 			.contentType(MediaType.APPLICATION_JSON)
 			.body(body);
+	}
+
+	private RequestEntity<Void> authorizedGet(String path) {
+		return RequestEntity.get(path).header("Authorization", "Bearer " + this.accessToken).build();
 	}
 
 	@Test
 	@DisplayName("serves the taxonomy so a client never hardcodes it")
 	void servesTheTaxonomy() {
 		ResponseEntity<List<Map<String, String>>> response = this.http.exchange(
-				RequestEntity.get("/api/v1/categories").build(),
+				authorizedGet("/api/v1/categories"),
 				new org.springframework.core.ParameterizedTypeReference<>() {
 				});
 
@@ -99,7 +151,7 @@ class BackendOperabilityTest {
 
 		// 2. List. The category is resolved in the query, not fetched per row.
 		ResponseEntity<Map<String, Object>> listed = this.http.exchange(
-				RequestEntity.get("/api/v1/expenses?category=GROCERIES&from=2031-01-01&to=2031-02-01").build(),
+				authorizedGet("/api/v1/expenses?category=GROCERIES&from=2031-01-01&to=2031-02-01"),
 				new org.springframework.core.ParameterizedTypeReference<>() {
 				});
 
@@ -109,7 +161,7 @@ class BackendOperabilityTest {
 
 		// 3. Report. The expense should be in January's groceries bucket.
 		ResponseEntity<Map<String, Object>> report = this.http.exchange(
-				RequestEntity.get("/api/v1/reports/by-category?from=2031-01-01&to=2031-02-01").build(),
+				authorizedGet("/api/v1/reports/by-category?from=2031-01-01&to=2031-02-01"),
 				new org.springframework.core.ParameterizedTypeReference<>() {
 				});
 
@@ -131,7 +183,7 @@ class BackendOperabilityTest {
 		// 5. The report follows the correction, because it reads the current
 		//    category (the as-of read exists for reproducing a closed period).
 		ResponseEntity<Map<String, Object>> afterReclassification = this.http.exchange(
-				RequestEntity.get("/api/v1/reports/by-category?from=2031-01-01&to=2031-02-01").build(),
+				authorizedGet("/api/v1/reports/by-category?from=2031-01-01&to=2031-02-01"),
 				new org.springframework.core.ParameterizedTypeReference<>() {
 				});
 
@@ -139,9 +191,11 @@ class BackendOperabilityTest {
 			.satisfies(bucket -> assertThat(bucket).containsEntry("key", "DINING"));
 
 		// 6. Delete, and it is gone.
-		this.http.delete("/api/v1/expenses/" + id);
+		this.http.exchange(RequestEntity.delete("/api/v1/expenses/" + id)
+			.header("Authorization", "Bearer " + this.accessToken)
+			.build(), Void.class);
 
-		assertThat(this.http.getForEntity("/api/v1/expenses/" + id, String.class).getStatusCode())
+		assertThat(this.http.exchange(authorizedGet("/api/v1/expenses/" + id), String.class).getStatusCode())
 			.isEqualTo(HttpStatus.NOT_FOUND);
 	}
 
@@ -175,7 +229,7 @@ class BackendOperabilityTest {
 				});
 
 		ResponseEntity<Map<String, Object>> report = this.http.exchange(
-				RequestEntity.get("/api/v1/reports/by-category?from=2032-03-01&to=2032-04-01").build(),
+				authorizedGet("/api/v1/reports/by-category?from=2032-03-01&to=2032-04-01"),
 				new org.springframework.core.ParameterizedTypeReference<>() {
 				});
 

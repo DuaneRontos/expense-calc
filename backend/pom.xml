@@ -46,6 +46,34 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-validation</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+		<!--
+			Nimbus, for signing and verifying the access token. The resource
+			server starter would also work, but this app issues its own tokens
+			rather than trusting an external issuer, so it needs the encoder
+			half that the starter does not bring.
+		-->
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-oauth2-jose</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+		</dependency>
+		<!--
+			Spring Security's Argon2PasswordEncoder delegates to BouncyCastle and
+			throws at construction without it. Spec §9.2 names Argon2id
+			specifically, so this is not an interchangeable choice.
+		-->
+		<dependency>
+			<groupId>org.bouncycastle</groupId>
+			<artifactId>bcprov-jdk18on</artifactId>
+			<version>1.81</version>
+		</dependency>
 		<!-- Boot 4 renamed this from spring-boot-starter-web. -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -86,6 +114,11 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-test</artifactId>
 			<scope>test</scope>
 		</dependency>
 		<!--
