@@ -1,3 +1,4 @@
+import Head from 'expo-router/head';
 import { Text, View } from 'react-native';
 
 import { AppShell } from '../src/layout/AppShell';
@@ -16,6 +17,10 @@ export default function Expenses() {
 
   return (
     <AppShell title="Expenses" nav={nav}>
+      <Head>
+        <title>Expenses · Expense Calc</title>
+      </Head>
+
       <View style={{ gap: spacing.sm }}>
         <Text style={{ color: palette.text, fontWeight: '600' }}>Expense list</Text>
         <Text style={{ color: palette.textMuted }}>

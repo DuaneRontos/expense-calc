@@ -49,38 +49,108 @@ type Parts = {
 
 let cached: Parts | null = null;
 
+/**
+ * What to format with when `Intl` cannot be asked.
+ *
+ * **The ISO code, never the `₱` glyph.** Falling back to the symbol would break
+ * the rule this whole file exists to honour — the moment v2 adds a second
+ * currency, a hardcoded symbol is a bug, and one hidden in a fallback path is
+ * the last place anybody would look for it. `PHP 1,234.56` is ugly and correct.
+ */
+const FALLBACK_PARTS: Parts = {
+  currency: CURRENCY_CODE,
+  group: ',',
+  decimal: '.',
+  minusSign: '-',
+  literal: ' ',
+  symbolFirst: true,
+};
+
+/**
+ * The literal between the currency symbol and the digits.
+ *
+ * Taken **positionally** rather than as the first literal in the array. The
+ * probe is negative, and an engine that reports the sign as a `literal` instead
+ * of a `minusSign` would otherwise hand back `"-"` — which then gets injected
+ * into every amount the app formats, negative or not, as `₱-1,234.56`. Full ICU
+ * does not do this; a shim might, and it would be silently wrong rather than
+ * loud.
+ */
+function literalBetween(
+  parts: Intl.NumberFormatPart[],
+  currencyIndex: number,
+  integerIndex: number,
+): string {
+  if (currencyIndex < 0 || integerIndex < 0) {
+    return '';
+  }
+  const from = Math.min(currencyIndex, integerIndex);
+  const to = Math.max(currencyIndex, integerIndex);
+  return parts.slice(from + 1, to).find((part) => part.type === 'literal')?.value ?? '';
+}
+
 function localeParts(): Parts {
   if (cached) {
     return cached;
   }
 
-  const formatter = new Intl.NumberFormat(LOCALE, {
-    style: 'currency',
-    currency: CURRENCY_CODE,
-    minimumFractionDigits: SCALE,
-    maximumFractionDigits: SCALE,
-  });
+  try {
+    const formatter = new Intl.NumberFormat(LOCALE, {
+      style: 'currency',
+      currency: CURRENCY_CODE,
+      minimumFractionDigits: SCALE,
+      maximumFractionDigits: SCALE,
+    });
 
-  const parts = formatter.formatToParts(PROBE);
-  const find = (type: Intl.NumberFormatPartTypes, fallback: string) =>
-    parts.find((part) => part.type === type)?.value ?? fallback;
+    // Hermes implements `Intl` as a shim over the platform's ICU rather than as
+    // a full ECMA-402 engine, and `formatToParts` is among the least reliably
+    // present members of it. Calling it blind throws a TypeError *inside
+    // render*, on every screen in an app where every screen shows money — and
+    // neither jest on Node nor a browser can observe it.
+    if (typeof formatter.formatToParts !== 'function') {
+      if (__DEV__) {
+        console.warn(
+          'Intl.NumberFormat#formatToParts is missing on this engine; ' +
+            'formatting amounts as "PHP 1,234.56". Consider @formatjs/intl-numberformat.',
+        );
+      }
+      cached = FALLBACK_PARTS;
+      return cached;
+    }
 
-  const currencyIndex = parts.findIndex((part) => part.type === 'currency');
-  const integerIndex = parts.findIndex((part) => part.type === 'integer');
+    const parts = formatter.formatToParts(PROBE);
+    const find = (type: Intl.NumberFormatPartTypes, fallback: string) =>
+      parts.find((part) => part.type === type)?.value ?? fallback;
 
-  cached = {
-    currency: find('currency', CURRENCY_CODE),
-    group: find('group', ','),
-    decimal: find('decimal', '.'),
-    minusSign: find('minusSign', '-'),
-    literal: parts.find((part) => part.type === 'literal')?.value ?? '',
-    // Both indexes are >= 0 for any real Intl implementation; the comparison is
-    // written so that a missing currency part degrades to symbol-first rather
-    // than throwing.
-    symbolFirst: currencyIndex < integerIndex,
-  };
+    const currencyIndex = parts.findIndex((part) => part.type === 'currency');
+    const integerIndex = parts.findIndex((part) => part.type === 'integer');
 
-  return cached;
+    cached = {
+      // If the device has no `en-PH` data and falls back to `en`, this comes
+      // back as the code rather than the glyph — ugly, correct, and not a crash.
+      currency: find('currency', CURRENCY_CODE),
+      group: find('group', FALLBACK_PARTS.group),
+      decimal: find('decimal', FALLBACK_PARTS.decimal),
+      minusSign: find('minusSign', FALLBACK_PARTS.minusSign),
+      literal: literalBetween(parts, currencyIndex, integerIndex),
+      // Both indexes are >= 0 for any real Intl implementation; written so that
+      // a missing currency part degrades to symbol-first rather than throwing.
+      symbolFirst: currencyIndex < integerIndex,
+    };
+
+    return cached;
+  } catch {
+    if (__DEV__) {
+      console.warn('Intl.NumberFormat is unavailable; formatting amounts as "PHP 1,234.56".');
+    }
+    cached = FALLBACK_PARTS;
+    return cached;
+  }
+}
+
+/** Test seam: the parts are cached because constructing `Intl` is not free. */
+export function resetMoneyFormatCache(): void {
+  cached = null;
 }
 
 /**

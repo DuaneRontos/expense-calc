@@ -14,23 +14,27 @@ import type { ReportBucket } from '../api/types';
  * component is that pairing, which is why it is not optional on any chart
  * below — a caller cannot turn it off.
  *
- * Rendered as rows of label + value rather than as a colour key, because the
- * value is the point. A legend that only maps colour to name still leaves a
- * screen-reader user with no numbers.
+ * **Every bucket in the response gets a row**, including the ones the chart
+ * declined to draw. A category netting exactly `"0.00"` has no slice and a
+ * net-negative one is excluded from the arc, but both are real answers the
+ * server gave, and a legend that quietly omits them stops carrying the same
+ * values as the response it describes.
  */
 function ChartLegendComponent({
   buckets,
-  excluded = [],
+  drawnKeys,
   title,
 }: {
   buckets: ReportBucket[];
-  /** Net-negative buckets left out of a donut arc, shown here with real values. */
-  excluded?: ReportBucket[];
+  /**
+   * Keys the chart actually drew. Rows outside it keep their value but lose
+   * the colour swatch, so the colour never claims a slice that is not there.
+   * Undefined means every row was drawn.
+   */
+  drawnKeys?: Set<string>;
   title?: string;
 }) {
-  const rows = [...buckets, ...excluded];
-
-  if (rows.length === 0) {
+  if (buckets.length === 0) {
     return (
       <Text style={{ color: palette.textMuted, padding: spacing.md }}>
         No spending in this period.
@@ -39,16 +43,22 @@ function ChartLegendComponent({
   }
 
   return (
-    <View accessibilityRole="summary" style={{ gap: spacing.xs }}>
+    // No `accessibilityRole="summary"`: that maps to iOS's
+    // UIAccessibilityTraitSummaryElement, which means "summary information when
+    // the application starts" and is treated specially by VoiceOver at launch.
+    // A screen with two charts would declare two app summaries. The per-row
+    // labels below are what actually carry the data.
+    <View accessibilityRole="list" style={{ gap: spacing.xs }}>
       {title ? (
         <Text style={{ fontWeight: '600', color: palette.text, marginBottom: spacing.xs }}>
           {title}
         </Text>
       ) : null}
 
-      {rows.map((bucket) => {
+      {buckets.map((bucket) => {
         const negative = isNegative(bucket.total);
         const amount = formatMoney(bucket.total);
+        const drawn = drawnKeys === undefined || drawnKeys.has(bucket.key);
 
         return (
           <View
@@ -65,13 +75,14 @@ function ChartLegendComponent({
             }}
           >
             <View
-              // Decorative — the label beside it carries the meaning.
+              // Decorative — the label beside it carries the meaning. A row the
+              // chart did not draw keeps the spacer but loses the colour.
               aria-hidden
               style={{
                 width: 12,
                 height: 12,
                 borderRadius: 3,
-                backgroundColor: colorForCategory(bucket.key),
+                backgroundColor: drawn ? colorForCategory(bucket.key) : 'transparent',
               }}
             />
             <Text style={{ flex: 1, color: palette.text }} numberOfLines={1}>
@@ -80,6 +91,9 @@ function ChartLegendComponent({
             <Text
               style={{
                 color: negative ? palette.negative : palette.text,
+                // Honoured on iOS and web; historically a no-op on Android RN,
+                // so the column may not align there. Cosmetic, and there is no
+                // clean fix short of shipping a mono-digit font.
                 fontVariant: ['tabular-nums'],
               }}
             >

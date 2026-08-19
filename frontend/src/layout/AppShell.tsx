@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MIN_TOUCH_TARGET } from './breakpoints';
@@ -44,7 +44,10 @@ export function AppShell({
   const insets = useSafeAreaInsets();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const showsDrawer = !layout.isExpanded && sidebar !== undefined;
+  // Truthiness, not `!== undefined`: #14 is likely to write
+  // `sidebar={hasFilters && <Filters />}`, and `false` would otherwise put a
+  // toggle on screen that opens an empty panel.
+  const showsDrawer = !layout.isExpanded && Boolean(sidebar);
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.background, paddingTop: insets.top }}>
@@ -74,20 +77,27 @@ export function AppShell({
           ) : null}
 
           {showsDrawer ? (
-            <Text
+            <Pressable
               accessibilityRole="button"
+              // `expanded` is honoured by TalkBack and by RNW's `aria-expanded`,
+              // but it is the weakest of the iOS states and VoiceOver may drop
+              // it — so the label carries the action too. The redundancy is the
+              // fix, not a smell.
               accessibilityState={{ expanded: drawerOpen }}
               accessibilityLabel={drawerOpen ? 'Hide filters' : 'Show filters'}
               onPress={() => setDrawerOpen((open) => !open)}
               style={{
                 minHeight: MIN_TOUCH_TARGET,
-                paddingTop: spacing.md,
-                color: palette.accent,
-                fontWeight: '600',
+                // Symmetric, so the label sits in the middle of its 44dp target
+                // rather than top-aligned with the tap centre somewhere below it.
+                justifyContent: 'center',
+                paddingVertical: spacing.sm,
               }}
             >
-              {drawerOpen ? 'Hide filters' : 'Filters'}
-            </Text>
+              <Text style={{ color: palette.accent, fontWeight: '600' }}>
+                {drawerOpen ? 'Hide filters' : 'Filters'}
+              </Text>
+            </Pressable>
           ) : null}
         </View>
       </View>
@@ -100,14 +110,22 @@ export function AppShell({
       */}
       {showsDrawer && drawerOpen ? (
         <View
+          // Announces the panel's arrival on Android and web. Landing on the
+          // toggle tells a screen-reader user its state; nothing otherwise
+          // tells them content appeared elsewhere on the screen. #14 can do
+          // real focus management.
+          accessibilityLiveRegion="polite"
           style={{
-            padding: spacing.md,
+            // Bounded and scrollable: a phone in landscape is 667×375, which
+            // lands in the *medium* band, so #14's real filter panel would
+            // otherwise fill the viewport and push the content out of reach.
+            maxHeight: Math.round(layout.height * 0.5),
             backgroundColor: palette.surface,
             borderBottomWidth: 1,
             borderBottomColor: palette.border,
           }}
         >
-          {sidebar}
+          <ScrollView contentContainerStyle={{ padding: spacing.md }}>{sidebar}</ScrollView>
         </View>
       ) : null}
 
@@ -157,23 +175,38 @@ export function AppShell({
   );
 }
 
+/**
+ * `Pressable`, not a `Text` with `onPress`.
+ *
+ * On web react-native-web renders both as a real `<button>` with `tabIndex=0`,
+ * so keyboard focus was never the problem it looked like. On native the
+ * difference is real: a `Text` gets no press feedback and its hit rect is the
+ * glyph frame, and this is the entire navigation on two of the three
+ * breakpoints.
+ */
 function NavButton({ item, align = 'center' }: { item: NavItem; align?: 'center' | 'left' }) {
   return (
-    <Text
+    <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected: item.active }}
       onPress={item.onPress}
       style={{
         flex: align === 'center' ? 1 : undefined,
-        textAlign: align,
         // Spec §2: touch targets keep mobile sizing at every breakpoint.
         minHeight: MIN_TOUCH_TARGET,
-        paddingVertical: spacing.md,
-        color: item.active ? palette.accent : palette.textMuted,
-        fontWeight: item.active ? '600' : '400',
+        justifyContent: 'center',
+        paddingVertical: spacing.sm,
       }}
     >
-      {item.label}
-    </Text>
+      <Text
+        style={{
+          textAlign: align,
+          color: item.active ? palette.accent : palette.textMuted,
+          fontWeight: item.active ? '600' : '400',
+        }}
+      >
+        {item.label}
+      </Text>
+    </Pressable>
   );
 }

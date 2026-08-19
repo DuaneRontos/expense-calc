@@ -1,9 +1,84 @@
 import {
   formatMoney,
   isNegative,
+  resetMoneyFormatCache,
   splitAmount,
   toChartNumber,
 } from '../format';
+
+/**
+ * These stub `Intl` to stand in for Hermes.
+ *
+ * The suite runs on Node, which has full ICU — so the engine that actually
+ * ships this code is the one environment the tests can never observe directly.
+ * Faking the shapes a shim can return is the only way to cover it at all.
+ */
+describe('degraded Intl engines', () => {
+  const RealIntl = globalThis.Intl;
+
+  afterEach(() => {
+    globalThis.Intl = RealIntl;
+    resetMoneyFormatCache();
+  });
+
+  it('formats with the ISO code when formatToParts is missing', () => {
+    globalThis.Intl = {
+      ...RealIntl,
+      // Hermes shims Intl over platform ICU; formatToParts is among the least
+      // reliably present members. Calling it blind throws inside render.
+      NumberFormat: function () {
+        return { format: (value: number) => String(value) };
+      },
+    } as unknown as typeof Intl;
+    resetMoneyFormatCache();
+
+    const formatted = formatMoney('1234.56');
+
+    expect(formatted).toContain('1,234.56');
+    // The ISO code, never a hardcoded peso glyph — the CLAUDE.md rule holds
+    // on the fallback path too.
+    expect(formatted).toContain('PHP');
+    expect(formatted).not.toContain('₱');
+  });
+
+  it('survives Intl.NumberFormat throwing outright', () => {
+    globalThis.Intl = {
+      ...RealIntl,
+      NumberFormat: function () {
+        throw new Error('no ICU data');
+      },
+    } as unknown as typeof Intl;
+    resetMoneyFormatCache();
+
+    expect(formatMoney('-500.00')).toContain('500.00');
+    expect(formatMoney('-500.00')).toMatch(/^-/);
+  });
+
+  it('does not inject the sign into every amount when it arrives as a literal', () => {
+    // An engine that reports the minus as a `literal` rather than a `minusSign`
+    // would poison the separator taken by document order, so 1234.56 would
+    // render as a negative. The separator is taken positionally instead.
+    globalThis.Intl = {
+      ...RealIntl,
+      NumberFormat: function () {
+        return {
+          formatToParts: () => [
+            { type: 'literal', value: '-' },
+            { type: 'currency', value: '₱' },
+            { type: 'integer', value: '1' },
+            { type: 'group', value: ',' },
+            { type: 'integer', value: '234' },
+            { type: 'decimal', value: '.' },
+            { type: 'fraction', value: '56' },
+          ],
+        };
+      },
+    } as unknown as typeof Intl;
+    resetMoneyFormatCache();
+
+    expect(formatMoney('1234.56')).not.toContain('-');
+  });
+});
 
 describe('splitAmount', () => {
   it('pads a short fraction to scale 2', () => {

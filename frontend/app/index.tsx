@@ -1,3 +1,4 @@
+import Head from 'expo-router/head';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { BarChart } from '../src/charts/BarChart';
@@ -33,6 +34,10 @@ export default function Overview() {
         </View>
       }
     >
+      <Head>
+        <title>Overview · Expense Calc</title>
+      </Head>
+
       <View
         style={{
           padding: spacing.md,

@@ -36,37 +36,40 @@ export function DonutChart({
   // Memoized because `AppShell` reads `useWindowDimensions`, so every resize
   // frame on web re-renders this subtree — and each render otherwise rebuilds
   // a trigonometric path string per arc.
+  //
+  // The dependency is identity-based. It holds for the module-level fixtures
+  // and stops holding the moment a caller passes `response.buckets.filter(…)`
+  // inline, so #13 should keep the array stable rather than assume this memo
+  // is doing anything.
   const { arcs, drawable, excluded } = useMemo(() => {
     const radius = size / 2;
     return donutModel(buckets, radius, radius, radius, holeRadius(radius, thickness));
   }, [buckets, size, thickness]);
 
   const hasRing = size > 0 && arcs.length > 0;
+  const drawnKeys = useMemo(() => new Set(drawable.map((bucket) => bucket.key)), [drawable]);
 
   return (
     <View style={{ gap: spacing.md }} onLayout={onLayout}>
       <View style={{ alignItems: 'center' }}>
         {hasRing ? (
-          <Svg
-            width={size}
-            height={size}
-            // The ring is decorative: every value in it is in the legend below,
-            // which is the representation assistive technology reads.
-            //
-            // `aria-hidden` rather than the iOS/Android pair
-            // (`accessibilityElementsHidden` / `importantForAccessibility`):
-            // react-native-svg forwards unknown props straight to the DOM
-            // `<svg>` on web, so those two reach React as invalid attributes
-            // and log an error on every render. `aria-hidden` is the
-            // cross-platform spelling — RN maps it to both native props.
-            aria-hidden
-          >
-            <G>
-              {arcs.map((arc) => (
-                <Path key={arc.key} d={arc.path} fill={colorForCategory(arc.key)} />
-              ))}
-            </G>
-          </Svg>
+          // The ring is decorative: every value in it is in the legend below,
+          // which is the representation assistive technology reads.
+          //
+          // `aria-hidden` on a wrapping `View` rather than on `Svg` itself, so
+          // the mapping to each platform's native flag is RN core's job. On
+          // `Svg` it would depend on react-native-svg forwarding an unknown
+          // prop — which is what put the iOS/Android spellings into the DOM as
+          // invalid attributes in the first place.
+          <View aria-hidden>
+            <Svg width={size} height={size}>
+              <G>
+                {arcs.map((arc) => (
+                  <Path key={arc.key} d={arc.path} fill={colorForCategory(arc.key)} />
+                ))}
+              </G>
+            </Svg>
+          </View>
         ) : null}
 
         <Text style={{ fontSize: 20, fontWeight: '600', color: palette.text }}>
@@ -76,11 +79,13 @@ export function DonutChart({
       </View>
 
       {/*
-        `drawable` rather than "buckets minus excluded". The two differ for a
-        category netting exactly "0.00": it has no arc, but it is not excluded
-        either, so it used to keep a coloured swatch claiming a slice.
+        Every bucket the server returned, with a swatch only on the ones that
+        got an arc. Passing `drawable` alone dropped a category netting exactly
+        "0.00" from the legend entirely — it is in neither the ring nor
+        `excluded` — which left the legend carrying fewer values than the
+        response, the one thing spec §10 does not allow it to do.
       */}
-      <ChartLegend buckets={drawable} excluded={excluded} />
+      <ChartLegend buckets={buckets} drawnKeys={drawnKeys} />
 
       {excluded.length > 0 ? (
         <Text style={{ color: palette.textMuted, fontSize: 12 }}>

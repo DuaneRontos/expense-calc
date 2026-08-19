@@ -22,7 +22,16 @@ npm run typecheck  # tsc --noEmit
 npm test           # jest
 ```
 
-CI runs the last three on Node 22. `npm run export:web` produces the static web
+CI runs the last three on Node 22.
+
+**There are no component-render tests, and that is a known gap rather than a
+choice.** `@testing-library/react-native` 14 was installed and removed again:
+under the `jest-expo` preset its `render` returns an empty result and mounts
+nothing, with React, `react-test-renderer` and RNTL all on matching versions
+(19.2.3 / 19.2.3 / 14.0.1), so it is an integration problem rather than a
+version mismatch. Everything tested here is therefore pure logic — geometry,
+money formatting, query serialization, problem parsing. Whoever picks up #14
+should solve the renderer properly rather than rediscover this cold. `npm run export:web` produces the static web
 build; `npx expo export --platform all` bundles all three targets and is the
 cheapest way to prove the JS compiles for iOS and Android without a simulator.
 
