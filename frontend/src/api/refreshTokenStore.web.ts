@@ -24,9 +24,14 @@ import type { RefreshTokenStore } from './refreshTokenStore';
  * So: memory. The cost is real and should not be discovered in review — a web
  * user is signed out by a page refresh. Closing that gap needs a backend change
  * (`Set-Cookie` on `/auth/login` and `/auth/refresh` for web callers, plus CSRF
- * protection, which the API currently disables), not a client one. Until then
- * this is the only option that does not trade the spec's security rule for
- * convenience.
+ * protection, which the API currently disables), not a client one — tracked as
+ * issue #57. Until then this is the only option that does not trade the spec's
+ * security rule for convenience.
+ *
+ * **When #57 lands, this file mostly goes away rather than changing.** A cookie
+ * the client can neither read nor write means the browser holds the token and
+ * this store has nothing to hold — `read` returns null, and `/auth/refresh`
+ * succeeds anyway because the cookie rode along with the request.
  */
 
 let token: string | null = null;

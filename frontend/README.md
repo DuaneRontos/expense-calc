@@ -125,5 +125,7 @@ exposure), a non-`httpOnly` cookie (ditto), or memory. Memory is the only one
 that keeps the security rule, and the cost is real: **a page reload signs a web
 user out.** Closing it needs a backend change — `Set-Cookie` on `/auth/login`
 and `/auth/refresh` for web callers, plus CSRF protection, which the API
-currently disables. `refreshTokenStore.web.ts` carries the full argument, and a
-test pins the rule against the source so the tempting fix cannot land quietly.
+currently disables — tracked as
+[#57](https://github.com/DuaneRontos/expense-calc/issues/57).
+`refreshTokenStore.web.ts` carries the full argument, and a test pins the rule
+against the source so the tempting fix cannot land quietly.
