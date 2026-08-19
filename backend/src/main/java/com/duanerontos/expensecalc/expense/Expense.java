@@ -100,6 +100,47 @@ public class Expense {
 				description);
 	}
 
+	/**
+	 * Applies a partial update, ignoring nulls.
+	 *
+	 * <p>Null means "leave alone" rather than "clear", which is what {@code
+	 * PATCH} means (spec §8). Clearing a nullable field therefore has no
+	 * expression here — a client that needs it wants an explicit sentinel, and
+	 * inventing one before anybody asks would be guessing at a shape.
+	 *
+	 * @return true when the merchant or description changed, which is the
+	 *     signal to re-run classification: those are the only fields the rule
+	 *     engine reads as text, so re-classifying on an amount or date edit
+	 *     would append a record asserting a decision nobody made
+	 */
+	public boolean applyUpdate(BigDecimal amount, String currencyCode, LocalDate occurredOn, String merchant,
+			String description) {
+		boolean textChanged = false;
+
+		if (currencyCode != null) {
+			Money.requireSupportedCurrency(currencyCode);
+			this.currency = currencyCode;
+		}
+		if (amount != null) {
+			// Checked against the currency now in force, so changing both at
+			// once cannot slip a non-PHP amount past the boundary (spec §9.6).
+			Money.requireSupportedCurrency(this.currency);
+			this.amountMinor = Money.toMinorUnits(amount);
+		}
+		if (occurredOn != null) {
+			this.occurredOn = occurredOn;
+		}
+		if (merchant != null && !merchant.equals(this.merchant)) {
+			this.merchant = merchant;
+			textChanged = true;
+		}
+		if (description != null && !description.equals(this.description)) {
+			this.description = description;
+			textChanged = true;
+		}
+		return textChanged;
+	}
+
 	@PrePersist
 	void onCreate() {
 		Instant now = Instant.now();
