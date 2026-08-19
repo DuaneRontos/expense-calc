@@ -50,6 +50,19 @@ export function countActive(query: ExpenseQuery): number {
   ].filter((value) => value !== undefined && value !== '').length;
 }
 
+/**
+ * Adds or removes one value from a selection.
+ *
+ * Pure, so the toggle semantics are testable without a renderer — and so the
+ * component can apply it inside a state updater rather than computing it from a
+ * render-time copy that two batched taps would both read.
+ */
+export function toggleIn<T>(selection: readonly T[], value: T): T[] {
+  return selection.includes(value)
+    ? selection.filter((candidate) => candidate !== value)
+    : [...selection, value];
+}
+
 export function ExpenseQueryProvider({ children }: { children: ReactNode }) {
   const [query, setQuery] = useState<ExpenseQuery>(EMPTY);
   const [generation, setGeneration] = useState(0);
@@ -66,19 +79,23 @@ export function ExpenseQueryProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const toggleCategory = useCallback(
-    (category: Category) => {
-      setFilters({
-        category: (() => {
-          const current = query.category ?? [];
-          return current.includes(category)
-            ? current.filter((value) => value !== category)
-            : [...current, category];
-        })(),
-      });
-    },
-    [query.category, setFilters],
-  );
+  /**
+   * Adds or removes one category.
+   *
+   * Derives the next selection inside the updater rather than from the
+   * render-time `query`. Reading state to compute a write that then goes
+   * through a functional updater is the worst of both: two toggles batched into
+   * one tick both start from the same array, and the second silently discards
+   * the first. It also keeps this callback stable, so it stops invalidating the
+   * context value on every query change.
+   */
+  const toggleCategory = useCallback((category: Category) => {
+    setQuery((current) => {
+      const next = { ...current, category: toggleIn(current.category ?? [], category) };
+      delete next.page;
+      return next;
+    });
+  }, []);
 
   const setSort = useCallback(
     (sort: ExpenseSortSpec) => {
@@ -87,8 +104,15 @@ export function ExpenseQueryProvider({ children }: { children: ReactNode }) {
     [setFilters],
   );
 
+  /**
+   * Clears the filters and keeps the sort.
+   *
+   * The button is labelled from `activeFilterCount`, which deliberately does not
+   * count sorting — so resetting the order here changes a control the user never
+   * touched, in a section the button does not name, with no visible cause.
+   */
   const clear = useCallback(() => {
-    setQuery(EMPTY);
+    setQuery((current) => ({ sort: current.sort ?? DEFAULT_SORT }));
     setGeneration((current) => current + 1);
   }, []);
 

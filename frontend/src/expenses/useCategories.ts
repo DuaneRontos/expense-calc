@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { api } from '../api/client';
 import type { CategoryView } from '../api/types';
@@ -12,9 +12,26 @@ import type { CategoryView } from '../api/types';
  * new one. The order is the server's too, matching what `sort=category`
  * produces, so a picker and a sorted list agree.
  */
-export function useCategories(): { categories: CategoryView[]; loading: boolean } {
+export interface Categories {
+  categories: CategoryView[];
+  loading: boolean;
+  /**
+   * Set when the taxonomy could not be loaded.
+   *
+   * Reported rather than swallowed. A failure here is not worth an error screen
+   * — the list still works and every other filter still works — but it used to
+   * be indistinguishable from an empty taxonomy and lasted the whole session,
+   * leaving a "Category" heading over nothing with no way to try again.
+   */
+  error: Error | null;
+  retry: () => void;
+}
+
+export function useCategories(): Categories {
   const [categories, setCategories] = useState<CategoryView[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -24,13 +41,12 @@ export function useCategories(): { categories: CategoryView[]; loading: boolean 
       .then((result) => {
         if (live) {
           setCategories(result);
+          setError(null);
         }
       })
-      .catch(() => {
-        // A failed taxonomy is not worth an error screen: the list still works,
-        // the category filter is simply unavailable until the next attempt.
+      .catch((caught: unknown) => {
         if (live) {
-          setCategories([]);
+          setError(caught instanceof Error ? caught : new Error(String(caught)));
         }
       })
       .finally(() => {
@@ -42,7 +58,12 @@ export function useCategories(): { categories: CategoryView[]; loading: boolean 
     return () => {
       live = false;
     };
+  }, [attempt]);
+
+  const retry = useCallback(() => {
+    setLoading(true);
+    setAttempt((current) => current + 1);
   }, []);
 
-  return { categories, loading };
+  return { categories, loading, error, retry };
 }

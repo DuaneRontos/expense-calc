@@ -1,5 +1,5 @@
 import Head from 'expo-router/head';
-import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ExpenseRow } from '../src/expenses/ExpenseRow';
 import { SortControl } from '../src/expenses/SortControl';
@@ -9,6 +9,7 @@ import { ApiError } from '../src/api/problem';
 import { MIN_TOUCH_TARGET } from '../src/layout/breakpoints';
 import { webTitleFor } from '../src/layout/navigation';
 import { palette, spacing } from '../src/theme/tokens';
+import type { ExpenseSummary } from '../src/api/types';
 
 /**
  * The expense list (issue #14).
@@ -23,8 +24,31 @@ import { palette, spacing } from '../src/theme/tokens';
  * stopped supplying one: a list that can reach 50,000 rows must not render them
  * all to measure itself.
  */
+/**
+ * Hoisted so they keep one identity across renders.
+ *
+ * This screen re-renders on every debounce settle, every filter change and
+ * every `loadingMore` flip, and `VirtualizedList` threads `renderItem` down to
+ * each mounted cell — so a fresh identity re-renders every cell, which is
+ * precisely the work `ExpenseRow`'s `memo` exists to avoid.
+ */
+const keyExtractor = (item: ExpenseSummary) => item.id;
+
+const renderItem = ({ item }: { item: ExpenseSummary }) => <ExpenseRow expense={item} />;
+
+const styles = StyleSheet.create({
+  list: { flex: 1 },
+  // No `gap`: the rows carry their own vertical padding.
+  content: { padding: spacing.md },
+});
+
 export default function Expenses() {
   const { query, activeFilterCount, clear } = useExpenseQuery();
+  // No `refreshing`/`onRefresh`: `loading` is true for *every* query change, so
+  // wiring it to a `RefreshControl` dropped the pull-to-refresh spinner in and
+  // shifted the content down whenever a filter settled, as though the user had
+  // pulled. The overlay spinner below covers the first load, and the footer
+  // covers appends.
   const { items, loading, loadingMore, error, totalItems, hasMore, loadMore, retry } =
     useExpenses(query);
 
@@ -36,17 +60,18 @@ export default function Expenses() {
 
       <FlatList
         data={items}
-        // Without this the list sizes to its content instead of to the space it
-        // was given, and Expo's web reset sets `body { overflow: hidden }` — so
-        // everything past the first screenful rendered into a region nothing
-        // could scroll to. With 10 rows it looked correct; the API was already
-        // returning 50.
-        style={{ flex: 1 }}
-        // The server's own id, which is also the tiebreaker it appends to every
-        // sort — so a row keeps its key across pages and reorderings.
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <ExpenseRow expense={item} />}
-        contentContainerStyle={{ padding: spacing.md, gap: 0 }}
+        // Without `flex: 1` the list sizes to its content instead of to the
+        // space it was given, and Expo's web reset sets `body { overflow:
+        // hidden }` — so everything past the first screenful rendered into a
+        // region nothing could scroll to. With 10 rows it looked correct; the
+        // API was already returning 50.
+        style={styles.list}
+        // `keyExtractor` is the server's own id, which is also the tiebreaker it
+        // appends to every sort — so a row keeps its key across pages and
+        // reorderings.
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        contentContainerStyle={styles.content}
         ListHeaderComponent={
           <View style={{ gap: spacing.md, paddingBottom: spacing.md }}>
             <SortControl />
@@ -69,6 +94,25 @@ export default function Expenses() {
         ListFooterComponent={
           <View style={{ paddingVertical: spacing.lg, alignItems: 'center' }}>
             {loadingMore ? <ActivityIndicator color={palette.accent} /> : null}
+            {/*
+              A failed *append* keeps the rows already on screen, so it has
+              nowhere to surface: the empty state only mounts at zero rows, and
+              `onEndReached` will not fire again without a scroll or content-size
+              change — so the list silently stopped at 50 while the header said
+              70, and scrolling at the bottom did not retry it.
+            */}
+            {error && items.length > 0 && !loadingMore ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Could not load more expenses. Retry."
+                onPress={loadMore}
+                style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
+              >
+                <Text style={{ color: palette.negative }}>
+                  Could not load more. Tap to retry.
+                </Text>
+              </Pressable>
+            ) : null}
             {!loading && !hasMore && items.length > 0 ? (
               <Text style={{ color: palette.textMuted, fontSize: 12 }}>
                 End of {totalItems} {totalItems === 1 ? 'expense' : 'expenses'}.
@@ -80,8 +124,6 @@ export default function Expenses() {
         // stack requests while one is in flight or when the last page is in.
         onEndReached={loadMore}
         onEndReachedThreshold={0.4}
-        refreshing={loading && items.length > 0}
-        onRefresh={retry}
       />
 
       {loading && items.length === 0 ? (

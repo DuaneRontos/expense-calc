@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, Text, TextInput, View } from 'react-native';
 
 import { useCategories } from './useCategories';
 import { useDebounced } from './useDebounced';
@@ -7,7 +7,6 @@ import { useExpenseQuery } from './ExpenseQueryProvider';
 import { assertSendableAmount } from '../money/format';
 import { MIN_TOUCH_TARGET } from '../layout/breakpoints';
 import { colorForCategory, palette, spacing } from '../theme/tokens';
-import type { Category } from '../api/types';
 
 /**
  * The filter controls of spec §2 and issue #14.
@@ -20,7 +19,7 @@ import type { Category } from '../api/types';
 export function ExpenseFilters() {
   const { query, setFilters, toggleCategory, clear, activeFilterCount, generation } =
     useExpenseQuery();
-  const { categories } = useCategories();
+  const { categories, error: categoriesError, retry: retryCategories } = useCategories();
 
   return (
     // Keyed on the clear generation so every input below remounts empty when
@@ -45,6 +44,22 @@ export function ExpenseFilters() {
 
       <View style={{ gap: spacing.sm }}>
         <Text style={{ color: palette.textMuted, fontSize: 12 }}>Category</Text>
+        {categoriesError ? (
+          <View style={{ gap: spacing.xs }}>
+            <Text style={{ color: palette.textMuted, fontSize: 12 }}>
+              Categories could not be loaded.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading categories"
+              onPress={retryCategories}
+              style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
+            >
+              <Text style={{ color: palette.accent }}>Try again</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
           {categories.map((category) => {
             const selected = query.category?.includes(category.key) ?? false;
@@ -54,7 +69,7 @@ export function ExpenseFilters() {
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: selected }}
                 accessibilityLabel={category.label}
-                onPress={() => toggleCategory(category.key as Category)}
+                onPress={() => toggleCategory(category.key)}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -248,7 +263,10 @@ function AmountFilter({
       value={value}
       onCommit={onCommit}
       placeholder="0.00"
-      keyboardType="numeric"
+      // iOS's `numeric` pad has no minus key, and a negative bound is a
+      // supported query — `maxAmount=-0.01` is "show me only refunds". Android
+      // and web accept one either way.
+      keyboardType={Platform.select({ ios: 'numbers-and-punctuation', default: 'numeric' })}
       validate={(text) => {
         try {
           assertSendableAmount(text);
@@ -274,7 +292,7 @@ function ValidatedFilter({
   onCommit: (value: string) => void;
   placeholder?: string;
   validate: (value: string) => string | null;
-  keyboardType?: 'numeric';
+  keyboardType?: 'numeric' | 'numbers-and-punctuation';
 }) {
   const [draft, setDraft] = useState(value);
   const settled = useDebounced(draft.trim());
@@ -315,9 +333,17 @@ function ValidatedFilter({
         style={[inputStyle, message ? { borderColor: palette.negative } : null]}
       />
       {/* Inline against the offending field, which is what spec §8 asks for
-          when the server sends violations — same treatment before it does. */}
+          when the server sends violations — same treatment before it does.
+
+          Naming what is still applied matters as much as naming the problem:
+          a rejected value commits nothing, so the previous bound stays in force
+          while the box shows something else, and the control and the list
+          silently disagree about which is real. */}
       {message ? (
-        <Text style={{ color: palette.negative, fontSize: 11 }}>{message}</Text>
+        <Text style={{ color: palette.negative, fontSize: 11 }}>
+          {message}
+          {value !== '' ? ` Still filtering by ${value}.` : ''}
+        </Text>
       ) : null}
     </View>
   );

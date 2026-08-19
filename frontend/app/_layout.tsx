@@ -36,38 +36,38 @@ export default function RootLayout() {
       */}
       <ExpenseQueryProvider>
         <AppShell>
-        <Stack
-          screenOptions={{
-            // `AppShell` renders the app's own header, so the navigator's would
-            // be a second one — and it labels screens with the route file name,
-            // so it read "index" and "expenses" in lower case above the real
-            // title. It also drew a back chevron between two peer destinations
-            // that have no parent/child relationship.
-            headerShown: false,
-            contentStyle: { backgroundColor: palette.background },
-          }}
-        >
-          {/*
-            Titles are still declared with the header hidden: this is the string
-            screen-change announcements read on iOS and Android.
+          <Stack
+            screenOptions={{
+              // `AppShell` renders the app's own header, so the navigator's would
+              // be a second one — and it labels screens with the route file name,
+              // so it read "index" and "expenses" in lower case above the real
+              // title. It also drew a back chevron between two peer destinations
+              // that have no parent/child relationship.
+              headerShown: false,
+              contentStyle: { backgroundColor: palette.background },
+            }}
+          >
+            {/*
+              Titles are still declared with the header hidden: this is the string
+              screen-change announcements read on iOS and Android.
 
-            It does **not** drive `document.title` on web. That was the
-            assumption on the first attempt, and checking the browser tab showed
-            it stayed empty — with `headerShown: false` nothing consumes the
-            option on that platform. The web title comes from `<Head>` in each
-            route instead, so both mechanisms are deliberate, not redundant —
-            but the *string* comes from the destination list either way, so
-            renaming a screen cannot leave the announcement saying the old name.
+              It does **not** drive `document.title` on web. That was the
+              assumption on the first attempt, and checking the browser tab showed
+              it stayed empty — with `headerShown: false` nothing consumes the
+              option on that platform. The web title comes from `<Head>` in each
+              route instead, so both mechanisms are deliberate, not redundant —
+              but the *string* comes from the destination list either way, so
+              renaming a screen cannot leave the announcement saying the old name.
 
-            This announces the bare label rather than "Overview · Expense Calc":
-            the app name in every screen-change announcement is noise, and the
-            web title keeps the suffix because a browser tab has no other
-            context. Called out because it is a behaviour change on the two
-            platforms this branch cannot test.
-          */}
-          <Stack.Screen name="index" options={{ title: labelFor('overview') }} />
-          <Stack.Screen name="expenses" options={{ title: labelFor('expenses') }} />
-        </Stack>
+              This announces the bare label rather than "Overview · Expense Calc":
+              the app name in every screen-change announcement is noise, and the
+              web title keeps the suffix because a browser tab has no other
+              context. Called out because it is a behaviour change on the two
+              platforms this branch cannot test.
+            */}
+            <Stack.Screen name="index" options={{ title: labelFor('overview') }} />
+            <Stack.Screen name="expenses" options={{ title: labelFor('expenses') }} />
+          </Stack>
         </AppShell>
       </ExpenseQueryProvider>
     </SafeAreaProvider>

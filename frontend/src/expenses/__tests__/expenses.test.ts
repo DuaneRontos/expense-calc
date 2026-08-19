@@ -1,6 +1,7 @@
-import { countActive } from '../ExpenseQueryProvider';
-import { merge } from '../useExpenses';
-import type { ExpenseSummary } from '../../api/types';
+import { countActive, toggleIn } from '../ExpenseQueryProvider';
+import { merge, serializeQuery } from '../useExpenses';
+import type { ExpenseQuery, ExpenseSummary } from '../../api/types';
+
 
 const row = (id: string): ExpenseSummary => ({
   id,
@@ -68,5 +69,50 @@ describe('countActive', () => {
     // `minAmount=0` is a real filter — falsiness would drop it and quietly
     // include the refunds the user asked to hide.
     expect(countActive({ minAmount: '0' })).toBe(1);
+  });
+});
+
+describe('serializeQuery', () => {
+  it('is insensitive to the order the filters were set in', () => {
+    // The provider appends a key the first time each filter is set, so clearing
+    // a filter and retyping it reorders the object. Serializing the object
+    // directly made that a different cache key: the header flashed "Loading…"
+    // and a redundant round trip returned byte-identical rows.
+    const setMerchantFirst: ExpenseQuery = { merchant: 'SM', q: 'rice' };
+    const setDescriptionFirst: ExpenseQuery = { q: 'rice', merchant: 'SM' };
+
+    expect(serializeQuery(setMerchantFirst)).toBe(serializeQuery(setDescriptionFirst));
+    expect(JSON.stringify(setMerchantFirst)).not.toBe(JSON.stringify(setDescriptionFirst));
+  });
+
+  it('separates queries that genuinely differ', () => {
+    expect(serializeQuery({ merchant: 'SM' })).not.toBe(serializeQuery({ merchant: 'Grab' }));
+    expect(serializeQuery({ minAmount: '0' })).not.toBe(serializeQuery({}));
+  });
+
+  it('ignores the page, so paging does not look like a new query', () => {
+    // `loading` is derived from this. Including `page` would blank the list on
+    // every append instead of showing rows beneath the ones already there.
+    expect(serializeQuery({ merchant: 'SM', page: 3 })).toBe(serializeQuery({ merchant: 'SM' }));
+  });
+});
+
+describe('toggleIn', () => {
+  it('adds a value that is absent and removes one that is present', () => {
+    expect(toggleIn(['DINING'], 'GROCERIES')).toEqual(['DINING', 'GROCERIES']);
+    expect(toggleIn(['DINING', 'GROCERIES'], 'DINING')).toEqual(['GROCERIES']);
+  });
+
+  it('does not mutate the selection it was given', () => {
+    const selection = ['DINING'];
+    toggleIn(selection, 'GROCERIES');
+    expect(selection).toEqual(['DINING']);
+  });
+
+  it('composes, which is what a batched double-tap depends on', () => {
+    // The old toggle read the render-time array and wrote through an updater,
+    // so two toggles in one batch both started from the same copy and the
+    // second discarded the first.
+    expect(toggleIn(toggleIn([], 'DINING'), 'GROCERIES')).toEqual(['DINING', 'GROCERIES']);
   });
 });

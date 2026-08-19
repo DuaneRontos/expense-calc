@@ -25,6 +25,32 @@ export interface ExpenseList {
   retry: () => void;
 }
 
+/**
+ * A stable identity for a query.
+ *
+ * Built from an explicitly ordered literal rather than from the object itself:
+ * `JSON.stringify` emits keys in insertion order, and the provider appends a key
+ * the first time each filter is set. Clearing a filter and retyping it produced
+ * the same query with a different string — so `loading` flipped, the header
+ * flashed, and a redundant round trip returned byte-identical rows.
+ *
+ * Not `buildExpenseQuery`, tempting as it looks: that throws on an invalid
+ * amount bound, and this runs during render.
+ */
+export function serializeQuery(query: ExpenseQuery): string {
+  return JSON.stringify({
+    category: query.category,
+    from: query.from,
+    to: query.to,
+    merchant: query.merchant,
+    q: query.q,
+    minAmount: query.minAmount,
+    maxAmount: query.maxAmount,
+    sort: query.sort,
+    size: query.size,
+  });
+}
+
 export function useExpenses(query: ExpenseQuery): ExpenseList {
   const [items, setItems] = useState<ExpenseSummary[]>([]);
   const [page, setPage] = useState<ExpensePage | null>(null);
@@ -52,7 +78,7 @@ export function useExpenses(query: ExpenseQuery): ExpenseList {
    */
   const generation = useRef(0);
 
-  const serialized = JSON.stringify(query);
+  const serialized = serializeQuery(query);
   const loading = loadedFor !== serialized;
 
   const load = useCallback(
@@ -63,6 +89,8 @@ export function useExpenses(query: ExpenseQuery): ExpenseList {
         // Parsed from the serialized form rather than captured, so this closure
         // depends on exactly what identifies the query and nothing else — a
         // caller passing an inline object cannot make it refetch every render.
+        // `undefined` fields dropped by `stringify` come back absent, which is
+        // what the client already treats as "not filtered".
         const current = JSON.parse(serialized) as ExpenseQuery;
         const result = await api.expenses({ ...current, page: nextPage });
         if (mine !== generation.current) {
