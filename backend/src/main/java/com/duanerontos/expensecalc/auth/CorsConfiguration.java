@@ -44,6 +44,28 @@ public class CorsConfiguration {
 	@Bean
 	public CorsConfigurationSource corsConfigurationSource(CorsProperties properties) {
 		refuseWildcardWithCredentials(properties);
+		refuseOriginPatterns(properties);
+
+		if (!properties.isEnabled()) {
+			// Nothing registered, so `CorsFilter` finds no configuration for the
+			// path and passes the request through untouched.
+			//
+			// **An empty allow-list is not the same as an empty policy.**
+			// Registering one anyway makes the filter match, find no permitted
+			// origin, and answer 403 before a controller sees the request —
+			// correct for a genuinely foreign origin, and wrong for the request
+			// Spring only *thinks* is foreign. It classifies by comparing the
+			// `Origin` header against the servlet request's own scheme, host and
+			// port, so behind a TLS-terminating proxy Tomcat sees `http` while
+			// the browser sends `https` and a page calling its own API reads as
+			// cross-origin. Browsers attach `Origin` to same-origin requests for
+			// every method except GET and HEAD, so that is every mutation the
+			// client makes.
+			//
+			// The default is documented as "reachable only from its own origin".
+			// Rejecting that origin's own writes is the one thing it must not do.
+			return new UrlBasedCorsConfigurationSource();
+		}
 
 		org.springframework.web.cors.CorsConfiguration config = new org.springframework.web.cors.CorsConfiguration();
 		config.setAllowedOrigins(properties.allowedOrigins());
@@ -80,6 +102,27 @@ public class CorsConfiguration {
 	 * request time, on the first cross-origin call, in a stack trace that names
 	 * neither property. Failing here names both.
 	 */
+	/**
+	 * Refuses an origin that looks like a pattern but is matched exactly.
+	 *
+	 * <p>{@code setAllowedOrigins} compares strings. A subdomain wildcard such as
+	 * {@code https://*.example.com} needs {@code setAllowedOriginPatterns}, which
+	 * this does not use — so configuring one binds cleanly, starts cleanly, and
+	 * matches nothing. The web client then fails in a browser and nowhere else,
+	 * which is the exact failure mode this configuration exists to close.
+	 */
+	private static void refuseOriginPatterns(CorsProperties properties) {
+		for (String origin : properties.allowedOrigins()) {
+			if (origin.contains(CorsProperties.WILDCARD) && !origin.equals(CorsProperties.WILDCARD)) {
+				throw new IllegalStateException(
+						("Refusing to start: app.cors.allowed-origins contains \"%s\". Origins are matched exactly, "
+								+ "so a pattern like this would match no origin at all and the failure would appear "
+								+ "only in a browser. List the origins in full, or use \"%s\" alone.")
+							.formatted(origin, CorsProperties.WILDCARD));
+			}
+		}
+	}
+
 	private static void refuseWildcardWithCredentials(CorsProperties properties) {
 		if (properties.allowsWildcard() && properties.allowCredentials()) {
 			throw new IllegalStateException(

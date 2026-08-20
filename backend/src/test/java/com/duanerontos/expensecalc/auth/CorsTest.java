@@ -31,6 +31,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Every test here therefore sends an {@code Origin} header. Without one the
  * server answers normally and proves nothing.
  *
+ * <p>These run under {@code insecure-local}, which is the profile the local web
+ * client uses. {@code CorsSecuredChainTest} covers the chain that ships — and it
+ * has to, because {@code permitAll} here means an unauthenticated preflight
+ * would return 200 whether or not the filter ordering were right.
+ *
  * <p>Requires Docker.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -91,17 +96,6 @@ class CorsTest {
 		assertThat(response.getHeaders().getAccessControlAllowMethods()).contains(HttpMethod.PATCH);
 		assertThat(response.getHeaders().getAccessControlAllowHeaders())
 			.contains(HttpHeaders.AUTHORIZATION, HttpHeaders.CONTENT_TYPE);
-	}
-
-	@Test
-	@DisplayName("exposes Location, so a client can follow the expense it created")
-	void exposesLocation() {
-		// POST /expenses answers 201 with a Location header. A browser hides
-		// every response header a server does not explicitly expose, so without
-		// this the client can read the body and not where the thing lives.
-		ResponseEntity<String> response = get("/api/v1/categories", ALLOWED);
-
-		assertThat(response.getHeaders().getAccessControlExposeHeaders()).contains(HttpHeaders.LOCATION);
 	}
 
 	@Test

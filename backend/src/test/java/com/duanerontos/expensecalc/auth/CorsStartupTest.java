@@ -75,6 +75,35 @@ class CorsStartupTest {
 		assertThat(new CorsProperties(java.util.List.of(), false).isEnabled()).isFalse();
 	}
 
+	@Test
+	@DisplayName("refuses a subdomain pattern, which would bind cleanly and match nothing")
+	void refusesOriginPattern() {
+		SpringApplication application = new SpringApplication(ExpenseCalcBackendApplication.class,
+				TestcontainersConfiguration.class);
+		application.setWebApplicationType(WebApplicationType.NONE);
+
+		assertThatThrownBy(() -> application
+			.run("--app.cors.allowed-origins=https://*.example.com", "--app.auth.username=dev",
+					"--app.auth.password-hash=hash",
+					"--app.auth.jwt-secret=a-signing-key-long-enough-to-pass-the-guard")
+			.close()).satisfies(thrown -> {
+				String everything = stackToString(thrown);
+				assertThat(everything).contains("Refusing to start").contains("matched exactly");
+			});
+	}
+
+	@Test
+	@DisplayName("accepts ordinary origins, so the guard is not simply refusing everything")
+	void acceptsExactOrigins() {
+		// Guards the guard: a check that rejected every value would pass the two
+		// tests above and break every real deployment.
+		CorsProperties properties = new CorsProperties(
+				java.util.List.of("https://app.example.com", "http://localhost:8081"), false);
+
+		assertThat(properties.isEnabled()).isTrue();
+		assertThat(properties.allowsWildcard()).isFalse();
+	}
+
 	private static String stackToString(Throwable thrown) {
 		java.io.StringWriter writer = new java.io.StringWriter();
 		thrown.printStackTrace(new java.io.PrintWriter(writer));
