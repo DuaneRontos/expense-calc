@@ -43,7 +43,30 @@ cd backend && ./mvnw spring-boot:run -Dspring-boot.run.profiles=insecure-local
 ```
 
 Every `curl` below then works with no token. The profile ships credentials that
-are published in this repository and worthless by design.
+are published in this repository and worthless by design. It also allows the
+Expo dev server's origin through CORS, so `npm run web` can reach the API — see
+below for why that is not something `curl` can check.
+
+### `curl` cannot tell you whether the web client will work
+
+Nothing on this page exercises CORS, and for a while nothing anywhere did. The
+API sent no `Access-Control-Allow-Origin`, so a browser refused **every** call
+from the web client — while every `curl` here passed, and iOS and Android were
+unaffected, because neither is a browser and neither sends an `Origin` header
+(#58).
+
+To check the way a browser would, send one:
+
+```bash
+curl -s -D - -o /dev/null -H "Origin: http://localhost:8081" http://localhost:8080/api/v1/categories
+```
+
+An `Access-Control-Allow-Origin` line in the response means the web client can
+read it. No such line means it cannot, whatever the status code says — the
+request succeeds at the server and the browser throws the answer away.
+
+Origins come from `app.cors.allowed-origins`, which is **empty by default**, so
+a deployment is reachable only from its own origin until it is configured.
 
 **This profile cannot be deployed, and that is enforced rather than documented.**
 `SecurityStartupGuard` refuses to start the application if the profile is active
