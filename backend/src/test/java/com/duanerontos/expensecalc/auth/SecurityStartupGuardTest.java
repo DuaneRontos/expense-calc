@@ -30,7 +30,7 @@ class SecurityStartupGuardTest {
 	// exactly why a wrong-format literal here would teach the wrong format.
 	private static final AuthProperties CONFIGURED = new AuthProperties("duane",
 			"$argon2id$v=19$m=16384,t=2,p=1$c2FsdHNhbHRzYWx0c2E$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGg",
-			"a-signing-key-that-is-comfortably-over-32-bytes", Duration.ofMinutes(15), Duration.ofDays(30));
+			"a-signing-key-that-is-comfortably-over-32-bytes", Duration.ofMinutes(15), Duration.ofDays(30), Duration.ofDays(7));
 
 	private static MockEnvironment environmentWith(String... profiles) {
 		MockEnvironment environment = new MockEnvironment();
@@ -98,7 +98,7 @@ class SecurityStartupGuardTest {
 		// Nothing authenticates under this profile, so demanding a signing key
 		// would be theatre — and would push someone toward setting a real one
 		// in a file they then commit.
-		AuthProperties unset = new AuthProperties(null, null, null, null, null);
+		AuthProperties unset = new AuthProperties(null, null, null, null, null, null);
 		SecurityStartupGuard guard = new SecurityStartupGuard(
 				environmentWith(SecurityStartupGuard.INSECURE_PROFILE), unset, LOCAL_DB, "local");
 
@@ -113,16 +113,16 @@ class SecurityStartupGuardTest {
 		// works.
 		assertThatIllegalStateException()
 			.isThrownBy(() -> new SecurityStartupGuard(environmentWith(), new AuthProperties(null, "hash", "a".repeat(32),
-					null, null), LOCAL_DB, "production").afterPropertiesSet())
+					null, null, null), LOCAL_DB, "production").afterPropertiesSet())
 			.withMessageContaining("app.auth.username");
 
 		assertThatIllegalStateException()
-			.isThrownBy(() -> new SecurityStartupGuard(environmentWith(), new AuthProperties("duane", null, "a".repeat(32), null, null), LOCAL_DB, "production").afterPropertiesSet())
+			.isThrownBy(() -> new SecurityStartupGuard(environmentWith(), new AuthProperties("duane", null, "a".repeat(32), null, null, null), LOCAL_DB, "production").afterPropertiesSet())
 			.withMessageContaining("app.auth.password-hash");
 
 		assertThatIllegalStateException()
 			.isThrownBy(() -> new SecurityStartupGuard(environmentWith(),
-					new AuthProperties("duane", "hash", null, null, null), LOCAL_DB, "production")
+					new AuthProperties("duane", "hash", null, null, null, null), LOCAL_DB, "production")
 				.afterPropertiesSet())
 			.withMessageContaining("app.auth.jwt-secret");
 	}
@@ -133,7 +133,7 @@ class SecurityStartupGuardTest {
 		// HS256 with a short key is weaker than the name implies, and the
 		// weakness is invisible in every test that only checks tokens verify.
 		SecurityStartupGuard guard = new SecurityStartupGuard(environmentWith(),
-				new AuthProperties("duane", "hash", "too-short", null, null), LOCAL_DB, "production");
+				new AuthProperties("duane", "hash", "too-short", null, null, null), LOCAL_DB, "production");
 
 		assertThatIllegalStateException().isThrownBy(guard::afterPropertiesSet)
 			.withMessageContaining("shorter than %d bytes".formatted(AuthProperties.MINIMUM_SECRET_BYTES));
