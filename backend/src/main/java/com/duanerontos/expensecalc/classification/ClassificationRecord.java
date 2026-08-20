@@ -14,7 +14,12 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
+
+import org.springframework.data.domain.Persistable;
 
 /**
  * One classification decision, kept forever (spec §4).
@@ -55,11 +60,31 @@ import jakarta.persistence.Table;
 @Entity
 @Immutable
 @Table(name = "classification_record")
-public class ClassificationRecord {
+public class ClassificationRecord implements Persistable<UUID> {
 
 	@Id
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
+
+	/**
+	 * Whether this instance has yet to be inserted (issue #43).
+	 *
+	 * <p><b>Transient, and false for anything Hibernate loaded.</b>
+	 * {@code SimpleJpaRepository.save} calls {@code merge()} rather than
+	 * {@code persist()} whenever {@code isNew()} is false, and the default
+	 * {@code isNew()} is {@code id != null}. Both factories here assign a
+	 * {@code UUID} up front, so every insert looked like an update: a select
+	 * returning nothing, then the insert.
+	 *
+	 * <p>This table is on the write path of <em>every</em> expense creation and
+	 * <em>every</em> reclassification, so it is the doubling that compounds.
+	 *
+	 * <p>The field is not persisted, so a row read back has the default of
+	 * {@code false} — correct, since a loaded row is not new. {@code @PostLoad}
+	 * says so explicitly rather than relying on that default.
+	 */
+	@Transient
+	private boolean isNew = true;
 
 	@Column(name = "expense_id", nullable = false, updatable = false)
 	private UUID expenseId;
@@ -141,6 +166,26 @@ public class ClassificationRecord {
 	 */
 	private static <T> T required(T value, String field) {
 		return Objects.requireNonNull(value, () -> "%s must not be null".formatted(field));
+	}
+
+	@Override
+	public boolean isNew() {
+		return this.isNew;
+	}
+
+	/**
+	 * Inserted now, so anything later is an update.
+	 *
+	 * <p>This entity is {@code @Immutable}, so there should be no later save at
+	 * all — the history is append-only. The hook is here anyway because
+	 * "shouldn't" is not "can't", and an instance that stayed new forever would
+	 * make a second save attempt an insert with a duplicate key rather than the
+	 * no-op Hibernate intends.
+	 */
+	@PostPersist
+	@PostLoad
+	void markNotNew() {
+		this.isNew = false;
 	}
 
 	public UUID getId() {

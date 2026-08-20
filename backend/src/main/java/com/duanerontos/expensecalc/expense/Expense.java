@@ -13,9 +13,14 @@ import org.hibernate.type.SqlTypes;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
+
+import org.springframework.data.domain.Persistable;
 
 /**
  * A single recorded expense.
@@ -34,11 +39,30 @@ import jakarta.persistence.Table;
  */
 @Entity
 @Table(name = "expense")
-public class Expense {
+public class Expense implements Persistable<UUID> {
 
 	@Id
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
+
+	/**
+	 * Whether this instance has yet to be inserted (issue #43).
+	 *
+	 * <p><b>Transient, and false for anything Hibernate loaded.</b>
+	 * {@code SimpleJpaRepository.save} calls {@code merge()} rather than
+	 * {@code persist()} whenever {@code isNew()} is false, and the default
+	 * {@code isNew()} is {@code id != null}. This entity assigns its own
+	 * {@code UUID} in the constructor, so every insert looked like an update:
+	 * Hibernate issued a select that returned nothing, then the insert.
+	 *
+	 * <p>The field is not persisted, so an entity read back from the database
+	 * has the field's default of {@code false} — which is correct, because a row
+	 * that was loaded is by definition not new. {@code @PostLoad} sets it
+	 * explicitly all the same, so the behaviour does not rest on a default that
+	 * a later refactor could change.
+	 */
+	@Transient
+	private boolean isNew = true;
 
 	@Column(name = "amount_minor", nullable = false)
 	private long amountMinor;
@@ -139,6 +163,18 @@ public class Expense {
 			textChanged = true;
 		}
 		return textChanged;
+	}
+
+	@Override
+	public boolean isNew() {
+		return this.isNew;
+	}
+
+	/** Inserted now, so subsequent saves are updates and should merge. */
+	@PostPersist
+	@PostLoad
+	void markNotNew() {
+		this.isNew = false;
 	}
 
 	@PrePersist
