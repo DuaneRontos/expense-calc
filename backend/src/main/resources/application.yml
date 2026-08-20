@@ -49,6 +49,14 @@ app:
     # window a leaked one works in.
     access-token-ttl: 15m
     refresh-token-ttl: 30d
+    # issue #51 — how long an expired row is kept before deletion. Not a
+    # security setting: the row is retained past expiry so a replayed token
+    # stays distinguishable from one that never existed. Past this window that
+    # distinction buys nothing and the row is only a slow leak.
+    refresh-token-retention: 7d
+    # Daily, off-peak. A cron rather than a fixed delay so the job never fires
+    # during startup.
+    refresh-token-cleanup-cron: ${APP_AUTH_REFRESH_TOKEN_CLEANUP_CRON:0 15 3 * * *}
 
   # issue #58 — which browser origins may call this API. Empty by default, so
   # an unconfigured deployment is reachable only from its own origin; a browser

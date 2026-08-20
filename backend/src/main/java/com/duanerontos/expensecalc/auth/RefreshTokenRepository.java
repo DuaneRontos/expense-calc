@@ -44,4 +44,20 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
 			""")
 	int revokeIfUsable(@Param("hash") String hash, @Param("now") Instant now);
 
+	/**
+	 * Deletes rows whose usefulness has run out (issue #51).
+	 *
+	 * <p><b>Keyed on {@code expiresAt}, not on {@code revokedAt}.</b> A rotated
+	 * token is revoked immediately but stays replayable-looking until its
+	 * original expiry, and that window is exactly when telling a replay apart
+	 * from an unknown token is worth anything. Deleting on revocation would
+	 * throw away the evidence at the moment it becomes interesting.
+	 *
+	 * <p>Returns the number deleted, so the caller can log a figure rather than
+	 * assert that something happened.
+	 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("DELETE FROM RefreshToken t WHERE t.expiresAt < :cutoff")
+	int deleteExpiredBefore(@Param("cutoff") Instant cutoff);
+
 }
