@@ -22,3 +22,13 @@ app:
     # nothing under this profile authenticates so nobody would find out.
     password-hash: "$argon2id$v=19$m=16384,t=2,p=1$/y0Z208t+oz4OhYYgaHzQg$Vr+ZV/rjwZ5FIv4OXLbZxE4JQxmP+r6bUZaN3LojvWQ"
     jwt-secret: "insecure-local-development-signing-key-not-a-secret"
+
+  # The Expo dev server's origin. Local development is the case CORS exists to
+  # serve here — `npm run web` is served from 8081 and the API from 8080, which
+  # a browser treats as two different origins.
+  #
+  # Safe to publish for the same reason the credentials above are: this profile
+  # cannot be deployed. SecurityStartupGuard refuses to start with it active
+  # against a non-local database or a declared production deployment.
+  cors:
+    allowed-origins: http://localhost:8081,http://127.0.0.1:8081
