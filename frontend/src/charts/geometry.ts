@@ -1,5 +1,5 @@
 import { isNegative, toChartNumber } from '../money/format';
-import type { ReportBucket } from '../api/types';
+import type { ComparisonBucket, ReportBucket } from '../api/types';
 
 /**
  * Pure geometry for the chart layer.
@@ -239,4 +239,82 @@ export function barModel(
   });
 
   return { bars, baselineY };
+}
+
+/** One category's pair of bars in a period comparison. */
+export interface ComparisonPair {
+  key: string;
+  label: string;
+  current: string;
+  previous: string;
+  change: string;
+  bars: Bar[];
+}
+
+export interface ComparisonModel {
+  pairs: ComparisonPair[];
+  baselineY: number;
+}
+
+/**
+ * Lays out current-versus-previous bars, scaled on one shared domain.
+ *
+ * **One domain across both series, and not clamped at zero.** Scaling each
+ * series to its own maximum would draw ₱100 and ₱10,000 the same height, which
+ * is the one comparison this chart exists to make. And a category can be net
+ * negative in either period (spec §7), so the domain has to reach below the
+ * axis rather than flatten a refund to nothing.
+ */
+export function comparisonModel(
+  buckets: ComparisonBucket[],
+  width: number,
+  height: number,
+  gap = 10,
+): ComparisonModel {
+  if (buckets.length === 0) {
+    return { pairs: [], baselineY: height };
+  }
+
+  const values = buckets.flatMap((bucket) => [
+    toChartNumber(bucket.current),
+    toChartNumber(bucket.previous),
+  ]);
+  const max = Math.max(0, ...values);
+  const min = Math.min(0, ...values);
+  const span = max - min;
+  const baselineY = span === 0 ? height : (max / span) * height;
+
+  const slot = width / buckets.length;
+  // Two bars per slot, with the gap taken from the slot rather than added, so
+  // the chart never overflows the width it was given.
+  const barWidth = Math.max(1, (slot - gap) / 2);
+
+  const pairs = buckets.map((bucket, index) => {
+    const bars = (['current', 'previous'] as const).map((series, offset) => {
+      const value = toChartNumber(bucket[series]);
+      const magnitude = span === 0 ? 0 : (Math.abs(value) / span) * height;
+
+      return {
+        key: `${bucket.key}-${series}`,
+        label: bucket.label,
+        total: bucket[series],
+        x: index * slot + gap / 2 + offset * barWidth,
+        y: value >= 0 ? baselineY - magnitude : baselineY,
+        width: barWidth,
+        height: magnitude,
+        negative: value < 0,
+      };
+    });
+
+    return {
+      key: bucket.key,
+      label: bucket.label,
+      current: bucket.current,
+      previous: bucket.previous,
+      change: bucket.change,
+      bars,
+    };
+  });
+
+  return { pairs, baselineY };
 }
