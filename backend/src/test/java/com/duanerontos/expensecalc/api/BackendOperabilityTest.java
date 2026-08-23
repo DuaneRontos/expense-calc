@@ -69,6 +69,13 @@ class BackendOperabilityTest {
 		registry.add("app.auth.password-hash",
 				() -> Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8().encode(PASSWORD));
 		registry.add("app.auth.jwt-secret", () -> "operability-test-signing-key-well-over-32-bytes-long");
+		// Out of the way: this class signs in once per test against a default
+		// ceiling of 60 attempts a minute. Eight tests fit today, but this is the
+		// class that grows, and crossing the ceiling would surface as signIn()
+		// asserting 200 against a 429 — which reads as "authentication broke"
+		// rather than "the rate limit fired" (issue #52).
+		registry.add("app.auth.rate-limit.free-attempts", () -> 1_000);
+		registry.add("app.auth.rate-limit.global-attempts-per-minute", () -> 10_000);
 	}
 
 	@Autowired

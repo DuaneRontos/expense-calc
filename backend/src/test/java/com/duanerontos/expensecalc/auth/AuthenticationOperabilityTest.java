@@ -48,6 +48,11 @@ class AuthenticationOperabilityTest {
 		registry.add("app.auth.password-hash",
 				() -> Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8().encode(PASSWORD));
 		registry.add("app.auth.jwt-secret", () -> "authentication-test-signing-key-well-over-32-bytes");
+		// Out of the way: this class asks whether authentication works, and it
+		// signs in repeatedly from one address to ask it. The limit itself is
+		// LoginRateLimitOperabilityTest's subject (issue #52).
+		registry.add("app.auth.rate-limit.free-attempts", () -> 1_000);
+		registry.add("app.auth.rate-limit.global-attempts-per-minute", () -> 10_000);
 	}
 
 	@Autowired

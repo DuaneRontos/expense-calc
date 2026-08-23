@@ -47,7 +47,7 @@ import javax.crypto.spec.SecretKeySpec;
  * moves together, which is why #57 has to revisit both.
  */
 @Configuration
-@EnableConfigurationProperties(AuthProperties.class)
+@EnableConfigurationProperties({ AuthProperties.class, LoginRateLimitProperties.class })
 public class SecurityConfiguration {
 
 	/**
