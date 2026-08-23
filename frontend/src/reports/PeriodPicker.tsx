@@ -25,9 +25,18 @@ export function PeriodPicker({
   return (
     <View style={{ gap: spacing.xs }}>
       <View
-        // Named as a group so the four radios are announced with their position
-        // in it. Without this a screen reader reads "This month, selected" with
-        // no hint that three alternatives sit beside it.
+        // Grouped and named so the four radios are announced as one set
+        // rather than four loose controls — otherwise a screen reader reads
+        // "This month, selected" with no hint that three alternatives sit
+        // beside it.
+        //
+        // **This lands on web only.** RNW forwards the role to the DOM, where
+        // a radio's position in its group is something a screen reader can
+        // announce. On iOS `radiogroup` maps to `UIAccessibilityTraitNone`;
+        // on Android it sets a role description ("radio group") and nothing
+        // positional, because position comes from `CollectionItemInfo`, which
+        // a container role does not populate. Native is unchanged, not
+        // improved.
         accessibilityRole="radiogroup"
         accessibilityLabel="Reporting period"
         style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}
