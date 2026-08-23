@@ -81,7 +81,14 @@ export function ReclassifyControl({
         </View>
       ) : null}
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
+      <View
+        // Named as a group so each category radio is announced with its
+        // position in it. Without this a screen reader reads "Groceries,
+        // selected" with no hint that the other categories sit beside it.
+        accessibilityRole="radiogroup"
+        accessibilityLabel="Category"
+        style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}
+      >
         {categories.map((category) => {
           const isTarget = category.key === target;
           return (
