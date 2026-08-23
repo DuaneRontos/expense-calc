@@ -133,6 +133,33 @@ the new one:
 curl -s -X POST http://localhost:8080/api/v1/auth/refresh -H 'Content-Type: application/json' -d '{"refreshToken":"<the refresh token>"}'
 ```
 
+### If sign-in starts answering `429`
+
+Login is rate limited (issue #52). Argon2id is deliberately expensive to
+verify, which is what makes guessing costly — and on the one endpoint that
+cannot require authentication, that same cost is a denial-of-service lever.
+
+Two failures are free. After that each further failure earns a lockout that
+grows 1s, 4s, 16s, 64s, 256s, capped at five minutes, and a successful sign-in
+clears it. A separate ceiling allows 60 attempts a minute across all callers.
+The response carries `Retry-After` in seconds.
+
+**The limit is checked before the password is compared**, so a locked-out caller
+gets `429` even with the right password — that is deliberate, and it is what
+stops the refusal being a way to probe which guess was correct. Wait out the
+`Retry-After` rather than retrying immediately.
+
+To get out of the way while developing, raise the free attempts:
+
+```bash
+APP_AUTH_RATE_LIMIT_FREE_ATTEMPTS=1000 ./mvnw spring-boot:run
+```
+
+Behind a reverse proxy, set `server.forward-headers-strategy` so the container
+resolves the real client address. The limiter reads `getRemoteAddr()` and never
+parses `X-Forwarded-For` itself — trusting that header unconditionally would let
+any caller choose their own bucket, which is a bypass rather than a limit.
+
 ## Running the app for real
 
 The application needs a PostgreSQL on `localhost:5432`. The quickest one:

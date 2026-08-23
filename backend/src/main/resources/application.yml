@@ -65,6 +65,25 @@ app:
     # that happen to share a value today.
     refresh-token-cleanup-zone: ${APP_AUTH_REFRESH_TOKEN_CLEANUP_ZONE:Asia/Manila}
 
+    # issue #52 — login is the one endpoint that cannot require authentication,
+    # and Argon2id makes every attempt expensive for the server. Two limits,
+    # because they stop different attacks: the backoff stops guessing from one
+    # source, the global ceiling stops the distributed version. A global limit
+    # alone would let an attacker lock the real user out by burning the budget.
+    rate-limit:
+      # Mistyping your own password twice costs nothing.
+      free-attempts: ${APP_AUTH_RATE_LIMIT_FREE_ATTEMPTS:2}
+      # Then 1s, 4s, 16s, 64s, 256s, capped. Nobody legitimately fails ten
+      # logins a minute, so the sequence leaves the useful range quickly.
+      initial-lockout: ${APP_AUTH_RATE_LIMIT_INITIAL_LOCKOUT:1s}
+      # Capped so a forgotten password is not a permanent lockout.
+      max-lockout: ${APP_AUTH_RATE_LIMIT_MAX_LOCKOUT:5m}
+      # One user never notices 60/min; a distributed guessing run does.
+      global-attempts-per-minute: ${APP_AUTH_RATE_LIMIT_GLOBAL_ATTEMPTS_PER_MINUTE:60}
+      # Bounds the backoff map: keyed by remote address, it is otherwise a
+      # memory-exhaustion vector reachable by the attacker it exists to stop.
+      max-tracked-clients: ${APP_AUTH_RATE_LIMIT_MAX_TRACKED_CLIENTS:10000}
+
   # issue #58 — which browser origins may call this API. Empty by default, so
   # an unconfigured deployment is reachable only from its own origin; a browser
   # refuses a cross-origin response the server has not named. Set this wherever

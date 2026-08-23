@@ -2,6 +2,7 @@ package com.duanerontos.expensecalc.auth;
 
 import java.util.Map;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 
@@ -33,10 +34,14 @@ public class AuthController {
 
 	private final PasswordEncoder passwordEncoder;
 
-	public AuthController(TokenService tokens, AuthProperties properties, PasswordEncoder passwordEncoder) {
+	private final LoginRateLimiter rateLimiter;
+
+	public AuthController(TokenService tokens, AuthProperties properties, PasswordEncoder passwordEncoder,
+			LoginRateLimiter rateLimiter) {
 		this.tokens = tokens;
 		this.properties = properties;
 		this.passwordEncoder = passwordEncoder;
+		this.rateLimiter = rateLimiter;
 	}
 
 	public record LoginRequest(@NotBlank String username, @NotBlank String password) {
@@ -53,16 +58,31 @@ public class AuthController {
 	 * faster than a wrong password, which tells an attacker which usernames
 	 * exist. There is only one username here, so the leak is small — but the
 	 * habit of comparing before verifying is how it stops being small.
+	 *
+	 * <p><b>The rate limit is checked before the hash, not after</b> (issue
+	 * #52). Argon2id is deliberately expensive, so a refused attempt that still
+	 * ran the comparison would cost the server exactly what the limit exists to
+	 * protect. See {@link LoginRateLimiter}.
 	 */
 	@PostMapping("/login")
-	public ResponseEntity<TokenService.Tokens> login(@Valid @RequestBody LoginRequest request) {
+	public ResponseEntity<TokenService.Tokens> login(@Valid @RequestBody LoginRequest request,
+			HttpServletRequest httpRequest) {
+		String client = httpRequest.getRemoteAddr();
+		this.rateLimiter.check(client);
+
 		boolean passwordMatches = this.passwordEncoder.matches(request.password(), this.properties.passwordHash());
 		boolean usernameMatches = this.properties.username().equals(request.username());
 
 		if (!passwordMatches || !usernameMatches) {
+			// Recorded after both comparisons so the limiter cannot become the
+			// oracle the constant-time comparison above exists to prevent: a
+			// wrong username and a wrong password cost the same and count the
+			// same.
+			this.rateLimiter.recordFailure(client);
 			throw new InvalidCredentialsException();
 		}
 
+		this.rateLimiter.recordSuccess(client);
 		return ResponseEntity.ok(this.tokens.issue());
 	}
 
