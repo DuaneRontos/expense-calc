@@ -60,7 +60,17 @@ export function ExpenseFilters() {
           </View>
         ) : null}
 
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
+        <View
+          // Same reason the reclassify radios are grouped: ungrouped children
+          // are announced with no position in the set. These are checkboxes,
+          // not radios, so `radiogroup` would be a lie — and RN's
+          // `accessibilityRole` union has no `group`, which is why this reaches
+          // for the `role` prop instead. Naming it repeats the heading above
+          // for the reason given in ReclassifyControl.
+          role="group"
+          accessibilityLabel="Category"
+          style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}
+        >
           {categories.map((category) => {
             const selected = query.category?.includes(category.key) ?? false;
             return (
