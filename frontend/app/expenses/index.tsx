@@ -1,5 +1,6 @@
 import Head from 'expo-router/head';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ExpenseRow } from '../../src/expenses/ExpenseRow';
@@ -52,6 +53,21 @@ export default function Expenses() {
   // covers appends.
   const { items, loading, loadingMore, error, totalItems, hasMore, loadMore, retry } =
     useExpenses(query);
+
+  /**
+   * Refetches when the list comes back into view.
+   *
+   * Nav between destinations uses `router.navigate`, which returns to the
+   * *existing* list instance rather than mounting a new one, and `useExpenses`
+   * only refetches when the query changes. So recording an expense and tapping
+   * Expenses showed the old rows and the old count, with the new row nowhere —
+   * the create and edit screens write, and nothing told the list.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      retry();
+    }, [retry]),
+  );
 
   return (
     <>

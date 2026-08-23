@@ -8,6 +8,7 @@ import { ApiError } from '../../src/api/problem';
 import { ExpenseFormFields } from '../../src/expenses/ExpenseFormFields';
 import { ReclassifyControl } from '../../src/expenses/ReclassifyControl';
 import {
+  clearedFields,
   hasErrors,
   isEmptyUpdate,
   toUpdateRequest,
@@ -42,7 +43,13 @@ function toValues(expense: Detail): ExpenseFormValues {
 export default function ExpenseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { expense, loading, error, replace } = useExpenseDetail(id);
-  const { submit, submitting, errors, clearError } = useExpenseSubmit<Detail>();
+  // One hook per action. Sharing them made a field save show "Saving…" on the
+  // reclassify button, and would land a reclassify violation beside the edit
+  // fields rather than in the block it came from.
+  const edit = useExpenseSubmit<Detail>();
+  const classify = useExpenseSubmit<Detail>();
+  const removal = useExpenseSubmit<Detail>();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const [values, setValues] = useState<ExpenseFormValues | null>(null);
   const [local, setLocal] = useState<ReturnType<typeof validateExpenseForm>>({});
@@ -85,8 +92,16 @@ export default function ExpenseDetailScreen() {
   }
 
   const original = toValues(expense);
-  const merged = { ...errors, ...local };
-  const dirty = !isEmptyUpdate(toUpdateRequest(values, original));
+  const merged = { ...edit.errors, ...local };
+  const request = toUpdateRequest(values, original);
+  const cleared = clearedFields(values, original);
+
+  // Dirty on the raw values, not on the request body. A field the user emptied
+  // is dropped from the body — the API has no clear operation — so comparing
+  // bodies made the form say "No changes yet." beside a field it had just
+  // visibly emptied.
+  const dirty = JSON.stringify(values) !== JSON.stringify(original);
+  const sendable = !isEmptyUpdate(request);
 
   function change(patch: Partial<ExpenseFormValues>) {
     setValues((current) => (current ? { ...current, ...patch } : current));
@@ -96,7 +111,7 @@ export default function ExpenseDetailScreen() {
         delete next[field as keyof ExpenseFormValues];
         return next;
       });
-      clearError(field as keyof typeof errors);
+      edit.clearError(field as keyof typeof edit.errors);
     }
   }
 
@@ -110,7 +125,6 @@ export default function ExpenseDetailScreen() {
       return;
     }
 
-    const request = toUpdateRequest(values, original);
     if (isEmptyUpdate(request)) {
       return;
     }
@@ -124,7 +138,7 @@ export default function ExpenseDetailScreen() {
     // USER one would silently overrule it. Verified against the running API:
     // editing the merchant of a hand-classified expense leaves the category and
     // the history untouched.
-    const updated = await submit(() => api.updateExpense(expense.id, request));
+    const updated = await edit.submit(() => api.updateExpense(expense.id, request));
     if (updated) {
       replace(updated);
     }
@@ -134,7 +148,7 @@ export default function ExpenseDetailScreen() {
     if (!expense) {
       return;
     }
-    const updated = await submit(() => api.reclassify(expense.id, { category, reason }));
+    const updated = await classify.submit(() => api.reclassify(expense.id, { category, reason }));
     if (updated) {
       replace(updated);
     }
@@ -144,11 +158,13 @@ export default function ExpenseDetailScreen() {
     if (!expense) {
       return;
     }
-    const done = await submit(async () => {
+    // Returns nothing on purpose: handing back the expense that no longer
+    // exists is a trap for the next reader.
+    const done = await removal.submit(async () => {
       await api.deleteExpense(expense.id);
-      return expense;
+      return null as unknown as Detail;
     });
-    if (done) {
+    if (!removal.errors.form && done !== undefined) {
       router.replace('/expenses');
     }
   }
@@ -190,24 +206,33 @@ export default function ExpenseDetailScreen() {
       <View style={{ flexDirection: 'row', gap: spacing.md, alignItems: 'center' }}>
         <Pressable
           accessibilityRole="button"
-          accessibilityState={{ disabled: !dirty || submitting }}
-          disabled={!dirty || submitting}
+          accessibilityState={{ disabled: !sendable || edit.submitting }}
+          disabled={!sendable || edit.submitting}
           onPress={save}
           style={{
             minHeight: MIN_TOUCH_TARGET,
             justifyContent: 'center',
             paddingHorizontal: spacing.lg,
             borderRadius: 6,
-            backgroundColor: dirty && !submitting ? palette.accent : palette.border,
+            backgroundColor: sendable && !edit.submitting ? palette.accent : palette.border,
           }}
         >
           <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>
-            {submitting ? 'Saving…' : 'Save changes'}
+            {edit.submitting ? 'Saving…' : 'Save changes'}
           </Text>
         </Pressable>
-        {/* Says why the button is inert, rather than leaving it mysteriously grey. */}
+        {/*
+          Says why the button is inert rather than leaving it mysteriously grey
+          — and distinguishes the two reasons. "Nothing changed" and "the only
+          thing you changed is something this API cannot do" are different
+          sentences, and the second used to be told as the first.
+        */}
         {!dirty ? (
           <Text style={{ color: palette.textMuted, fontSize: 12 }}>No changes yet.</Text>
+        ) : !sendable ? (
+          <Text style={{ color: palette.negative, fontSize: 12 }}>
+            {cleared.length === 1 ? 'That field' : 'Those fields'} cannot be cleared, only changed.
+          </Text>
         ) : null}
       </View>
 
@@ -215,8 +240,8 @@ export default function ExpenseDetailScreen() {
 
       <ReclassifyControl
         current={expense.category}
-        errors={merged}
-        submitting={submitting}
+        errors={classify.errors}
+        submitting={classify.submitting}
         onReclassify={reclassify}
       />
 
@@ -258,15 +283,57 @@ export default function ExpenseDetailScreen() {
 
       <View style={{ height: 1, backgroundColor: palette.border }} />
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Delete this expense"
-        disabled={submitting}
-        onPress={remove}
-        style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
-      >
-        <Text style={{ color: palette.negative }}>Delete this expense</Text>
-      </Pressable>
+      {/*
+        Two taps, and inline rather than `Alert.alert` — react-native-web does
+        not implement that, so a web-only no-op would be worse than nothing.
+        This is the one irreversible action on the screen: the backend cascades
+        the classification history with it and the append-only trigger
+        deliberately does not cover DELETE, so there is nothing to recover.
+      */}
+      {confirmingDelete ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Confirm deleting this expense and its history"
+            disabled={removal.submitting}
+            onPress={remove}
+            style={{
+              minHeight: MIN_TOUCH_TARGET,
+              justifyContent: 'center',
+              paddingHorizontal: spacing.md,
+              borderRadius: 6,
+              backgroundColor: palette.negative,
+            }}
+          >
+            <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>
+              {removal.submitting ? 'Deleting…' : 'Delete permanently'}
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setConfirmingDelete(false)}
+            style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
+          >
+            <Text style={{ color: palette.textMuted }}>Keep it</Text>
+          </Pressable>
+          <Text style={{ color: palette.textMuted, fontSize: 12, flex: 1 }}>
+            This also removes its classification history, which cannot be recovered.
+          </Text>
+        </View>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Delete this expense"
+          onPress={() => setConfirmingDelete(true)}
+          style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
+        >
+          <Text style={{ color: palette.negative }}>Delete this expense</Text>
+        </Pressable>
+      )}
+
+      {removal.errors.form ? (
+        <Text style={{ color: palette.negative, fontSize: 12 }}>{removal.errors.form}</Text>
+      ) : null}
     </ScrollView>
   );
 }

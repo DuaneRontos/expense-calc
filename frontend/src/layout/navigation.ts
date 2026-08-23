@@ -94,6 +94,18 @@ export function matchDestination(pathname: string): Destination | undefined {
   });
 }
 
+/**
+ * Whether a pathname is exactly a destination's own route.
+ *
+ * Distinct from {@link matchDestination}, which matches a whole section. The
+ * two answer different questions: being *within* Expenses is why the tab is
+ * highlighted on `/expenses/{id}`, and being *exactly* on `/expenses` is the
+ * only reason tapping it should do nothing.
+ */
+export function isExactly(pathname: string, href: string): boolean {
+  return normalize(pathname) === href;
+}
+
 export function useActiveDestination(): Destination | undefined {
   return matchDestination(usePathname());
 }
@@ -120,11 +132,19 @@ export function useShowsFilters(): boolean {
 export function useNavItems(): NavItem[] {
   const pathname = usePathname();
   const active = matchDestination(pathname);
+  const here = normalize(pathname);
 
   const go = useCallback(
-    (href: Destination['href'], isActive: boolean) => () => {
-      // Already here — navigating would stack a duplicate of the current route.
-      if (isActive) {
+    (href: Destination['href'], isHere: boolean) => () => {
+      // Already on this exact route — navigating would stack a duplicate.
+      //
+      // **Exactly here, not merely within.** Gating on the highlighted
+      // destination instead made the tab inert on every nested route: from
+      // `/expenses/{id}` the Expenses tab is lit, so tapping it did nothing and
+      // the only way back to the list was the browser's back button. Being
+      // inside a section is a reason to highlight it, not a reason to refuse to
+      // go to its top.
+      if (isHere) {
         return;
       }
       // `navigate`, not `push`. These are peer destinations, and `push` always
@@ -138,15 +158,14 @@ export function useNavItems(): NavItem[] {
 
   return useMemo(
     () =>
-      DESTINATIONS.map((candidate) => {
-        const isActive = candidate.key === active?.key;
-        return {
-          key: candidate.key,
-          label: candidate.label,
-          active: isActive,
-          onPress: go(candidate.href, isActive),
-        };
-      }),
-    [active, go],
+      DESTINATIONS.map((candidate) => ({
+        key: candidate.key,
+        // Highlighted for the whole section, including nested routes.
+        active: candidate.key === active?.key,
+        label: candidate.label,
+        // Navigable unless this is precisely where we already are.
+        onPress: go(candidate.href, here === candidate.href),
+      })),
+    [active, here, go],
   );
 }

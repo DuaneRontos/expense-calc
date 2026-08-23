@@ -1,7 +1,10 @@
 import {
+  clearedFields,
   hasErrors,
   isEmptyUpdate,
+  isRealDate,
   MAX_MERCHANT_LENGTH,
+  sameAmount,
   toCreateRequest,
   toUpdateRequest,
   validateExpenseForm,
@@ -128,5 +131,67 @@ describe('toFieldErrors', () => {
 
   it('reports a transport failure as a form-level message', () => {
     expect(toFieldErrors(new Error('offline')).form).toContain('offline');
+  });
+});
+
+describe('isRealDate', () => {
+  it('accepts dates the calendar has', () => {
+    expect(isRealDate('2026-08-23')).toBe(true);
+    expect(isRealDate('2024-02-29')).toBe(true);
+  });
+
+  it('rejects a day the month does not have', () => {
+    // Shape alone accepts this. It then fails Jackson's LocalDate binding
+    // before validation runs, so the server names the field "body" and the user
+    // gets a banner about the request body for a typo in the Date field.
+    expect(isRealDate('2026-02-31')).toBe(false);
+    expect(isRealDate('2026-04-31')).toBe(false);
+  });
+
+  it('rejects a month that does not exist, and a non-leap 29 February', () => {
+    expect(isRealDate('2026-13-01')).toBe(false);
+    expect(isRealDate('2026-00-10')).toBe(false);
+    expect(isRealDate('2026-02-29')).toBe(false);
+  });
+
+  it('surfaces on the date field rather than as a form banner', () => {
+    expect(validateExpenseForm({ ...VALID, occurredOn: '2026-02-31' }).occurredOn).toContain(
+      'does not exist',
+    );
+  });
+});
+
+describe('sameAmount', () => {
+  it('treats the same money written differently as unchanged', () => {
+    // Retyping 1234.50 as 1234.5 changes no minor units; sending it would bump
+    // updatedAt for nothing.
+    expect(sameAmount('1234.50', '1234.5')).toBe(true);
+    expect(sameAmount('-500.00', '-500')).toBe(true);
+    expect(sameAmount('0007.00', '7')).toBe(true);
+  });
+
+  it('still notices a real change, including a sign flip', () => {
+    expect(sameAmount('1234.50', '1234.51')).toBe(false);
+    // A refund and a purchase of the same size are not the same money.
+    expect(sameAmount('500.00', '-500.00')).toBe(false);
+  });
+
+  it('does not swallow a difference while one side is unparseable', () => {
+    expect(sameAmount('12.', '12')).toBe(false);
+  });
+});
+
+describe('clearedFields', () => {
+  it('names a field the user emptied, which the API cannot clear', () => {
+    expect(clearedFields({ ...VALID, merchant: '' }, VALID)).toEqual(['merchant']);
+  });
+
+  it('names nothing when a field was changed rather than emptied', () => {
+    expect(clearedFields({ ...VALID, merchant: 'Puregold' }, VALID)).toEqual([]);
+  });
+
+  it('names nothing when the field was already empty', () => {
+    const blank = { ...VALID, merchant: '' };
+    expect(clearedFields(blank, blank)).toEqual([]);
   });
 });

@@ -7,6 +7,7 @@ import { api } from '../../src/api/client';
 import { ExpenseFormFields } from '../../src/expenses/ExpenseFormFields';
 import {
   hasErrors,
+  isRealDate,
   toCreateRequest,
   validateExpenseForm,
   type ExpenseFormValues,
@@ -17,17 +18,41 @@ import { APP_NAME } from '../../src/layout/navigation';
 import { palette, spacing } from '../../src/theme/tokens';
 import type { ExpenseDetail } from '../../src/api/types';
 
-/** Today in `Asia/Manila`, which is the zone every date in this app means. */
+/**
+ * Today in `Asia/Manila`, which is the zone every date in this app means.
+ *
+ * **Guarded, and falls back by arithmetic.** `src/money/format.ts` documents at
+ * length why `Intl` cannot be called blind here: Hermes ships it as a shim over
+ * platform ICU, and a missing locale or an ignored `timeZone` would return
+ * `08/23/2026` or the device's own date. The first fails this form's own date
+ * check, so the user would open a brand-new form with a red error under a field
+ * they never touched.
+ *
+ * The fallback is exact rather than approximate: the Philippines has observed no
+ * DST since 1978, so the offset is a constant +08:00.
+ */
 function today(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Manila',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
+  try {
+    const formatted = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+
+    if (isRealDate(formatted)) {
+      return formatted;
+    }
+  } catch {
+    // Fall through to the arithmetic below.
+  }
+
+  return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
-const EMPTY: ExpenseFormValues = { amount: '', occurredOn: today(), merchant: '', description: '' };
+function emptyForm(): ExpenseFormValues {
+  return { amount: '', occurredOn: today(), merchant: '', description: '' };
+}
 
 /**
  * Record a new expense (issue #15).
@@ -37,7 +62,11 @@ const EMPTY: ExpenseFormValues = { amount: '', occurredOn: today(), merchant: ''
  * a reclassification with a reason, which is what keeps the history meaningful.
  */
 export default function NewExpense() {
-  const [values, setValues] = useState<ExpenseFormValues>(EMPTY);
+  // Evaluated per mount, not once at import. A module-scope constant freezes
+  // the date at whenever the bundle first loaded, so a tab left open across
+  // midnight in Manila — or a native app resumed the next day — prefills
+  // yesterday, in a field that looks filled and valid.
+  const [values, setValues] = useState<ExpenseFormValues>(emptyForm);
   const [local, setLocal] = useState<ReturnType<typeof validateExpenseForm>>({});
   const { submit, submitting, errors, clearError } = useExpenseSubmit<ExpenseDetail>();
 

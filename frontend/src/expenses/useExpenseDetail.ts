@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api } from '../api/client';
 import { ApiError } from '../api/problem';
@@ -17,18 +17,43 @@ export function useExpenseDetail(id: string | undefined) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ApiError | Error | null>(null);
 
+  /**
+   * Discards a response for an id the screen has already moved off.
+   *
+   * `useCategories` guards the same way. Without it a slow first response can
+   * overwrite a fast second one, and the screen shows an expense the URL no
+   * longer names.
+   */
+  const generation = useRef(0);
+
   const load = useCallback(async () => {
+    const mine = ++generation.current;
+
     if (!id) {
+      // Cleared rather than left spinning: returning early without this
+      // rendered a spinner forever. Not reachable through the router today,
+      // and one refactor away from being so.
+      setLoading(false);
+      setExpense(null);
       return;
     }
+
     try {
       const result = await api.expense(id);
+      if (mine !== generation.current) {
+        return;
+      }
       setExpense(result);
       setError(null);
     } catch (caught) {
+      if (mine !== generation.current) {
+        return;
+      }
       setError(caught instanceof Error ? caught : new Error(String(caught)));
     } finally {
-      setLoading(false);
+      if (mine === generation.current) {
+        setLoading(false);
+      }
     }
   }, [id]);
 

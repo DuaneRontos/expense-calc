@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 
 import { useCategories } from './useCategories';
@@ -35,6 +35,26 @@ export function ReclassifyControl({
   const { categories, error: categoriesError, retry } = useCategories();
   const [selected, setSelected] = useState<Category | null>(null);
   const [reason, setReason] = useState('');
+
+  /**
+   * Clears the draft once the category actually moved.
+   *
+   * **Without this the reason outlives the change it explained.** The panel
+   * collapses on success — `current` now equals `target` — but the text stayed
+   * in state, so the next category change in the same session opened
+   * pre-filled with the previous justification and one tap from being
+   * submitted. A carried-over reason is worse than a blank one: it reads as
+   * deliberate, and the history exists precisely so a category is explicable
+   * months later.
+   */
+  const previous = useRef(current);
+  useEffect(() => {
+    if (previous.current !== current) {
+      previous.current = current;
+      setSelected(null);
+      setReason('');
+    }
+  }, [current]);
 
   const target = selected ?? current;
   const changed = target !== current;
