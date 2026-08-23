@@ -72,7 +72,10 @@ export function ExpenseFilters() {
           // case and drops it outright, and iOS has no matching trait. The two
           // props reach opposite platforms: RNW deprecates `accessibilityRole`
           // in favour of `role`, while native maps `accessibilityRole` and
-          // ignores `role="group"`. Nothing here changes on a phone.
+          // ignores `role="group"`. Which is why the children below stay on
+          // `accessibilityRole` — `checkbox` and `radio` map on all three
+          // targets, so following the deprecation down there would cost native
+          // and buy nothing. Nothing here changes on a phone.
           //
           // The name repeats the heading above; kept for the reason spelled
           // out in ReclassifyControl — on web a stutter beats an unnamed
