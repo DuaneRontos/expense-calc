@@ -253,6 +253,13 @@ public class LoginRateLimiter {
 			// The same predicate the escalation decays on: an entry is
 			// forgettable exactly when keeping it would no longer change what
 			// happens to that client next.
+			//
+			// The lockout check is redundant and kept for intent. `lockoutAfter`
+			// clamps to `maxLockout`, so `lockedUntil` never exceeds
+			// `lastFailure + maxLockout` — meaning a decayed client's lockout has
+			// necessarily expired. That clamp is what keeps a shared predicate
+			// safe here: without it, eviction could free a locked-out client, and
+			// serving the limit would be a way to escape it.
 			if (attempts.remainingLockout(now).isZero()
 					&& attempts.hasDecayed(now, this.properties.maxLockout())) {
 				entries.remove();

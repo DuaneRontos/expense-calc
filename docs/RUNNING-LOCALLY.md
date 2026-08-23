@@ -141,8 +141,9 @@ cannot require authentication, that same cost is a denial-of-service lever.
 
 Two failures are free. After that each further failure earns a lockout that
 grows 1s, 4s, 16s, 64s, 256s, capped at five minutes. A successful sign-in
-clears it, and so does **five minutes without a failure** — so a few mistypes
-last week do not cost you a lockout on today's first mistake. A separate ceiling
+clears it, and so does going longer than `max-lockout` — five minutes at the
+default — without a failure, so a few mistypes last week do not cost you a
+lockout on today's first mistake. A separate ceiling
 allows 60 attempts a minute across all callers. The response carries
 `Retry-After` in seconds.
 

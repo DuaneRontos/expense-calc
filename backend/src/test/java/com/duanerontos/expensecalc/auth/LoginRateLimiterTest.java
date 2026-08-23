@@ -143,9 +143,15 @@ class LoginRateLimiterTest {
 		// survived or vanished according to how many strangers had failed in
 		// between. One person, one sequence, two different answers.
 		Duration roomy = lockoutAfterQuietSpell(10_000, 0);
-		Duration crowded = lockoutAfterQuietSpell(4, 20);
+		// Fewer strangers than the map holds, deliberately. With more, CLIENT's
+		// final failure finds the map full and returns untracked — so the arm
+		// reaches ZERO without ever touching the decay it is named for, and a
+		// change that moved both arms together would pass silently.
+		Duration crowded = lockoutAfterQuietSpell(4, 2);
 
 		assertThat(roomy).isEqualTo(crowded);
+		// Asserted as a value, not only as an equality, for the same reason.
+		assertThat(roomy).isEqualTo(Duration.ZERO);
 	}
 
 	/**
@@ -390,9 +396,10 @@ class LoginRateLimiterTest {
 	@Test
 	@DisplayName("handles the fallback key used when a remote address is unavailable")
 	void toleratesTheFallbackClientKey() {
-		// `getRemoteAddr()` may be null, and ConcurrentHashMap rejects null keys
-		// — a 500 on an unauthenticated endpoint. AuthController substitutes a
-		// shared bucket rather than passing it through.
+		// Covers this class's half only: that the shared bucket behaves like any
+		// other key. The substitution itself lives in AuthController, where a
+		// null address cannot be produced through the servlet stack — so it is
+		// pinned by the `requireNonNullElse` call being read, not by a test.
 		MovableClock clock = new MovableClock();
 		LoginRateLimiter limiter = new LoginRateLimiter(properties(), clock);
 
