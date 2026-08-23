@@ -198,8 +198,14 @@ with nothing in any log. Use `localhost` on both, which is why the local profile
 lists only that origin.
 
 The same applies in production: a web client on one registrable domain and an
-API on another will never see the cookie. Serve both from one site, or from
-subdomains of one, and set `app.auth.refresh-cookie` accordingly.
+API on another will never see the cookie, and **no setting in
+`app.auth.refresh-cookie` can rescue that** — it carries `name`, `path` and
+`secure`, none of which decides which site the cookie travels to. Only
+`SameSite=None` would, and this API deliberately does not offer it.
+
+Subdomains of one registrable domain need no configuration at all: the cookie is
+host-only for the API's host, and `api.example.com` is same-site with
+`app.example.com`, so it simply works. Serve both from one site.
 
 ### If sign-in starts answering `429`
 

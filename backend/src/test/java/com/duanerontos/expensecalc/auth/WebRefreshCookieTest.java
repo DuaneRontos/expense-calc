@@ -188,6 +188,12 @@ class WebRefreshCookieTest {
 		// fails again on the next refresh.
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 		assertThat(response.getBody()).containsEntry("title", "No refresh token");
+		// Pinned because the web client keys off this exact URI to tell "signed
+		// out" from "the request was rejected". It is a cross-tier contract, and
+		// renaming it would turn every web sign-out into a request error with
+		// both suites still green.
+		assertThat(response.getBody()).containsEntry("type",
+				"https://expense-calc.invalid/problems/bad-request");
 	}
 
 	@Test

@@ -435,7 +435,17 @@ export class ExpenseCalcClient {
       anonymous: true,
     });
 
-    this.signedOut = false;
+    // **Dropped on the floor if a sign-out landed while this was in flight.**
+    // A refresh only starts once `canResume()` said yes, so on web the flag was
+    // false when this began — the one interleaving that arrives here with it set
+    // is a failed logout during an in-flight refresh, and adopting then would
+    // sign the user back in through a race instead of through a request. There
+    // is deliberately no `signedOut = false` here: `login()` is the only place
+    // that should lift it.
+    if (this.signedOut) {
+      throw new ApiError({ status: 401, title: 'Signed out' });
+    }
+
     await this.session.adopt(tokens, viaCookie);
   }
 
@@ -445,6 +455,20 @@ export class ExpenseCalcClient {
    * Local state is cleared even if the call fails. A user who pressed sign out
    * on a flaky connection should not be left holding a usable token because the
    * request timed out.
+   *
+   * **A `null` return on web means the sign-out did not reach the server, and
+   * the refresh cookie is still live.** Nothing client-side can revoke it — the
+   * cookie is `httpOnly` and the token stays valid server-side for the rest of
+   * its 30 days. This client stops using it, but a *new* one has no way to know
+   * that: a page reload constructs a fresh instance with `signedOut` false, and
+   * the still-valid cookie signs the user back in.
+   *
+   * So a caller must surface a `null` rather than showing a plain signed-out
+   * screen — "we could not sign you out on this device, try again" is the true
+   * statement. A persisted marker would be worse than none: it would hide a live
+   * credential behind a local screen and call that signed out. #14's sign-in
+   * screen is where this gets consumed; retrying the logout on next start is the
+   * fuller answer if it turns out to matter.
    */
   async logout(): Promise<LogoutResult | null> {
     try {

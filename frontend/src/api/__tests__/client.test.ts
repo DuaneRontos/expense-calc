@@ -295,7 +295,18 @@ describe('auth', () => {
       write: () => Promise.resolve(),
       clear: () => Promise.resolve(),
     };
-    const fetchImpl = jest.fn().mockResolvedValue(problem(400, { title: 'No refresh token' }));
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(WEB_TOKENS))
+      .mockResolvedValue(
+        problem(400, {
+          // The type is what the client matches on, so the mock has to carry
+          // it. Without it this test passed against every version of the code,
+          // including one with the feature deleted.
+          type: 'https://expense-calc.invalid/problems/bad-request',
+          title: 'No refresh token',
+        }),
+      );
     const session = new Session(webStore);
     const client = new ExpenseCalcClient({
       baseUrl: 'http://api.test',
@@ -304,7 +315,13 @@ describe('auth', () => {
       clientType: 'web',
     });
 
-    await expect(client.categories()).rejects.toBeInstanceOf(ApiError);
+    // Signed in first, so there is something to clear — otherwise the assertion
+    // cannot tell "cleared" from "never set".
+    await client.login({ username: 'duane', password: 'hunter2' });
+    expect(session.currentAccessToken()).not.toBeNull();
+
+    await expect(client.refresh()).rejects.toBeInstanceOf(ApiError);
+
     // Session cleared, so the next request presents no credential and gets a
     // clean refusal rather than replaying a state the server has rejected.
     expect(session.currentAccessToken()).toBeNull();
@@ -417,6 +434,47 @@ describe('auth', () => {
     await expect(client.refresh()).rejects.toBeInstanceOf(ApiError);
 
     expect(session.currentAccessToken()).not.toBeNull();
+  });
+
+  it('drops a refresh that lands after a sign-out', async () => {
+    // The race the flag alone does not close: a request 401s and passes the
+    // resume check, the user signs out and the logout fails, then the refresh
+    // response arrives. Adopting it would sign them back in through timing.
+    const webStore: RefreshTokenStore = {
+      read: () => Promise.resolve(null),
+      write: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    let releaseRefresh: (value: Response) => void = () => {};
+    const fetchImpl = jest.fn().mockImplementation((url: string) => {
+      if (url.endsWith('/auth/refresh')) {
+        return new Promise<Response>((resolve) => {
+          releaseRefresh = resolve;
+        });
+      }
+      if (url.endsWith('/auth/logout')) {
+        return Promise.reject(new TypeError('network down'));
+      }
+      return Promise.resolve(json(WEB_TOKENS));
+    });
+    const session = new Session(webStore);
+    const client = new ExpenseCalcClient({
+      baseUrl: 'http://api.test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      session,
+      clientType: 'web',
+    });
+
+    // Signed in first, so `logout()`'s own request does not itself wait on the
+    // refresh being held open below.
+    await client.login({ username: 'duane', password: 'hunter2' });
+
+    const inFlight = client.refresh();
+    await client.logout();
+    releaseRefresh(json(WEB_TOKENS));
+
+    await expect(inFlight).rejects.toBeInstanceOf(ApiError);
+    expect(session.currentAccessToken()).toBeNull();
   });
 
   it('does not attach a token to login itself', async () => {
