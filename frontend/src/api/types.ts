@@ -102,6 +102,15 @@ export interface ExpensePage {
 export interface ReportPeriod {
   from: IsoDate;
   to: IsoDate;
+  /**
+   * Whether the window is exactly one or more calendar months.
+   *
+   * The server decides what `/reports/compare` compares against from this: a
+   * whole month against the calendar month before it, anything else against the
+   * equally long window before it. Declared because the server sends it — a
+   * type that omits a field the wire carries quietly stops describing the wire.
+   */
+  wholeCalendarMonths?: boolean;
 }
 
 /**
