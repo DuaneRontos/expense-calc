@@ -106,6 +106,20 @@ export function ReclassifyControl({
             <Pressable
               key={category.key}
               accessibilityRole="radio"
+              // `aria-checked`, not `accessibilityState.checked`, because it is
+              // the only form that reaches all three targets: RNW's forwarded
+              // prop list has no `accessibilityState` entry at all, so `View`
+              // filters it out before it can reach the DOM, while RN merges
+              // `aria-checked` back into `accessibilityState` on native
+              // (View.js). ARIA also requires `checked` rather than `selected`
+              // on `role="radio"`.
+              //
+              // `selected` stays because it is what carries
+              // `UIAccessibilityTraitSelected` on iOS, and it is passed as
+              // `accessibilityState` rather than `aria-selected` so that no
+              // `aria-selected` — unsupported on `role="radio"` — reaches the
+              // DOM.
+              aria-checked={isTarget}
               accessibilityState={{ selected: isTarget }}
               accessibilityLabel={category.label}
               onPress={() => setSelected(category.key)}
