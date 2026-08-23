@@ -106,6 +106,11 @@ export function ReclassifyControl({
             <Pressable
               key={category.key}
               accessibilityRole="radio"
+              // `aria-checked` plus `accessibilityState.selected`, for the
+              // reasons spelled out on the identical pair in PeriodPicker: the
+              // flat prop is the only one RNW forwards, and `selected` is what
+              // carries the iOS trait.
+              aria-checked={isTarget}
               accessibilityState={{ selected: isTarget }}
               accessibilityLabel={category.label}
               onPress={() => setSelected(category.key)}

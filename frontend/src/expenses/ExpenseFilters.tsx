@@ -90,7 +90,12 @@ export function ExpenseFilters() {
               <Pressable
                 key={category.key}
                 accessibilityRole="checkbox"
-                accessibilityState={{ checked: selected }}
+                // `aria-checked` for the reason given on the radios in
+                // PeriodPicker: `accessibilityState` never reaches the DOM
+                // under RNW, and RN merges the flat prop back into
+                // `accessibilityState` on native, so this is the one form that
+                // works everywhere.
+                aria-checked={selected}
                 accessibilityLabel={category.label}
                 onPress={() => toggleCategory(category.key)}
                 style={{
