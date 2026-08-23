@@ -82,9 +82,10 @@ describe('comparisonBarFill', () => {
 
 describe('comparisonModel width', () => {
   it('keeps every bar inside a panel too narrow to spare the whole gap', () => {
-    // Ninety day-buckets in one phone-width panel. Flooring the bar width
-    // instead pushed the last pair past the edge — the one thing the layout
-    // comment above it promises cannot happen.
+    // Denser than any preset can ask for — see `gapWithin`. Exercised anyway
+    // because the layout comment states an invariant, and #17's custom ranges
+    // are what will make this width reachable. Flooring the bar instead pushed
+    // the last pair past the edge.
     const buckets = Array.from({ length: 90 }, (_, index) =>
       pair(`B${index}`, '10.00', '20.00', '10.00'),
     );

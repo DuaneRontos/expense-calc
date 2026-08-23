@@ -182,10 +182,14 @@ export interface BarModel {
  * The gap to take out of a slot, shrunk when the slot cannot spare the whole one.
  *
  * **This is what keeps a chart inside the width it was given.** Flooring the bar
- * instead — `Math.max(1, slot - gap)` — inverts the guarantee: once the slot is
- * narrower than the gap, the floor pushes the last bar past `width`. Never
- * reached at the old bucket counts, but a day-bucketed quarter is ninety slots
- * in one panel, so it is reachable now.
+ * instead — `Math.max(1, slot - gap)` — inverts the guarantee: once a slot is
+ * narrower than half the gap, the floor pushes the last bar past `width`.
+ *
+ * **No preset reaches that.** The most buckets one can produce is a day-sliced
+ * calendar month, and 31 slots stay well inside any panel a phone would give
+ * them — `last-90` slices by week, not by day. This is a guard for #17's custom
+ * ranges, where the bucket count stops being bounded by a preset, and the tests
+ * below exercise it at a width no preset can currently ask for.
  *
  * Capped at half the slot, so a bar always keeps at least the other half and no
  * bar is ever zero-width.

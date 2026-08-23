@@ -154,8 +154,9 @@ describe('empty periods', () => {
 
 describe('barModel width', () => {
   it('keeps every bar inside a panel too narrow to spare the whole gap', () => {
-    // A day-bucketed quarter is ninety slots in one panel. Flooring the width
-    // at 1 instead pushed the last bars past the edge.
+    // Denser than any preset can ask for — see `gapWithin`. Pinned because
+    // #17's custom ranges are what will make this width reachable, and flooring
+    // the width at 1 pushed the last bars past the edge.
     const buckets = Array.from({ length: 90 }, (_, index) => bucket(`B${index}`, '10.00'));
     const model = barModel(buckets, 340, 100);
 
