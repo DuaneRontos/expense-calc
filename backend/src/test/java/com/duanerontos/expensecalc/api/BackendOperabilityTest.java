@@ -95,7 +95,7 @@ class BackendOperabilityTest {
 		ResponseEntity<Map<String, Object>> response = this.http.exchange(
 				RequestEntity.post("/api/v1/auth/login")
 					.contentType(MediaType.APPLICATION_JSON)
-					.body(Map.of("username", USERNAME, "password", PASSWORD)),
+					.body(Map.of("username", USERNAME, "password", PASSWORD, "client", "device")),
 				new org.springframework.core.ParameterizedTypeReference<>() {
 				});
 

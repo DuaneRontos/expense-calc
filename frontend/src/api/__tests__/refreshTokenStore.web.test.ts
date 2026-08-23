@@ -14,15 +14,22 @@ describe('web refresh token store', () => {
     await refreshTokenStore.clear();
   });
 
-  it('round-trips a token in memory', async () => {
+  it('holds nothing, because the browser holds it instead', async () => {
+    // Since #57 the token lives in an `httpOnly` cookie the server set, which
+    // no script can read — including this one. A store that appeared to keep
+    // the value would be keeping a second copy somewhere script-readable,
+    // which is the whole thing the cookie exists to avoid.
     await refreshTokenStore.write('refresh-1');
-    expect(await refreshTokenStore.read()).toBe('refresh-1');
+
+    expect(await refreshTokenStore.read()).toBeNull();
   });
 
-  it('starts empty and clears back to empty', async () => {
+  it('reads null as the normal state rather than as a signed-out one', async () => {
+    // `client.ts` depends on this: with nothing to send it posts an empty
+    // refresh body and lets the browser attach the cookie. Were null treated as
+    // "no session", web could never refresh at all.
     expect(await refreshTokenStore.read()).toBeNull();
 
-    await refreshTokenStore.write('refresh-1');
     await refreshTokenStore.clear();
 
     expect(await refreshTokenStore.read()).toBeNull();

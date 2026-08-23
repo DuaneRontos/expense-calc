@@ -167,6 +167,77 @@ describe('auth', () => {
     expect(headers.get('Authorization')).toBe('Bearer access-1');
   });
 
+  it('declares which storage mechanism this build uses', async () => {
+    // Issue #57: the server decides cookie-or-body from this, and guessing it
+    // fails silently in both directions — a web caller handed a body token it
+    // must not keep, a device handed a cookie it cannot read.
+    const fetchImpl = jest.fn().mockResolvedValue(json(TOKENS));
+    await clientWith(fetchImpl).login({ username: 'duane', password: 'hunter2' });
+
+    expect(JSON.parse(fetchImpl.mock.calls[0]![1].body)).toEqual({
+      username: 'duane',
+      password: 'hunter2',
+      // Jest runs the native variant, so this build is a device one.
+      client: 'device',
+    });
+  });
+
+  it('lets the browser attach its cookie', async () => {
+    // Without `credentials: include` a browser sends no cookie cross-origin, so
+    // the refresh cookie the server set never comes back and a page refresh
+    // signs the user out — the exact bug #57 exists to fix.
+    const fetchImpl = jest.fn().mockResolvedValue(json(TOKENS));
+    await clientWith(fetchImpl).login({ username: 'duane', password: 'hunter2' });
+
+    expect(fetchImpl.mock.calls[0]![1].credentials).toBe('include');
+  });
+
+  it('refreshes from the cookie, with the header, when it holds no token', async () => {
+    // The web path. An empty store is the normal state there rather than a
+    // signed-out one, because the token is in a cookie no script can read.
+    const fetchImpl = jest.fn().mockResolvedValue(json(TOKENS));
+    const client = new ExpenseCalcClient({
+      baseUrl: 'http://api.test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      session: new Session(memoryStore(null)),
+      clientType: 'web',
+    });
+
+    await client.refresh();
+
+    const [, init] = fetchImpl.mock.calls[0]!;
+    expect(JSON.parse(init.body)).toEqual({});
+    // Presence is the CSRF defence: a cross-site request cannot set a header,
+    // and a cross-origin fetch that does gets preflighted.
+    expect(new Headers(init.headers).get('X-Refresh-Source')).toBe('cookie');
+  });
+
+  it('sends a stored token in the body, without the cookie header', async () => {
+    // The device path is unchanged: the token is in a body an attacker's page
+    // cannot construct, so there is no CSRF to defend against and no header.
+    const fetchImpl = jest.fn().mockResolvedValue(json(TOKENS));
+    const client = clientWith(fetchImpl, memoryStore('refresh-0'));
+
+    await client.refresh();
+
+    const [, init] = fetchImpl.mock.calls[0]!;
+    expect(JSON.parse(init.body)).toEqual({ refreshToken: 'refresh-0' });
+    expect(new Headers(init.headers).get('X-Refresh-Source')).toBeNull();
+  });
+
+  it('adopts a web login that carries no refresh token', async () => {
+    // The server omits it for a web client and puts it in the cookie instead.
+    // Treating the absence as a failure would break sign-in on web entirely.
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(json({ accessToken: 'access-1', expiresInSeconds: 900 }));
+    const client = clientWith(fetchImpl, memoryStore(null));
+
+    const result = await client.login({ username: 'duane', password: 'hunter2' });
+
+    expect(result.persisted).toBe(true);
+  });
+
   it('does not attach a token to login itself', async () => {
     const fetchImpl = jest.fn().mockResolvedValue(json(TOKENS));
     await clientWith(fetchImpl).login({ username: 'duane', password: 'hunter2' });

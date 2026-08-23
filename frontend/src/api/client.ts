@@ -5,6 +5,7 @@ import { Session, type AdoptResult } from './session';
 import type {
   CategoryBreakdown,
   CategoryView,
+  ClientType,
   CreateExpenseRequest,
   ExpenseDetail,
   ExpensePage,
@@ -115,12 +116,40 @@ export interface ClientOptions {
   /** Injected in tests. Defaults to the platform `fetch`. */
   fetchImpl?: typeof fetch;
   session?: Session;
+  /**
+   * Which half of spec §9.2's storage table to follow. Defaults to
+   * {@link CLIENT_TYPE}, this build's platform.
+   *
+   * Injectable for the same reason `fetchImpl` is: jest runs the native
+   * variant of every platform-split module, so without this the web branch —
+   * the one issue #57 exists for — could be type-checked and never executed.
+   */
+  clientType?: ClientType;
 }
 
 interface RequestOptions extends RequestInit {
   /** Endpoints that must not carry a token or trigger a refresh. */
   anonymous?: boolean;
 }
+
+/**
+ * Which half of spec §9.2's storage table this build follows (issue #57).
+ *
+ * Derived once from the platform rather than passed in by a screen: it is a
+ * property of the bundle, not of the sign-in form, and a screen that got it
+ * wrong would fail silently in both directions.
+ */
+export const CLIENT_TYPE: ClientType = Platform.OS === 'web' ? 'web' : 'device';
+
+/**
+ * Sent on a refresh that authenticates with the cookie (issue #57).
+ *
+ * **The header's presence is the CSRF defence, not its value.** The browser
+ * attaches the cookie by itself, so an attacker's page can cause the request;
+ * it cannot make the browser add a header, and a cross-origin `fetch` that adds
+ * one is preflighted against the API's origin allowlist.
+ */
+const REFRESH_SOURCE_HEADER = 'X-Refresh-Source';
 
 export class ExpenseCalcClient {
   private readonly baseUrl: string;
@@ -139,6 +168,8 @@ export class ExpenseCalcClient {
    * is signed out by their own app loading a screen.
    */
   private refreshing: Promise<void> | null = null;
+
+  private readonly clientType: ClientType;
 
   constructor(options: ClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? defaultBaseUrl()).replace(/\/$/, '');
@@ -163,6 +194,7 @@ export class ExpenseCalcClient {
     // neither can jest, which injects a mock.
     this.fetchImpl = options.fetchImpl ?? ((input, init) => globalThis.fetch(input, init));
     this.session = options.session ?? new Session();
+    this.clientType = options.clientType ?? CLIENT_TYPE;
   }
 
   private async send<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -183,6 +215,11 @@ export class ExpenseCalcClient {
     const response = await this.fetchImpl(`${this.baseUrl}${API_BASE_PATH}${path}`, {
       ...init,
       headers,
+      // Without this a browser sends no cookie on a cross-origin request, so
+      // the refresh cookie the server set would never come back and the web
+      // client would be signed out by every page refresh — the exact bug #57
+      // exists to fix. Ignored by the native platforms, which have no cookies.
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -293,10 +330,13 @@ export class ExpenseCalcClient {
    * when the access token expires — so the caller gets told rather than the
    * user discovering it fifteen minutes later at a sign-in screen.
    */
-  async login(credentials: LoginRequest): Promise<AdoptResult> {
+  async login(credentials: Omit<LoginRequest, 'client'>): Promise<AdoptResult> {
     const tokens = await this.send<Tokens>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify(credentials),
+      // `client` is this build's, never the caller's: the server uses it to
+      // decide whether the refresh token comes back in a cookie or in the body,
+      // and a screen is not the thing that knows which platform it is on.
+      body: JSON.stringify({ ...credentials, client: this.clientType }),
       anonymous: true,
     });
     return this.session.adopt(tokens);
@@ -311,13 +351,20 @@ export class ExpenseCalcClient {
    */
   private async exchangeRefreshToken(): Promise<void> {
     const refreshToken = await this.session.refreshToken();
-    if (!refreshToken) {
+
+    // On web there is nothing to read: the token is in an `httpOnly` cookie the
+    // browser attaches to this request on its own, and no script can see it.
+    // An empty store is the normal state there, not an expired session.
+    if (!refreshToken && this.clientType !== 'web') {
       throw new ApiError({ status: 401, title: 'Session expired' });
     }
 
     const tokens = await this.send<Tokens>('/auth/refresh', {
       method: 'POST',
-      body: JSON.stringify({ refreshToken }),
+      body: JSON.stringify(refreshToken ? { refreshToken } : {}),
+      // Only meaningful on the cookie path, and harmless on the other. The
+      // server demands it whenever the credential came from a cookie.
+      headers: refreshToken ? undefined : { [REFRESH_SOURCE_HEADER]: 'cookie' },
       anonymous: true,
     });
     await this.session.adopt(tokens);

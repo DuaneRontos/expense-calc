@@ -115,8 +115,14 @@ cd backend && APP_AUTH_USERNAME=you APP_AUTH_PASSWORD_HASH='<the hash>' APP_AUTH
 Sign in to get a token:
 
 ```bash
-curl -s -X POST http://localhost:8080/api/v1/auth/login -H 'Content-Type: application/json' -d '{"username":"you","password":"your-password-here"}'
+curl -s -X POST http://localhost:8080/api/v1/auth/login -H 'Content-Type: application/json' -d '{"username":"you","password":"your-password-here","client":"device"}'
 ```
+
+`client` is required and has no default (issue #57). Use `device` from `curl`
+and from iOS or Android: you get the refresh token in the response body. A
+browser sends `web` instead and gets it in an `httpOnly` cookie it cannot read,
+with no `refreshToken` field in the body at all — see below. Guessing this
+server-side is what the field avoids, and both wrong guesses fail silently.
 
 That returns `accessToken`, `refreshToken` and `expiresInSeconds` (900 — fifteen
 minutes, because an access token cannot be revoked, so its lifetime *is* the
@@ -132,6 +138,51 @@ the new one:
 ```bash
 curl -s -X POST http://localhost:8080/api/v1/auth/refresh -H 'Content-Type: application/json' -d '{"refreshToken":"<the refresh token>"}'
 ```
+
+### The web client keeps its refresh token in a cookie
+
+Spec §9.2 puts the web refresh token in an `httpOnly; Secure; SameSite=Strict`
+cookie. Such a cookie is unreadable and unwritable from JavaScript by
+definition, so **only the server can set one** — which is why this was a backend
+change and why, before it, a page refresh signed a web user out.
+
+Signing in with `"client":"web"` returns `Set-Cookie` and **omits**
+`refreshToken` from the body. Sending it in both places would hand a script the
+value the cookie exists to hide, so you get exactly one.
+
+Refreshing then needs two things from the browser: the cookie, and a header.
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/auth/refresh -H 'Content-Type: application/json' -H 'X-Refresh-Source: cookie' -b 'refresh_token=<value>' -d '{}'
+```
+
+**`X-Refresh-Source` is the CSRF defence, and its presence is the whole check —
+the value is not read.** A cookie is attached by the browser rather than by the
+client, so `/auth/refresh` became reachable from any page on the internet the
+moment it accepted one. A cross-site form or navigation cannot set a header at
+all, and a cross-origin `fetch` that sets one is preflighted, which this API
+answers only for the origins `app.cors.allowed-origins` names. `SameSite=Strict`
+is set too, but it is a browser behaviour rather than a server check — a second
+layer, not the first.
+
+Omitting the header gives `403`, and the token is **not** consumed: a refusal
+that rotated it anyway would deliver exactly the outcome the attack wanted.
+Sending neither a cookie nor a body token gives `400` rather than `401` — an
+expired session and a client that forgot `credentials: 'include'` both leave you
+signed out, but only one is fixed by signing in again.
+
+`POST /auth/logout` clears the cookie with a matching `Set-Cookie`.
+
+**On `Secure` and localhost:** Chrome and Firefox treat `http://localhost` as a
+secure context and do accept `Secure` cookies there, so local development needs
+no exception. Serving the web client from a plain-HTTP LAN address is the case
+that breaks — the browser silently stores no cookie. Set
+`APP_AUTH_REFRESH_COOKIE_SECURE=false` for that, and only that.
+
+**Cross-origin web dev also needs `app.cors.allowed-origins` set** to wherever
+the client is served from. `allow-credentials` is now true by default, but it is
+inert while no origin is allowed, and a wildcard origin is rejected outright in
+that combination.
 
 ### If sign-in starts answering `429`
 

@@ -113,19 +113,26 @@ is why `ChartLegend` is rendered by the chart components rather than by callers
 **Tokens are never in `localStorage`** (spec §9.2). The access token lives in
 memory on every target and is never written to storage. The refresh token goes
 to the Keychain / Keystore on device via `expo-secure-store`
-(`src/api/refreshTokenStore.ts`), and stays **in memory only** on web
-(`refreshTokenStore.web.ts`) — Metro picks the variant per platform.
+(`src/api/refreshTokenStore.ts`) — Metro picks the variant per platform.
 
-The web half does not match spec §9.2, and cannot from the client alone. The
-spec asks for an `httpOnly; Secure; SameSite=Strict` cookie, and an `httpOnly`
-cookie is by definition unwritable from JavaScript — only the server can set
-one, and the API deliberately returns both tokens in the body instead. That
-leaves `localStorage` (forbidden), `sessionStorage` (the same script-readable
-exposure), a non-`httpOnly` cookie (ditto), or memory. Memory is the only one
-that keeps the security rule, and the cost is real: **a page reload signs a web
-user out.** Closing it needs a backend change — `Set-Cookie` on `/auth/login`
-and `/auth/refresh` for web callers, plus CSRF protection, which the API
-currently disables — tracked as
-[#57](https://github.com/DuaneRontos/expense-calc/issues/57).
-`refreshTokenStore.web.ts` carries the full argument, and a test pins the rule
-against the source so the tempting fix cannot land quietly.
+**On web the browser holds it, in an `httpOnly` cookie the server sets**
+([#57](https://github.com/DuaneRontos/expense-calc/issues/57)). Such a cookie is
+unreadable and unwritable from JavaScript by definition, which is the point — so
+`refreshTokenStore.web.ts` now holds *nothing*, and `read()` returning null is
+the normal state there rather than a signed-out one. `client.ts` reads it that
+way: with nothing to send it posts an empty refresh body, lets the browser
+attach the cookie, and adds `X-Refresh-Source` so the server can tell the
+request was not made cross-site.
+
+Which mechanism a build uses travels on the login request as
+`client: 'web' | 'device'`, derived from `Platform.OS` rather than passed in by
+a screen. The server honours exactly one per caller — cookie *or* body, never
+both, since a body token is readable by any script that achieves XSS.
+
+Until #57 this stayed **in memory only** on web, because the alternatives
+available to a script were `localStorage` (forbidden by spec §9.2 and §10),
+`sessionStorage` (the same script-readable exposure), or a non-`httpOnly` cookie
+(ditto). Memory was the only one that kept the rule, and **a page reload signed
+a web user out.** `refreshTokenStore.web.ts` carries the full argument, and a
+test pins the rule against the source — scanning the whole tree, so the tempting
+fix cannot land quietly wherever someone hits the problem.

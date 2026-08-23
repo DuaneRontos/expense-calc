@@ -170,7 +170,15 @@ export interface PeriodComparison {
 /** `POST /auth/login` and `/auth/refresh` (spec §9.2). */
 export interface Tokens {
   accessToken: string;
-  refreshToken: string;
+  /**
+   * Absent for a web client (issue #57).
+   *
+   * The browser holds it in an `httpOnly` cookie the server set, which no
+   * script can read — including this one. Sending it in the body as well would
+   * hand back the value the cookie exists to hide, so the server sends exactly
+   * one of the two.
+   */
+  refreshToken?: string;
   expiresInSeconds: number;
 }
 
@@ -257,9 +265,20 @@ export interface ReclassifyRequest {
 }
 
 /** `POST /auth/login`. */
+/** Which storage mechanism spec §9.2 assigns this client's refresh token. */
+export type ClientType = 'web' | 'device';
+
 export interface LoginRequest {
   username: string;
   password: string;
+  /**
+   * Declared rather than inferred by the server (issue #57).
+   *
+   * The two mistakes it prevents are both silent: a web caller treated as a
+   * device gets its refresh token in a body it must not keep, and a device
+   * treated as web gets a cookie it cannot read and no token at all.
+   */
+  client: ClientType;
 }
 
 /** `POST /auth/logout` — access tokens already issued run to their expiry. */
