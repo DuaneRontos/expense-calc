@@ -231,14 +231,30 @@ describe('auth', () => {
   it('adopts a web login that carries no refresh token', async () => {
     // The server omits it for a web client and puts it in the cookie instead.
     // Treating the absence as a failure would break sign-in on web entirely.
-    const fetchImpl = jest
-      .fn()
-      .mockResolvedValue(json({ accessToken: 'access-1', expiresInSeconds: 900 }));
-    const client = clientWith(fetchImpl, memoryStore(null));
+    const fetchImpl = jest.fn().mockResolvedValue(json(WEB_TOKENS));
+    const client = new ExpenseCalcClient({
+      baseUrl: 'http://api.test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      session: new Session(memoryStore(null)),
+      clientType: 'web',
+    });
 
     const result = await client.login({ username: 'duane', password: 'hunter2' });
 
     expect(result.persisted).toBe(true);
+  });
+
+  it('tells a device build its session will not outlive the access token', async () => {
+    // A device that somehow receives a web-shaped response persisted nothing,
+    // and `persisted` is the signal a sign-in screen uses to say so. Reporting
+    // true there is the opposite of the truth: the session ends in fifteen
+    // minutes with no warning.
+    const fetchImpl = jest.fn().mockResolvedValue(json(WEB_TOKENS));
+    const client = clientWith(fetchImpl, memoryStore(null));
+
+    const result = await client.login({ username: 'duane', password: 'hunter2' });
+
+    expect(result.persisted).toBe(false);
   });
 
   it('recovers a web session from the cookie on the next request', async () => {
@@ -292,6 +308,115 @@ describe('auth', () => {
     // Session cleared, so the next request presents no credential and gets a
     // clean refusal rather than replaying a state the server has rejected.
     expect(session.currentAccessToken()).toBeNull();
+  });
+
+  it('stays signed out on web when the logout call itself fails', async () => {
+    // The regression the cookie introduced. `logout()` clears local state even
+    // when the request fails — but on web only the server can remove the
+    // cookie, so without a signed-out flag the very next request refreshes from
+    // a still-live cookie and silently signs the user back in, moments after a
+    // screen told them they were out.
+    const webStore: RefreshTokenStore = {
+      read: () => Promise.resolve(null),
+      write: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(WEB_TOKENS))
+      .mockRejectedValueOnce(new TypeError('network down'))
+      .mockResolvedValue(json([]));
+    const client = new ExpenseCalcClient({
+      baseUrl: 'http://api.test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      session: new Session(webStore),
+      clientType: 'web',
+    });
+
+    await client.login({ username: 'duane', password: 'hunter2' });
+    await client.logout();
+
+    await client.categories();
+
+    expect(fetchImpl.mock.calls.map((call) => call[0])).not.toContain(
+      'http://api.test/api/v1/auth/refresh',
+    );
+  });
+
+  it('signs back in normally after a failed logout', async () => {
+    // The flag must not be a one-way door: logging in again clears it.
+    const webStore: RefreshTokenStore = {
+      read: () => Promise.resolve(null),
+      write: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const fetchImpl = jest
+      .fn()
+      .mockRejectedValueOnce(new TypeError('network down'))
+      .mockResolvedValue(json(WEB_TOKENS));
+    const client = new ExpenseCalcClient({
+      baseUrl: 'http://api.test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      session: new Session(webStore),
+      clientType: 'web',
+    });
+
+    await client.logout();
+    await client.login({ username: 'duane', password: 'hunter2' });
+
+    fetchImpl.mockResolvedValue(json([]));
+    await expect(client.categories()).resolves.toBeDefined();
+  });
+
+  it('never sends a body token from a web build', async () => {
+    // Structural, not incidental. The server reads a body token as "device", so
+    // a web build that sent one would get its refresh token back in a response
+    // body a script can read — the one thing httpOnly exists to prevent.
+    const stockedStore: RefreshTokenStore = {
+      read: () => Promise.resolve('should-never-be-sent'),
+      write: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const fetchImpl = jest.fn().mockResolvedValue(json(WEB_TOKENS));
+    const client = new ExpenseCalcClient({
+      baseUrl: 'http://api.test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      session: new Session(stockedStore),
+      clientType: 'web',
+    });
+
+    await client.refresh();
+
+    const [, init] = fetchImpl.mock.calls[0]!;
+    expect(JSON.parse(init.body)).toEqual({});
+    expect(new Headers(init.headers).get('X-Refresh-Source')).toBe('cookie');
+  });
+
+  it('does not treat an unrelated 400 as a signed-out session', async () => {
+    // Only the server's own "no refresh token" problem means signed out. A 400
+    // from a proxy would otherwise drop the user at a sign-in screen for a
+    // reason that has nothing to do with their session.
+    const webStore: RefreshTokenStore = {
+      read: () => Promise.resolve(null),
+      write: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(WEB_TOKENS))
+      .mockResolvedValue(problem(400, { title: 'Gateway rejected the request' }));
+    const session = new Session(webStore);
+    const client = new ExpenseCalcClient({
+      baseUrl: 'http://api.test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      session,
+      clientType: 'web',
+    });
+
+    await client.login({ username: 'duane', password: 'hunter2' });
+    await expect(client.refresh()).rejects.toBeInstanceOf(ApiError);
+
+    expect(session.currentAccessToken()).not.toBeNull();
   });
 
   it('does not attach a token to login itself', async () => {

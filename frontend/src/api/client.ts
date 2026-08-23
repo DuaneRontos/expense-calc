@@ -151,6 +151,9 @@ export const CLIENT_TYPE: ClientType = Platform.OS === 'web' ? 'web' : 'device';
  */
 const REFRESH_SOURCE_HEADER = 'X-Refresh-Source';
 
+/** The server's problem type for "no refresh token arrived" (issue #57). */
+const MISSING_REFRESH_TOKEN_PROBLEM = 'https://expense-calc.invalid/problems/bad-request';
+
 export class ExpenseCalcClient {
   private readonly baseUrl: string;
 
@@ -170,6 +173,14 @@ export class ExpenseCalcClient {
   private refreshing: Promise<void> | null = null;
 
   private readonly clientType: ClientType;
+
+  /**
+   * Set once sign-out is requested, cleared when a session is adopted.
+   *
+   * Only meaningful on web, where the credential is a cookie this code cannot
+   * delete. See {@link canResume}.
+   */
+  private signedOut = false;
 
   constructor(options: ClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? defaultBaseUrl()).replace(/\/$/, '');
@@ -317,7 +328,17 @@ export class ExpenseCalcClient {
    * actually see the cookie.
    */
   private canResume(): Promise<boolean> {
-    return this.clientType === 'web' ? Promise.resolve(true) : this.session.isResumable();
+    if (this.clientType !== 'web') {
+      return this.session.isResumable();
+    }
+
+    // **Except once sign-out has been asked for.** `logout()` clears local state
+    // even when the call fails, and on web `store.clear()` cannot touch the
+    // cookie — only the server can. Without this flag a failed sign-out shows
+    // the user a signed-out screen and then silently signs them back in on the
+    // next request, because the cookie is still live and this method would
+    // otherwise still say "try".
+    return Promise.resolve(!this.signedOut);
   }
 
   refresh(): Promise<void> {
@@ -362,7 +383,8 @@ export class ExpenseCalcClient {
       body: JSON.stringify({ ...credentials, client: this.clientType }),
       anonymous: true,
     });
-    return this.session.adopt(tokens);
+    this.signedOut = false;
+    return this.session.adopt(tokens, this.clientType === 'web');
   }
 
   /**
@@ -372,30 +394,49 @@ export class ExpenseCalcClient {
    * response has to sign in again. That is the correct trade: a refresh token
    * that survives being used never expires in practice once captured.
    */
-  /** A web refresh the browser sent no cookie with: signed out, not broken. */
+  /**
+   * A web refresh the browser sent no cookie with: signed out, not broken.
+   *
+   * Matched on the server's own problem type rather than on the bare status. A
+   * 400 from a proxy, or from the auth validation handler if the refresh body
+   * ever gains a constraint, would otherwise drop the user at a sign-in screen
+   * for a reason that has nothing to do with their session.
+   */
   private isMissingWebCookie(error: ApiError): boolean {
-    return this.clientType === 'web' && error.status === 400;
+    return (
+      this.clientType === 'web' &&
+      error.status === 400 &&
+      error.problem.type === MISSING_REFRESH_TOKEN_PROBLEM
+    );
   }
 
   private async exchangeRefreshToken(): Promise<void> {
-    const refreshToken = await this.session.refreshToken();
+    const viaCookie = this.clientType === 'web';
+    const refreshToken = viaCookie ? null : await this.session.refreshToken();
 
     // On web there is nothing to read: the token is in an `httpOnly` cookie the
     // browser attaches to this request on its own, and no script can see it.
     // An empty store is the normal state there, not an expired session.
-    if (!refreshToken && this.clientType !== 'web') {
+    if (!refreshToken && !viaCookie) {
       throw new ApiError({ status: 401, title: 'Session expired' });
     }
 
+    // **Both keyed off the client type, not off whether the store happened to
+    // hold something.** The server picks its branch the same way — a body token
+    // means "device" — so a web build that ever put a value in that store would
+    // send one, be classified as a device, and get the refresh token back in a
+    // response body a script can read. That is the single outcome `httpOnly`
+    // exists to prevent, reached without either side doing anything it thinks
+    // is wrong.
     const tokens = await this.send<Tokens>('/auth/refresh', {
       method: 'POST',
-      body: JSON.stringify(refreshToken ? { refreshToken } : {}),
-      // Only meaningful on the cookie path, and harmless on the other. The
-      // server demands it whenever the credential came from a cookie.
-      headers: refreshToken ? undefined : { [REFRESH_SOURCE_HEADER]: 'cookie' },
+      body: JSON.stringify(viaCookie ? {} : { refreshToken }),
+      headers: viaCookie ? { [REFRESH_SOURCE_HEADER]: 'cookie' } : undefined,
       anonymous: true,
     });
-    await this.session.adopt(tokens);
+
+    this.signedOut = false;
+    await this.session.adopt(tokens, viaCookie);
   }
 
   /**
@@ -411,6 +452,9 @@ export class ExpenseCalcClient {
     } catch {
       return null;
     } finally {
+      // Set even when the call failed, which is the point: local state is
+      // cleared regardless, and on web the cookie outlives it.
+      this.signedOut = true;
       await this.session.clear();
     }
   }

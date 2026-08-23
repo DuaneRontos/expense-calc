@@ -182,7 +182,24 @@ that breaks — the browser silently stores no cookie. Set
 **Cross-origin web dev also needs `app.cors.allowed-origins` set** to wherever
 the client is served from. `allow-credentials` is now true by default, but it is
 inert while no origin is allowed, and a wildcard origin is rejected outright in
-that combination.
+that combination — a deployment currently running `APP_CORS_ALLOWED_ORIGINS=*`
+will fail to start until it names its origins.
+
+**Reach the web client on the same host name as the API.** CORS and cookies do
+not draw the same boundary: CORS compares *origins*, where the port counts,
+while `SameSite` compares *sites*, where it does not and the host name does. So
+`http://127.0.0.1:8081` and `http://localhost:8080` are the same origin policy
+problem but two different *sites*, and the refresh cookie will not be sent
+between them.
+
+The failure is unpleasant because the first half works: CORS passes, sign-in
+returns 200, the browser stores the cookie — and then a reload signs you out
+with nothing in any log. Use `localhost` on both, which is why the local profile
+lists only that origin.
+
+The same applies in production: a web client on one registrable domain and an
+API on another will never see the cookie. Serve both from one site, or from
+subdomains of one, and set `app.auth.refresh-cookie` accordingly.
 
 ### If sign-in starts answering `429`
 
