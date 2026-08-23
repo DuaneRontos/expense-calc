@@ -53,3 +53,20 @@ describe('titles', () => {
     }
   });
 });
+
+describe('filterable destinations', () => {
+  it('marks the expense list filterable and the overview not', () => {
+    expect(DESTINATIONS.find((d) => d.key === 'expenses')?.filterable).toBe(true);
+    // The overview renders reports over their own periods; a filter panel there
+    // would change nothing on screen.
+    expect(DESTINATIONS.find((d) => d.key === 'overview')?.filterable).toBe(false);
+  });
+
+  it('still matches a nested route to its destination, for the nav', () => {
+    // The Expenses tab stays highlighted on a detail or create route even
+    // though neither shows filters — the two questions have different answers,
+    // which is why they are matched differently.
+    expect(matchDestination('/expenses/new')?.key).toBe('expenses');
+    expect(matchDestination('/expenses/abc-123')?.key).toBe('expenses');
+  });
+});

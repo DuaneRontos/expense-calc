@@ -1,15 +1,16 @@
 import Head from 'expo-router/head';
+import { router } from 'expo-router';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { ExpenseRow } from '../src/expenses/ExpenseRow';
-import { SortControl } from '../src/expenses/SortControl';
-import { useExpenseQuery } from '../src/expenses/ExpenseQueryProvider';
-import { useExpenses } from '../src/expenses/useExpenses';
-import { ApiError } from '../src/api/problem';
-import { MIN_TOUCH_TARGET } from '../src/layout/breakpoints';
-import { webTitleFor } from '../src/layout/navigation';
-import { palette, spacing } from '../src/theme/tokens';
-import type { ExpenseSummary } from '../src/api/types';
+import { ExpenseRow } from '../../src/expenses/ExpenseRow';
+import { SortControl } from '../../src/expenses/SortControl';
+import { useExpenseQuery } from '../../src/expenses/ExpenseQueryProvider';
+import { useExpenses } from '../../src/expenses/useExpenses';
+import { ApiError } from '../../src/api/problem';
+import { MIN_TOUCH_TARGET } from '../../src/layout/breakpoints';
+import { webTitleFor } from '../../src/layout/navigation';
+import { palette, spacing } from '../../src/theme/tokens';
+import type { ExpenseSummary } from '../../src/api/types';
 
 /**
  * The expense list (issue #14).
@@ -74,6 +75,22 @@ export default function Expenses() {
         contentContainerStyle={styles.content}
         ListHeaderComponent={
           <View style={{ gap: spacing.md, paddingBottom: spacing.md }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Record a new expense"
+              onPress={() => router.push('/expenses/new')}
+              style={{
+                minHeight: MIN_TOUCH_TARGET,
+                justifyContent: 'center',
+                alignSelf: 'flex-start',
+                paddingHorizontal: spacing.md,
+                borderRadius: 6,
+                backgroundColor: palette.accent,
+              }}
+            >
+              <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>New expense</Text>
+            </Pressable>
+
             <SortControl />
             <Text style={{ color: palette.textMuted, fontSize: 12 }}>
               {loading
@@ -187,7 +204,13 @@ function EmptyState({
           <Text style={{ color: palette.accent, fontWeight: '600' }}>Clear filters</Text>
         </Pressable>
       ) : (
-        <Text style={{ color: palette.textMuted }}>Adding one is #15.</Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push('/expenses/new')}
+          style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
+        >
+          <Text style={{ color: palette.accent, fontWeight: '600' }}>Record your first expense</Text>
+        </Pressable>
       )}
     </View>
   );

@@ -3,7 +3,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MIN_TOUCH_TARGET } from './breakpoints';
-import { APP_NAME, useActiveDestination, useNavItems, type NavItem } from './navigation';
+import { APP_NAME, useActiveDestination, useNavItems, useShowsFilters, type NavItem } from './navigation';
 import { useLayout } from './useLayout';
 import { ExpenseFilters } from '../expenses/ExpenseFilters';
 import { palette, spacing } from '../theme/tokens';
@@ -58,7 +58,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   // inside it, so neither shows the affordance today — both were checked. A
   // *custom* `app/+not-found.tsx` would render inside this chrome, and the web
   // export already emits that page, which is the case this guard exists for.
-  const filterable = active?.filterable ?? false;
+  // Exact-matched, not prefix-matched: a detail or create route belongs to the
+  // Expenses destination for navigation, and has no list for filters to act on.
+  const filterable = useShowsFilters();
   const showsDrawer = !layout.isExpanded && filterable;
 
   return (

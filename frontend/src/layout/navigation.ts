@@ -98,6 +98,25 @@ export function useActiveDestination(): Destination | undefined {
   return matchDestination(usePathname());
 }
 
+/**
+ * Whether the current route has something for the filter chrome to filter.
+ *
+ * **Prefix matching is right for the nav and wrong for this.** `/expenses/new`
+ * and `/expenses/{id}` belong to the Expenses destination — the tab should stay
+ * highlighted on them — but neither shows a list, so the filter panel there
+ * offers controls that change nothing on screen. The destination is matched by
+ * prefix; the filters are matched exactly.
+ */
+export function useShowsFilters(): boolean {
+  const pathname = usePathname();
+  const destination = matchDestination(pathname);
+
+  if (!destination?.filterable) {
+    return false;
+  }
+  return normalize(pathname) === destination.href;
+}
+
 export function useNavItems(): NavItem[] {
   const pathname = usePathname();
   const active = matchDestination(pathname);

@@ -1,5 +1,6 @@
 import { memo } from 'react';
-import { Text, View } from 'react-native';
+import { router } from 'expo-router';
+import { Pressable, Text, View } from 'react-native';
 
 import { formatMoney, isNegative } from '../money/format';
 import { colorForCategory, palette, spacing } from '../theme/tokens';
@@ -16,11 +17,14 @@ function ExpenseRowComponent({ expense }: { expense: ExpenseSummary }) {
   const amount = formatMoney(expense.amount);
 
   return (
-    <View
+    <Pressable
       // One label for the row, so a screen reader reads it as a record rather
       // than stopping between five fragments.
       accessible
+      accessibilityRole="button"
       accessibilityLabel={`${expense.merchant ?? 'No merchant'}, ${amount}, ${expense.categoryLabel}, ${expense.occurredOn}`}
+      accessibilityHint="Opens this expense"
+      onPress={() => router.push({ pathname: '/expenses/[id]', params: { id: expense.id } })}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -63,7 +67,7 @@ function ExpenseRowComponent({ expense }: { expense: ExpenseSummary }) {
       >
         {amount}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 
