@@ -18,6 +18,17 @@ export const palette = {
   accent: '#1F6FEB',
   /** Used for net-negative values — refunds exceeding spending in a bucket. */
   negative: '#B4232C',
+  /**
+   * The prior-period half of a negative pair, so sign and series stay
+   * orthogonal in a grouped bar chart.
+   *
+   * A tint rather than a different hue: the solid/muted distinction is carried
+   * by lightness, which every form of colour vision deficiency preserves. Its
+   * contrast against `negative` (3.6:1) is deliberately the same as
+   * `accent`-against-`border` (3.6:1), so a negative pair separates exactly as
+   * well as a positive one.
+   */
+  negativeMuted: '#E5B2B5',
 } as const;
 
 export const spacing = {

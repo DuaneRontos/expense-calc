@@ -11,6 +11,8 @@
  * one, which is why the pickers say so out loud.
  */
 
+import type { TimeBucket } from '../api/types';
+
 export interface Period {
   from: string;
   to: string;
@@ -64,16 +66,56 @@ export function lastDays(days: number, today: string = todayInManila()): Period 
   };
 }
 
+/**
+ * A period in words, stated as the half-open range it actually is.
+ *
+ * Lives here so every caption on the screen says it the same way. "1 July to
+ * 1 August" reads as including 1 August, which is precisely the day the window
+ * excludes and the totals beside it leave out — a sentence that contradicts the
+ * number next to it.
+ */
+export function describePeriod(period: Period): string {
+  return `${period.from} up to but not including ${period.to}`;
+}
+
 export interface PeriodChoice {
   key: string;
   label: string;
   period: (today: string) => Period;
+  /**
+   * How `/reports/over-time` should slice this preset.
+   *
+   * **Chosen per preset because the bucket has to divide the window.** A fixed
+   * `MONTH` turns "Last 30 days" into a seven-day slice of July drawn beside a
+   * twenty-three-day slice of August, both labelled as whole months — the bar
+   * heights then compare two different lengths of time while the labels claim
+   * they don't.
+   *
+   * `DAY` can never be partial, so it is the honest default. Ninety of them is
+   * more bars than a panel can draw legibly, so the widest preset steps up to
+   * `WEEK`, whose label names the week's first day rather than claiming a whole
+   * unit — the end buckets there are still clipped by the window, but the label
+   * no longer overstates them.
+   */
+  bucket: TimeBucket;
 }
 
 /** The presets offered. Custom ranges are #17's business, not this screen's. */
 export const PERIOD_CHOICES: PeriodChoice[] = [
-  { key: 'this-month', label: 'This month', period: (today) => monthOf(today) },
-  { key: 'last-month', label: 'Last month', period: (today) => previousMonthOf(today) },
-  { key: 'last-30', label: 'Last 30 days', period: (today) => lastDays(30, today) },
-  { key: 'last-90', label: 'Last 90 days', period: (today) => lastDays(90, today) },
+  { key: 'this-month', label: 'This month', period: (today) => monthOf(today), bucket: 'DAY' },
+  {
+    key: 'last-month',
+    label: 'Last month',
+    period: (today) => previousMonthOf(today),
+    bucket: 'DAY',
+  },
+  { key: 'last-30', label: 'Last 30 days', period: (today) => lastDays(30, today), bucket: 'DAY' },
+  { key: 'last-90', label: 'Last 90 days', period: (today) => lastDays(90, today), bucket: 'WEEK' },
 ];
+
+/** What a bar in an over-time chart of `bucket` covers, for the legend heading. */
+export function bucketLegendTitle(bucket: TimeBucket): string {
+  // Derived from the response's own `bucket` rather than from the request, so
+  // the heading cannot outlive a change to what was actually asked for.
+  return { DAY: 'Net per day', WEEK: 'Net per week', MONTH: 'Net per month' }[bucket];
+}

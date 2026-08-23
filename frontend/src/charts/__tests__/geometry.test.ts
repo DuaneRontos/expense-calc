@@ -131,3 +131,47 @@ describe('barModel', () => {
     expect(barModel([], 200, 100).bars).toEqual([]);
   });
 });
+
+describe('empty periods', () => {
+  it('has no arcs and no drawn buckets for a period with nothing in it', () => {
+    // Spec §7: an empty period is a 200 with no buckets — an answer, not an
+    // error — so every model has to survive one rather than divide by zero.
+    const model = donutModel([], 50, 50, 50, 30);
+
+    expect(model.arcs).toEqual([]);
+    expect(model.drawable).toEqual([]);
+    expect(model.excluded).toEqual([]);
+    expect(model.positiveTotal).toBe(0);
+  });
+
+  it('has no bars for a period with nothing in it', () => {
+    const model = barModel([], 200, 100);
+
+    expect(model.bars).toEqual([]);
+    expect(model.baselineY).toBe(100);
+  });
+});
+
+describe('barModel width', () => {
+  it('keeps every bar inside a panel too narrow to spare the whole gap', () => {
+    // A day-bucketed quarter is ninety slots in one panel. Flooring the width
+    // at 1 instead pushed the last bars past the edge.
+    const buckets = Array.from({ length: 90 }, (_, index) => bucket(`B${index}`, '10.00'));
+    const model = barModel(buckets, 340, 100);
+
+    for (const bar of model.bars) {
+      expect(bar.width).toBeGreaterThan(0);
+      expect(bar.x + bar.width).toBeLessThanOrEqual(340);
+    }
+  });
+
+  it('keeps an all-zero period inside its width too', () => {
+    const buckets = Array.from({ length: 90 }, (_, index) => bucket(`B${index}`, '0.00'));
+    const model = barModel(buckets, 340, 100);
+
+    for (const bar of model.bars) {
+      expect(bar.width).toBeGreaterThan(0);
+      expect(bar.x + bar.width).toBeLessThanOrEqual(340);
+    }
+  });
+});

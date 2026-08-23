@@ -179,6 +179,22 @@ export interface BarModel {
 }
 
 /**
+ * The gap to take out of a slot, shrunk when the slot cannot spare the whole one.
+ *
+ * **This is what keeps a chart inside the width it was given.** Flooring the bar
+ * instead — `Math.max(1, slot - gap)` — inverts the guarantee: once the slot is
+ * narrower than the gap, the floor pushes the last bar past `width`. Never
+ * reached at the old bucket counts, but a day-bucketed quarter is ninety slots
+ * in one panel, so it is reachable now.
+ *
+ * Capped at half the slot, so a bar always keeps at least the other half and no
+ * bar is ever zero-width.
+ */
+function gapWithin(slot: number, gap: number): number {
+  return Math.min(gap, slot / 2);
+}
+
+/**
  * Lays out a bar chart over a domain that may straddle zero.
  *
  * **The domain is not clamped at zero.** A bucket whose refunds exceeded its
@@ -201,6 +217,9 @@ export function barModel(
   const min = Math.min(0, ...values);
   const span = max - min;
 
+  const slot = width / buckets.length;
+  const pad = gapWithin(slot, gap);
+
   // An all-zero period — every bucket "0.00", which spec §7 says is a valid
   // answer — has no span to scale against. Everything sits on the baseline.
   if (span === 0) {
@@ -209,9 +228,9 @@ export function barModel(
         key: bucket.key,
         label: bucket.label,
         total: bucket.total,
-        x: index * (width / buckets.length) + gap / 2,
+        x: index * slot + pad / 2,
         y: height,
-        width: Math.max(1, width / buckets.length - gap),
+        width: slot - pad,
         height: 0,
         negative: false,
       })),
@@ -219,7 +238,6 @@ export function barModel(
     };
   }
 
-  const slot = width / buckets.length;
   const baselineY = (max / span) * height;
 
   const bars = buckets.map((bucket, index) => {
@@ -230,9 +248,9 @@ export function barModel(
       key: bucket.key,
       label: bucket.label,
       total: bucket.total,
-      x: index * slot + gap / 2,
+      x: index * slot + pad / 2,
       y: value >= 0 ? baselineY - magnitude : baselineY,
-      width: Math.max(1, slot - gap),
+      width: slot - pad,
       height: magnitude,
       negative: value < 0,
     };
@@ -287,7 +305,8 @@ export function comparisonModel(
   const slot = width / buckets.length;
   // Two bars per slot, with the gap taken from the slot rather than added, so
   // the chart never overflows the width it was given.
-  const barWidth = Math.max(1, (slot - gap) / 2);
+  const pad = gapWithin(slot, gap);
+  const barWidth = (slot - pad) / 2;
 
   const pairs = buckets.map((bucket, index) => {
     const bars = (['current', 'previous'] as const).map((series, offset) => {
@@ -298,7 +317,7 @@ export function comparisonModel(
         key: `${bucket.key}-${series}`,
         label: bucket.label,
         total: bucket[series],
-        x: index * slot + gap / 2 + offset * barWidth,
+        x: index * slot + pad / 2 + offset * barWidth,
         y: value >= 0 ? baselineY - magnitude : baselineY,
         width: barWidth,
         height: magnitude,

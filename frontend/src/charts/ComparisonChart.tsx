@@ -56,15 +56,7 @@ export function ComparisonChart({
                   width={bar.width}
                   height={bar.height}
                   rx={2}
-                  // Current solid, prior muted — the pair reads as one category
-                  // seen twice rather than as two unrelated series.
-                  fill={
-                    bar.negative
-                      ? palette.negative
-                      : index === 0
-                        ? palette.accent
-                        : palette.border
-                  }
+                  fill={comparisonBarFill(bar.negative, index === 0)}
                 />
               )),
             )}
@@ -76,7 +68,14 @@ export function ComparisonChart({
         <Text style={{ color: palette.textMuted }}>Nothing recorded in either period.</Text>
       ) : (
         <View accessibilityRole="list" style={{ gap: spacing.xs }}>
-          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+          <View
+            // One entry rather than four: without this the column headings are
+            // announced as four separate list items ahead of the data, which is
+            // why every row below is wrapped the same way.
+            accessible
+            accessibilityLabel="Category, this period, prior, change"
+            style={{ flexDirection: 'row', gap: spacing.sm }}
+          >
             <Text style={{ flex: 1, color: palette.textMuted, fontSize: 11 }}>Category</Text>
             <Text style={{ width: 90, textAlign: 'right', color: palette.textMuted, fontSize: 11 }}>
               This period
@@ -108,6 +107,25 @@ export function ComparisonChart({
       )}
     </View>
   );
+}
+
+/**
+ * The fill for one bar, on two orthogonal axes: **hue carries the sign,
+ * lightness carries the series.**
+ *
+ * Selecting on `negative` alone — as this did — paints both halves of a
+ * refund-heavy pair the single negative colour, so a category net negative in
+ * both periods draws as two adjacent bars of the same dark red with nothing to
+ * say which is which. The pairing is the only thing this chart exists to show,
+ * and spec §5 makes a refund-heavy month an ordinary outcome, not an edge case.
+ *
+ * Exported so that pairing is testable without a renderer.
+ */
+export function comparisonBarFill(negative: boolean, current: boolean): string {
+  if (negative) {
+    return current ? palette.negative : palette.negativeMuted;
+  }
+  return current ? palette.accent : palette.border;
 }
 
 function cell(negative: boolean) {

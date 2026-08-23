@@ -34,7 +34,17 @@ export function useReports(period: Period, bucket: TimeBucket = 'MONTH'): Report
     overTime: SpendOverTime | null;
     comparison: PeriodComparison | null;
   }>({ breakdown: null, overTime: null, comparison: null });
-  const [error, setError] = useState<ApiError | Error | null>(null);
+
+  /**
+   * The failure on screen, paired with the window that produced it.
+   *
+   * Paired for the same reason `loading` is derived below: a failure belongs to
+   * a particular window. Held as a bare value it outlives the request that
+   * caused it, so switching presets after a failure leaves the old period's
+   * error card sitting above the new period's load, blaming a window it does
+   * not describe.
+   */
+  const [failure, setFailure] = useState<{ key: string; error: ApiError | Error } | null>(null);
 
   /**
    * Which period the reports on screen describe.
@@ -50,6 +60,7 @@ export function useReports(period: Period, bucket: TimeBucket = 'MONTH'): Report
 
   const key = `${period.from}|${period.to}|${bucket}`;
   const loading = loadedKey !== key;
+  const error = failure?.key === key ? failure.error : null;
 
   const load = useCallback(async () => {
     const mine = ++generation.current;
@@ -67,12 +78,12 @@ export function useReports(period: Period, bucket: TimeBucket = 'MONTH'): Report
         return;
       }
       setState({ breakdown, overTime, comparison });
-      setError(null);
+      setFailure(null);
     } catch (caught) {
       if (mine !== generation.current) {
         return;
       }
-      setError(caught instanceof Error ? caught : new Error(String(caught)));
+      setFailure({ key, error: caught instanceof Error ? caught : new Error(String(caught)) });
     } finally {
       if (mine === generation.current) {
         // Marks the charts as describing this window, which clears `loading`.
@@ -94,6 +105,15 @@ export function useReports(period: Period, bucket: TimeBucket = 'MONTH'): Report
     void load();
   }, [load]);
 
+  /**
+   * Re-runs the current window's fetch.
+   *
+   * Clearing `loadedKey` is what makes the attempt visible: `loading` derives
+   * from it, so the screen can say a request is in flight rather than
+   * re-rendering the identical error card and inviting a second tap. The
+   * failure itself stays up until this one settles — replacing it with a blank
+   * panel would answer a tap with less on screen than before it.
+   */
   const retry = useCallback(() => {
     setLoadedKey(null);
     void load();

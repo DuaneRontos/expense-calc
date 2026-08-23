@@ -1,4 +1,5 @@
 import { comparisonModel } from '../geometry';
+import { comparisonBarFill } from '../ComparisonChart';
 import type { ComparisonBucket } from '../../api/types';
 
 const pair = (key: string, current: string, previous: string, change: string): ComparisonBucket => ({
@@ -60,5 +61,40 @@ describe('comparisonModel', () => {
     expect(comparisonModel([pair('A', '10.00', '4.00', '6.00')], 200, 100).pairs[0]!.change).toBe(
       '6.00',
     );
+  });
+});
+
+describe('comparisonBarFill', () => {
+  it('keeps current and prior apart when both are negative', () => {
+    // Selecting on `negative` first painted both halves of a refund-heavy pair
+    // the one negative colour, and the pairing is all this chart draws. Spec §5
+    // makes two negative months an ordinary outcome, not an edge case.
+    expect(comparisonBarFill(true, true)).not.toBe(comparisonBarFill(true, false));
+  });
+
+  it('keeps the sign readable whichever half of the pair a bar is', () => {
+    const negatives = [comparisonBarFill(true, true), comparisonBarFill(true, false)];
+    const positives = [comparisonBarFill(false, true), comparisonBarFill(false, false)];
+
+    expect(negatives.some((fill) => positives.includes(fill))).toBe(false);
+  });
+});
+
+describe('comparisonModel width', () => {
+  it('keeps every bar inside a panel too narrow to spare the whole gap', () => {
+    // Ninety day-buckets in one phone-width panel. Flooring the bar width
+    // instead pushed the last pair past the edge — the one thing the layout
+    // comment above it promises cannot happen.
+    const buckets = Array.from({ length: 90 }, (_, index) =>
+      pair(`B${index}`, '10.00', '20.00', '10.00'),
+    );
+    const model = comparisonModel(buckets, 340, 100);
+
+    for (const p of model.pairs) {
+      for (const bar of p.bars) {
+        expect(bar.width).toBeGreaterThan(0);
+        expect(bar.x + bar.width).toBeLessThanOrEqual(340);
+      }
+    }
   });
 });
