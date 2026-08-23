@@ -33,21 +33,47 @@ import javax.crypto.spec.SecretKeySpec;
  * configuration — empty by default, so an unconfigured deployment is reachable
  * only from its own origin. See {@link CorsConfiguration}.
  *
- * <p><b>CSRF is disabled, and that is safe only because of the line above it.</b>
- * CSRF exists to stop a browser sending a request with credentials it attaches
- * automatically — cookies. This API authenticates with an {@code Authorization}
- * header the client sets explicitly, which a cross-site form cannot do. If a
- * future change moves the <em>access</em> token into a cookie, CSRF protection
- * has to come back in the same commit.
+ * <p><b>Spring's CSRF filter is disabled, and one endpoint now carries its own
+ * check instead.</b> CSRF exists to stop a browser sending a request with
+ * credentials it attaches automatically — cookies. Every <em>authenticated</em>
+ * endpoint here is reached with an {@code Authorization} header the client sets
+ * explicitly, which a cross-site page cannot do, so for those the filter would
+ * have nothing to protect.
+ *
+ * <p>Issue #57 changed that for exactly one route. {@code POST /auth/refresh}
+ * now accepts an {@code httpOnly} cookie, and a cookie <em>is</em> attached
+ * automatically, so that route became cross-site reachable the moment it did.
+ * It is defended by requiring {@link RefreshCookies#CSRF_HEADER}: a cross-site
+ * form or navigation cannot set a header at all, and a cross-origin
+ * {@code fetch} that sets one is preflighted, which this API answers only for
+ * the origins {@code app.cors.allowed-origins} names.
+ *
+ * <p><b>Why not simply enable the filter.</b> Spring's CSRF protection is a
+ * token the server issues and the client echoes, which needs somewhere to keep
+ * the expected value — a session, which spec §3 forbids — or a second cookie
+ * and a round trip to fetch it. The header check gives the same guarantee here
+ * because it rests on the same browser behaviour the token does, and it stays
+ * stateless. The endpoints the filter would otherwise cover authenticate by
+ * header, where there is no CSRF to have.
+ *
+ * <p><b>{@code SameSite=Strict} is set on the cookie and is not the defence.</b>
+ * It is a browser behaviour rather than a server check — it does not cover a
+ * same-site attacker, and it is not something this API can verify happened. It
+ * is a second layer, not the first.
+ *
+ * <p>If a future change moves the <em>access</em> token into a cookie, every
+ * endpoint inherits this problem at once and the filter — or an equivalent
+ * check on every route — has to come back in the same commit.
  *
  * <p>Note that enabling CORS does not change that reasoning. CORS decides who
  * may <em>read</em> a response; CSRF is about who may cause a request to be
- * <em>sent</em> with credentials the browser attaches on its own. This API
- * attaches none, and {@code app.cors.allow-credentials} is false — the pair
- * moves together, which is why #57 has to revisit both.
+ * <em>sent</em> with credentials the browser attaches on its own.
+ * {@code app.cors.allow-credentials} is now true because the cookie has to
+ * travel — which is precisely why the paragraph above had to be written.
  */
 @Configuration
-@EnableConfigurationProperties({ AuthProperties.class, LoginRateLimitProperties.class })
+@EnableConfigurationProperties({ AuthProperties.class, LoginRateLimitProperties.class,
+		RefreshCookieProperties.class })
 public class SecurityConfiguration {
 
 	/**

@@ -1,17 +1,25 @@
 import type { RefreshTokenStore } from './refreshTokenStore.types';
 
 /**
- * Refresh-token storage for the web target (spec §9.2) — deliberately in memory.
+ * Refresh-token storage for the web target (spec §9.2) — the browser's, not ours.
  *
- * **Spec §9.2 asks for an `httpOnly; Secure; SameSite=Strict` cookie here, and
- * this file cannot provide one.** An `httpOnly` cookie is by definition
- * unreadable and unwritable from JavaScript; only the server can set it, via
- * `Set-Cookie`. The API currently returns both tokens in the response body and
- * sets no cookie — `AuthController` says so explicitly, on the grounds that
- * three targets need two different storage mechanisms and only the client knows
- * which it is.
+ * **This store deliberately holds nothing.** Spec §9.2 puts the web client's
+ * refresh token in an `httpOnly; Secure; SameSite=Strict` cookie, and issue #57
+ * made the server set one. Such a cookie is unreadable and unwritable from
+ * JavaScript by definition — that is the entire point of the flag — so there is
+ * no value here to keep, and the absence is the feature.
  *
- * That leaves the web client with four options, three of which are worse:
+ * `read()` returning null is therefore the **normal** state on web, not a
+ * signed-out one. `client.ts` reads it that way: with nothing to send, it posts
+ * an empty refresh body and lets the browser attach the cookie, adding
+ * `X-Refresh-Source` so the server can tell the request was not made
+ * cross-site.
+ *
+ * ## What this replaced, and why it was not a smaller change
+ *
+ * Until #57 the API returned both tokens in the body and set no cookie, because
+ * three targets need two storage mechanisms and only the client knows which it
+ * is. That left web with four options, three of them worse:
  *
  *  - `localStorage` — forbidden outright by spec §9.2 and §10. Readable by any
  *    script that achieves XSS.
@@ -21,36 +29,32 @@ import type { RefreshTokenStore } from './refreshTokenStore.types';
  *    persistence without the protection that made the spec ask for a cookie.
  *  - memory — safe, and lost on reload.
  *
- * So: memory. The cost is real and should not be discovered in review — a web
- * user is signed out by a page refresh. Closing that gap needs a backend change
- * (`Set-Cookie` on `/auth/login` and `/auth/refresh` for web callers, plus CSRF
- * protection, which the API currently disables), not a client one — tracked as
- * issue #57. Until then this is the only option that does not trade the spec's
- * security rule for convenience.
+ * This file held the token in memory, and **a page refresh signed the user
+ * out.** Closing that needed the server to set the cookie, which is why it was
+ * a backend issue and not a client one.
  *
  * The contract is imported from `refreshTokenStore.types` rather than from
  * `./refreshTokenStore`, which in a web bundle resolves to this file itself.
- *
- * **When #57 lands, this file mostly goes away rather than changing.** A cookie
- * the client can neither read nor write means the browser holds the token and
- * this store has nothing to hold — `read` returns null, and `/auth/refresh`
- * succeeds anyway because the cookie rode along with the request.
  */
-
-let token: string | null = null;
-
 export const refreshTokenStore: RefreshTokenStore = {
+  /** Always null on web: the cookie is not visible to script. */
   read() {
-    return Promise.resolve(token);
+    return Promise.resolve(null);
   },
 
-  write(value: string) {
-    token = value;
+  /**
+   * A no-op. The server writes the cookie with `Set-Cookie`; a script cannot,
+   * and one that appeared to would be writing something the browser ignores.
+   */
+  write() {
     return Promise.resolve();
   },
 
+  /**
+   * Also a no-op. `POST /auth/logout` clears the cookie server-side with a
+   * matching `Set-Cookie`, which is the only thing that can remove it.
+   */
   clear() {
-    token = null;
     return Promise.resolve();
   },
 };

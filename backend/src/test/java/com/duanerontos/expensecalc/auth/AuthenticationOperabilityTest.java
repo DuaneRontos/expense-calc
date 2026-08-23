@@ -66,7 +66,7 @@ class AuthenticationOperabilityTest {
 	}
 
 	private Map<String, Object> signIn() {
-		return post("/api/v1/auth/login", Map.of("username", USERNAME, "password", PASSWORD)).getBody();
+		return post("/api/v1/auth/login", Map.of("username", USERNAME, "password", PASSWORD, "client", "device")).getBody();
 	}
 
 	@Test
@@ -119,9 +119,9 @@ class AuthenticationOperabilityTest {
 	@DisplayName("refuses a wrong password and a wrong username identically")
 	void refusesBadCredentials() {
 		ResponseEntity<Map<String, Object>> wrongPassword = post("/api/v1/auth/login",
-				Map.of("username", USERNAME, "password", "not it"));
+				Map.of("username", USERNAME, "password", "not it", "client", "device"));
 		ResponseEntity<Map<String, Object>> wrongUsername = post("/api/v1/auth/login",
-				Map.of("username", "someone-else", "password", PASSWORD));
+				Map.of("username", "someone-else", "password", PASSWORD, "client", "device"));
 
 		assertThat(wrongPassword.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
 		assertThat(wrongUsername.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);

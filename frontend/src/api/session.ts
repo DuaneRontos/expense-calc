@@ -48,6 +48,16 @@ export class Session {
    * whether it will outlive the access token.
    */
   async adopt(tokens: Tokens): Promise<AdoptResult> {
+    // Web sends none: the server put it in an `httpOnly` cookie the browser
+    // holds and no script can read (issue #57). There is nothing to persist and
+    // nothing that can fail, so the session outlives the access token by way of
+    // the cookie rather than by way of this store.
+    if (tokens.refreshToken === undefined) {
+      this.accessToken = tokens.accessToken;
+      this.expiresAtMs = this.now() + tokens.expiresInSeconds * 1000;
+      return { persisted: true };
+    }
+
     let persisted = true;
     try {
       await this.store.write(tokens.refreshToken);

@@ -66,7 +66,7 @@ class InsecureLocalProfileTest {
 		// configured encoder could parse.
 		assertThat(this.http
 			.postForEntity("/api/v1/auth/login",
-					java.util.Map.of("username", "dev", "password", "dev"), String.class)
+					java.util.Map.of("username", "dev", "password", "dev", "client", "device"), String.class)
 			.getStatusCode()).isEqualTo(HttpStatus.OK);
 	}
 
