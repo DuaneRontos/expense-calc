@@ -82,15 +82,20 @@ export function ReclassifyControl({
       ) : null}
 
       <View
-        // Named as a group so each category radio is announced with its
-        // position in it. Without this a screen reader reads "Groceries,
+        // Grouped and named so the radios are announced as one set rather
+        // than loose controls — otherwise a screen reader reads "Groceries,
         // selected" with no hint that the other categories sit beside it.
         //
-        // The name repeats the visible heading above, so web announces
-        // "Category" twice. That is deliberate: `aria-labelledby` pointing at
-        // the heading would dedupe it under react-native-web, but RN 0.86 does
-        // not map that prop on iOS or Android — it would trade a repeated word
-        // on web for an unnamed group on native, which is the worse half.
+        // **This lands on web only.** RNW forwards the role to the DOM; iOS
+        // maps `radiogroup` to no trait at all, and Android to a role
+        // description with nothing positional. Native is unchanged.
+        //
+        // The name repeats the visible heading above, so web says "Category"
+        // twice. Kept deliberately, though the comparison is narrower than it
+        // looks: `aria-labelledby` would dedupe it under RNW but is unmapped
+        // on native, and since the grouping is web-only anyway, the real
+        // choice is a stutter versus an unnamed group — on web, in both cases.
+        // A stutter is the better half of that.
         accessibilityRole="radiogroup"
         accessibilityLabel="Category"
         style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}

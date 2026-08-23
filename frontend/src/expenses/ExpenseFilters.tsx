@@ -61,12 +61,22 @@ export function ExpenseFilters() {
         ) : null}
 
         <View
-          // Same reason the reclassify radios are grouped: ungrouped children
-          // are announced with no position in the set. These are checkboxes,
-          // not radios, so `radiogroup` would be a lie — and RN's
-          // `accessibilityRole` union has no `group`, which is why this reaches
-          // for the `role` prop instead. Naming it repeats the heading above
-          // for the reason given in ReclassifyControl.
+          // Grouped and named so the checkboxes are announced as one set,
+          // the same intent as the reclassify radios. These are multi-select,
+          // so `radiogroup` would misdescribe them, and RN's
+          // `accessibilityRole` union has no `group` member — hence the `role`
+          // prop, which the types do accept.
+          //
+          // **Web-only, and more so than the radio groups.** RNW forwards
+          // `role` to the DOM, but Android's `fromRole()` has no `Role.GROUP`
+          // case and drops it outright, and iOS has no matching trait. The two
+          // props reach opposite platforms: RNW deprecates `accessibilityRole`
+          // in favour of `role`, while native maps `accessibilityRole` and
+          // ignores `role="group"`. Nothing here changes on a phone.
+          //
+          // The name repeats the heading above; kept for the reason spelled
+          // out in ReclassifyControl — on web a stutter beats an unnamed
+          // group, and native is unaffected either way.
           role="group"
           accessibilityLabel="Category"
           style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}
