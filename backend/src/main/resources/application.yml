@@ -55,8 +55,15 @@ app:
     # distinction buys nothing and the row is only a slow leak.
     refresh-token-retention: 7d
     # Daily, off-peak. A cron rather than a fixed delay so the job never fires
-    # during startup.
+    # during startup. The only definition of this default — RefreshTokenCleanup
+    # references it without one, so there is no second copy to drift.
     refresh-token-cleanup-cron: ${APP_AUTH_REFRESH_TOKEN_CLEANUP_CRON:0 15 3 * * *}
+    # Pinned, because @Scheduled otherwise resolves the cron against the JVM
+    # default — UTC in a container, which puts "03:15 off-peak" in the middle of
+    # a Manila working day. Its own key rather than reusing app.reporting.zone:
+    # a housekeeping schedule and a reporting period are different decisions
+    # that happen to share a value today.
+    refresh-token-cleanup-zone: ${APP_AUTH_REFRESH_TOKEN_CLEANUP_ZONE:Asia/Manila}
 
   # issue #58 — which browser origins may call this API. Empty by default, so
   # an unconfigured deployment is reachable only from its own origin; a browser

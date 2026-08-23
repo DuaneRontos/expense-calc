@@ -53,13 +53,24 @@ public class RefreshTokenCleanup {
 	 * application startup — including in tests, where a job deleting rows a test
 	 * had just written would be a confusing way to fail.
 	 *
+	 * <p><b>The zone is pinned, because a bare cron resolves against the JVM
+	 * default.</b> Nothing here sets that default, so "03:15, off-peak" meant
+	 * 03:15 UTC in a container — the middle of a Manila working day.
+	 * {@code CLAUDE.md} states the rule without qualification: wall-clock
+	 * decisions resolve against {@code Asia/Manila}, never UTC and never the
+	 * host default. A cron is a wall-clock decision.
+	 *
+	 * <p>Neither placeholder carries an inline default, on purpose. The value
+	 * lives once, in {@code application.yml}; a default here would be a second
+	 * copy with nothing comparing the two.
+	 *
 	 * <p><b>Safe to run on every instance.</b> A second instance running this
 	 * concurrently deletes rows the first already took, which is a no-op rather
 	 * than a conflict, so this needs no leader election. Worth stating because
 	 * the reflex for a scheduled job in a multi-instance deployment is to reach
 	 * for one.
 	 */
-	@Scheduled(cron = "${app.auth.refresh-token-cleanup-cron:0 15 3 * * *}")
+	@Scheduled(cron = "${app.auth.refresh-token-cleanup-cron}", zone = "${app.auth.refresh-token-cleanup-zone}")
 	@Transactional
 	public int purgeExpired() {
 		Instant cutoff = this.clock.instant().minus(this.properties.refreshTokenRetention());
