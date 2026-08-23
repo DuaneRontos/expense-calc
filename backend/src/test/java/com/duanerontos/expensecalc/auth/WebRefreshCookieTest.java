@@ -209,6 +209,35 @@ class WebRefreshCookieTest {
 	}
 
 	@Test
+	@DisplayName("answers a wrong content type with 415 rather than a bare 401")
+	void wrongContentTypeIsNotACredentialFailure() {
+		// Unhandled, this escapes to /error and that dispatch requires
+		// authentication — so "you sent text/plain" comes back as "your
+		// credentials are wrong", with an empty body and nothing to act on.
+		ResponseEntity<String> response = this.http.exchange(RequestEntity.post("/api/v1/auth/login")
+			.contentType(MediaType.TEXT_PLAIN)
+			.body("username=demo"), String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+	}
+
+	@Test
+	@DisplayName("clears a cookie it has just rejected, instead of leaving it for 30 days")
+	void rejectedCookieIsCleared() {
+		// A script cannot delete an httpOnly cookie, so a browser would keep a
+		// dead refresh token until Max-Age and attach it to every /auth request
+		// — each a wasted round trip that 401s, with logout the only cure and a
+		// signed-out user unable to reach it.
+		String cookie = cookiePair(login("web"));
+		refreshWithCookie(cookie, true);
+
+		ResponseEntity<Map<String, Object>> rejected = refreshWithCookie(cookie, true);
+
+		assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+		assertThat(rejected.getHeaders().getFirst(HttpHeaders.SET_COOKIE)).contains("Max-Age=0");
+	}
+
+	@Test
 	@DisplayName("refuses a login that does not say which client it is")
 	void clientTypeIsRequired() {
 		ResponseEntity<String> response = this.http.exchange(RequestEntity.post("/api/v1/auth/login")

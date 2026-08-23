@@ -16,7 +16,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     {@code __Host-} prefix would cost, since browsers pin such a cookie to
  *     {@code /} — the two cannot both apply, and for a single-origin
  *     application with no subdomains, narrowing where the credential travels is
- *     worth more than blocking a sibling that does not exist
+ *     worth more than blocking a sibling that does not exist.
+ *     <p><b>Changing this on a live deployment strands the old cookie.</b>
+ *     Browsers key a cookie by name <em>and</em> path, so widening
+ *     {@code /api/v1/auth} to {@code /} leaves two cookies of the same name and
+ *     sends both; RFC 6265 recommends longer-path-first but does not require any
+ *     order, so the stale one can win and produce a 401 that only clearing site
+ *     data fixes. Change it together with a forced re-login.
  * @param secure whether the cookie is {@code Secure}. <b>True by default and it
  *     should stay that way.</b> Chrome and Firefox treat {@code http://localhost}
  *     as a secure context and do accept {@code Secure} cookies there, so local

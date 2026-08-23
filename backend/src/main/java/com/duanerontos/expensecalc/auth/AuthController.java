@@ -172,7 +172,15 @@ public class AuthController {
 			throw new MissingCsrfHeaderException();
 		}
 
-		return issueTo(ClientType.WEB, this.tokens.rotate(fromCookie));
+		try {
+			return issueTo(ClientType.WEB, this.tokens.rotate(fromCookie));
+		}
+		catch (InvalidRefreshTokenException rejected) {
+			// Rethrown with the header that removes it. A browser cannot drop an
+			// httpOnly cookie itself, so a bare 401 leaves a dead credential in
+			// place for its full Max-Age, re-sent on every /auth request.
+			throw new RejectedRefreshCookieException(this.cookies.cleared(), rejected);
+		}
 	}
 
 	/**
