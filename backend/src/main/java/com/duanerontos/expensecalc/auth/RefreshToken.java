@@ -6,7 +6,12 @@ import java.util.UUID;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
+
+import org.springframework.data.domain.Persistable;
 
 /**
  * One refresh token, stored as a hash (spec §9.2).
@@ -17,7 +22,7 @@ import jakarta.persistence.Table;
  */
 @Entity
 @Table(name = "refresh_token")
-public class RefreshToken {
+public class RefreshToken implements Persistable<UUID> {
 
 	@Id
 	@Column(name = "id", nullable = false, updatable = false)
@@ -34,6 +39,22 @@ public class RefreshToken {
 
 	@Column(name = "revoked_at")
 	private Instant revokedAt;
+
+	/**
+	 * Whether this instance has yet to be inserted (issue #43).
+	 *
+	 * <p>Same defect and same fix as {@code Expense} and
+	 * {@code ClassificationRecord}: {@link #issue} assigns a {@code UUID} up
+	 * front, so {@code SimpleJpaRepository.save} saw a non-null id, called
+	 * {@code merge()} instead of {@code persist()}, and Hibernate probed for a
+	 * row that could not exist before every insert.
+	 *
+	 * <p>By frequency this was the worst of the three: {@code TokenService}
+	 * writes one of these on every login <em>and</em> every rotation, so a
+	 * client refreshing every fifteen minutes paid the round trip that often.
+	 */
+	@Transient
+	private boolean isNew = true;
 
 	protected RefreshToken() {
 		// for JPA
@@ -67,6 +88,24 @@ public class RefreshToken {
 	 */
 	public boolean isUsableAt(Instant now) {
 		return this.revokedAt == null && now.isBefore(this.expiresAt);
+	}
+
+	@Override
+	public boolean isNew() {
+		return this.isNew;
+	}
+
+	/**
+	 * Inserted now, so a later save is an update.
+	 *
+	 * <p>Without this an instance that was persisted and then detached keeps
+	 * {@code isNew == true}, and saving it again becomes a second insert with a
+	 * duplicate key rather than the no-op Hibernate intends.
+	 */
+	@PostPersist
+	@PostLoad
+	void markNotNew() {
+		this.isNew = false;
 	}
 
 	public void revoke(Instant now) {
