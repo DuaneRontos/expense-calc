@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -46,6 +47,30 @@ public class AuthProblemHandler {
 	@ExceptionHandler(InvalidRefreshTokenException.class)
 	public ProblemDetail handleInvalidRefreshToken(InvalidRefreshTokenException problem) {
 		return asProblem(problem.getMessage(), "Session expired");
+	}
+
+	/**
+	 * {@code 401} that takes the dead cookie with it.
+	 *
+	 * <p>A script cannot delete an {@code httpOnly} cookie, so without this a
+	 * browser keeps a rejected refresh token for the full {@code Max-Age} — 30
+	 * days — and attaches it to every {@code /auth} request, each one a wasted
+	 * round trip that 401s. Only {@code /auth/logout} could clear it, and a
+	 * signed-out user cannot reach that.
+	 *
+	 * <p><b>The header arrives on the exception rather than being built here.</b>
+	 * This advice deliberately has no constructor dependencies: an
+	 * {@code @RestControllerAdvice} is loaded into every {@code @WebMvcTest}
+	 * slice in the project, not only the ones testing its own controller, so a
+	 * dependency the slice does not supply fails all of them at context load.
+	 * The controller has the cookie helper and knows the request came by cookie,
+	 * so it is the right place to decide.
+	 */
+	@ExceptionHandler(RejectedRefreshCookieException.class)
+	public ResponseEntity<ProblemDetail> handleRejectedRefreshCookie(RejectedRefreshCookieException problem) {
+		return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+			.header(HttpHeaders.SET_COOKIE, problem.clearingCookie())
+			.body(asProblem(problem.getMessage(), "Session expired"));
 	}
 
 	/**
@@ -143,6 +168,28 @@ public class AuthProblemHandler {
 				(cause instanceof IllegalArgumentException) ? cause.getMessage() : "The request body is not valid.");
 		detail.setType(INVALID_REQUEST);
 		detail.setTitle("Invalid request");
+		return detail;
+	}
+
+	/**
+	 * A body sent as the wrong content type.
+	 *
+	 * <p>Same {@code /error}-dispatch mechanism as the two handlers above: left
+	 * unhandled it answers {@code 401} with an empty body, so "you sent
+	 * text/plain" arrives as "your credentials are wrong". A correct client
+	 * always sends JSON, which is exactly why this one is worth catching — the
+	 * caller who trips it has no other clue.
+	 *
+	 * <p>{@code HttpRequestMethodNotSupportedException} is deliberately not here:
+	 * it is raised at mapping time, before a handler resolves, so a
+	 * controller-scoped advice never sees it.
+	 */
+	@ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+	public ProblemDetail handleUnsupportedMediaType(HttpMediaTypeNotSupportedException problem) {
+		ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+				"Send this as application/json.");
+		detail.setType(INVALID_REQUEST);
+		detail.setTitle("Unsupported media type");
 		return detail;
 	}
 

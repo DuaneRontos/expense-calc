@@ -249,7 +249,7 @@ export class ExpenseCalcClient {
       return this.send<T>(path, options);
     }
 
-    if (this.session.needsRefresh() && (await this.session.isResumable())) {
+    if (this.session.needsRefresh() && (await this.canResume())) {
       try {
         await this.refresh();
       } catch (error) {
@@ -278,7 +278,7 @@ export class ExpenseCalcClient {
       if (!(error instanceof ApiError) || !error.isUnauthorized) {
         throw error;
       }
-      if (!(await this.session.isResumable())) {
+      if (!(await this.canResume())) {
         throw error;
       }
 
@@ -302,13 +302,36 @@ export class ExpenseCalcClient {
    * to reach for — raced any in-flight refresh and produced exactly the
    * rotation collision the guard exists to prevent.
    */
+  /**
+   * Whether a refresh is worth attempting at all.
+   *
+   * **On web this cannot be answered from the client**, and asking the session
+   * gets the wrong answer. `Session.isResumable()` is the truthiness of the
+   * store, and since #57 the web store is empty *by design* — the browser holds
+   * the credential in an `httpOnly` cookie no script can read. Gating on it
+   * there made both refresh paths unreachable, so a page reload still signed a
+   * web user out: the cookie sat in the browser and was never exchanged.
+   *
+   * So on web: assume yes, and let `/auth/refresh` be the thing that says
+   * otherwise. It is one cheap request, and it is the only participant that can
+   * actually see the cookie.
+   */
+  private canResume(): Promise<boolean> {
+    return this.clientType === 'web' ? Promise.resolve(true) : this.session.isResumable();
+  }
+
   refresh(): Promise<void> {
     this.refreshing ??= this.exchangeRefreshToken()
       .catch(async (error: unknown) => {
         // A rejected refresh token is not recoverable: it has either expired or
         // been rotated away. Clearing here means the next request presents no
         // credential and gets a clean 401 rather than replaying a dead token.
-        if (error instanceof ApiError && error.isUnauthorized) {
+        //
+        // A 400 counts on web. The server answers that when no token arrived at
+        // all, which for a cookie client means precisely "you are signed out" —
+        // and treating it as a transport error instead put a request failure on
+        // screen where a sign-in prompt belonged.
+        if (error instanceof ApiError && (error.isUnauthorized || this.isMissingWebCookie(error))) {
           await this.session.clear();
         }
         throw error;
@@ -349,6 +372,11 @@ export class ExpenseCalcClient {
    * response has to sign in again. That is the correct trade: a refresh token
    * that survives being used never expires in practice once captured.
    */
+  /** A web refresh the browser sent no cookie with: signed out, not broken. */
+  private isMissingWebCookie(error: ApiError): boolean {
+    return this.clientType === 'web' && error.status === 400;
+  }
+
   private async exchangeRefreshToken(): Promise<void> {
     const refreshToken = await this.session.refreshToken();
 

@@ -34,6 +34,9 @@ const problem = (status: number, body: Record<string, unknown> = {}) =>
 
 const TOKENS = { accessToken: 'access-1', refreshToken: 'refresh-1', expiresInSeconds: 900 };
 
+/** What the server returns to a web client: the refresh token is in the cookie. */
+const WEB_TOKENS = { accessToken: 'access-1', expiresInSeconds: 900 };
+
 function clientWith(
   fetchImpl: jest.Mock,
   store: RefreshTokenStore = memoryStore(),
@@ -236,6 +239,59 @@ describe('auth', () => {
     const result = await client.login({ username: 'duane', password: 'hunter2' });
 
     expect(result.persisted).toBe(true);
+  });
+
+  it('recovers a web session from the cookie on the next request', async () => {
+    // Drives `categories()`, not `refresh()`. Both refresh paths in `request()`
+    // sit behind `Session.isResumable()`, which is `Boolean(store.read())` —
+    // and the web store is empty by design since the token became a cookie. So
+    // testing `refresh()` directly passes while the app never refreshes at all,
+    // which is the page-reload sign-out this whole change exists to fix.
+    const webStore: RefreshTokenStore = {
+      read: () => Promise.resolve(null),
+      write: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(WEB_TOKENS))
+      .mockResolvedValueOnce(json([]));
+    const client = new ExpenseCalcClient({
+      baseUrl: 'http://api.test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      session: new Session(webStore),
+      clientType: 'web',
+    });
+
+    await client.categories();
+
+    expect(fetchImpl.mock.calls.map((call) => call[0])).toContain(
+      'http://api.test/api/v1/auth/refresh',
+    );
+  });
+
+  it('treats a 400 from the cookie refresh as signed out, not as a broken request', async () => {
+    // The server answers 400 when no cookie arrived, which on web means exactly
+    // "you are signed out". Only 401 cleared the session, so a genuinely
+    // signed-out web user got a request error on screen instead.
+    const webStore: RefreshTokenStore = {
+      read: () => Promise.resolve(null),
+      write: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const fetchImpl = jest.fn().mockResolvedValue(problem(400, { title: 'No refresh token' }));
+    const session = new Session(webStore);
+    const client = new ExpenseCalcClient({
+      baseUrl: 'http://api.test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      session,
+      clientType: 'web',
+    });
+
+    await expect(client.categories()).rejects.toBeInstanceOf(ApiError);
+    // Session cleared, so the next request presents no credential and gets a
+    // clean refusal rather than replaying a state the server has rejected.
+    expect(session.currentAccessToken()).toBeNull();
   });
 
   it('does not attach a token to login itself', async () => {

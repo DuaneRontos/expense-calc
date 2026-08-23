@@ -23,13 +23,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param allowedOrigins exact origins, scheme and port included —
  *     {@code http://localhost:8081} is a different origin from
  *     {@code http://localhost:8080}
- * @param allowCredentials whether the browser may send cookies. <b>False today
- *     and deliberately so:</b> this API authenticates with an
- *     {@code Authorization} header the client sets explicitly. It becomes true
- *     only if #57 moves the refresh token into a cookie — and that is the same
- *     change that must bring CSRF protection back, for the reason
- *     {@code SecurityConfiguration} already gives. The wildcard origin is
- *     forbidden in that combination, by the CORS specification and by Spring.
+ * @param allowCredentials whether the browser may send cookies. <b>True since
+ *     #57</b>, which moved the web client's refresh token into an
+ *     {@code httpOnly} cookie: a browser will not send one cross-origin unless
+ *     the server says so. The two obligations that travel with it are enforced
+ *     rather than documented — the wildcard origin is rejected below, by the
+ *     CORS specification and by Spring, and a cookie-authenticated refresh must
+ *     carry {@link RefreshCookies#CSRF_HEADER}. Inert while
+ *     {@code allowedOrigins} is empty, since no cross-origin caller is
+ *     permitted at all.
  */
 @ConfigurationProperties(prefix = "app.cors")
 public record CorsProperties(List<String> allowedOrigins, boolean allowCredentials) {
