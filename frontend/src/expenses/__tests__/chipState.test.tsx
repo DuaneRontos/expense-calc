@@ -48,6 +48,32 @@ describe('ReclassifyControl', () => {
     expect(screen.getByLabelText('Transport')).not.toBeChecked();
   });
 
+  /**
+   * The checked chip follows the *pressed* one, not `current`.
+   *
+   * `target = selected ?? current` is the whole point of the control: the
+   * category has not moved yet — the server has not been asked — so `current`
+   * still says Groceries while the radio the user chose has to read as
+   * checked. Asserting only the initial render would miss a control that
+   * silently refused to track the press.
+   */
+  it('moves the checked state to the pressed chip while current stays put', async () => {
+    const user = userEvent.setup();
+    await render(
+      <ReclassifyControl
+        current="GROCERIES"
+        errors={{}}
+        submitting={false}
+        onReclassify={() => {}}
+      />,
+    );
+
+    await user.press(screen.getByLabelText('Transport'));
+
+    expect(screen.getByLabelText('Transport')).toBeChecked();
+    expect(screen.getByLabelText('Groceries')).not.toBeChecked();
+  });
+
   it('keeps the iOS selected trait on the checked radio', async () => {
     await render(
       <ReclassifyControl
