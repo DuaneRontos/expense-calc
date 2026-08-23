@@ -1,6 +1,7 @@
 package com.duanerontos.expensecalc.auth;
 
 import java.util.Map;
+import java.util.Objects;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -67,7 +68,12 @@ public class AuthController {
 	@PostMapping("/login")
 	public ResponseEntity<TokenService.Tokens> login(@Valid @RequestBody LoginRequest request,
 			HttpServletRequest httpRequest) {
-		String client = httpRequest.getRemoteAddr();
+		// `getRemoteAddr()` may be null — the servlet contract permits it, and
+		// connectors where the peer address is not resolvable do return it. The
+		// limiter keys a ConcurrentHashMap, which rejects null, so passing it
+		// straight through is a 500 on an unauthenticated endpoint. Such callers
+		// share one bucket, which is the conservative reading.
+		String client = Objects.requireNonNullElse(httpRequest.getRemoteAddr(), "unknown");
 		this.rateLimiter.check(client);
 
 		boolean passwordMatches = this.passwordEncoder.matches(request.password(), this.properties.passwordHash());

@@ -27,6 +27,39 @@ import org.springframework.stereotype.Component;
  * and it is deliberately *not* the only limit, because a global limit alone
  * lets any attacker lock the real user out by burning the budget.
  *
+ * <p><b>A client's failures decay after {@code maxLockout} of silence</b>, so
+ * someone who mistyped their password last week does not meet a minute-long
+ * lockout on their first mistake today. The escalation exists to stop
+ * <em>rapid</em> guessing; spread out far enough to survive the decay, guessing
+ * is slow enough that the global ceiling is the limit that matters.
+ *
+ * <p>That threshold is deliberately the same one {@code evictSettled} uses to
+ * forget an idle client. <b>They have to agree.</b> When they did not, a quiet
+ * client's history survived or vanished depending on how full the map happened
+ * to be — so the same person, doing the same thing, was treated differently
+ * according to how many strangers had failed in between.
+ *
+ * <p>The boundary reads as "wait out your penalty in full and you are
+ * forgiven": a client that waits exactly {@code maxLockout} is not decayed, and
+ * one that waits any longer is.
+ *
+ * <p><b>The global ceiling is itself a lockout lever, and the number is worth
+ * stating.</b> A locked-out client throws before spending budget, so one
+ * address burns roughly three to five attempts a minute — meaning fifteen to
+ * twenty addresses are enough to keep 60/min spent and hold the real user out
+ * indefinitely, at negligible cost to the attacker. This is strictly better
+ * than a global limit alone, and it is not immunity. The cheap mitigation, if
+ * it ever matters, is to reserve a slice of the budget for addresses with no
+ * recorded failures: an attacker's addresses acquire history on their first
+ * failure, so holding the reserve would need a constant supply of fresh ones
+ * rather than a fixed handful.
+ *
+ * <p><b>{@code /auth/refresh} is deliberately not limited here.</b> It verifies
+ * a SHA-256 digest against one indexed row rather than running Argon2, so it
+ * lacks the asymmetry that makes login worth defending — but it is now the only
+ * unauthenticated endpoint without a limit, which is worth knowing rather than
+ * rediscovering.
+ *
  * <p><b>State is in memory, and that is a real constraint.</b> v1 is
  * single-user and single-instance (spec §9.3), so there is nothing to share.
  * A second instance would give each its own counters and multiply the
@@ -90,8 +123,9 @@ public class LoginRateLimiter {
 		// hash verification below costs the same either way, and this ceiling
 		// is about who spends the server's time rather than about who is
 		// guessing.
-		if (!consumeGlobalBudget(now)) {
-			throw new TooManyLoginAttemptsException(untilWindowRolls(now));
+		Duration untilBudgetRefills = consumeGlobalBudget(now);
+		if (untilBudgetRefills != null) {
+			throw new TooManyLoginAttemptsException(untilBudgetRefills);
 		}
 	}
 
@@ -113,6 +147,11 @@ public class LoginRateLimiter {
 
 		this.byClient.compute(client, (key, existing) -> {
 			Attempts attempts = (existing == null) ? new Attempts() : existing;
+
+			if (attempts.hasDecayed(now, this.properties.maxLockout())) {
+				attempts.consecutiveFailures = 0;
+			}
+
 			attempts.consecutiveFailures++;
 			attempts.lockedUntil = now.plus(lockoutAfter(attempts.consecutiveFailures));
 			attempts.lastFailure = now;
@@ -162,32 +201,37 @@ public class LoginRateLimiter {
 	 * to hold and it cannot be starved by bookkeeping. The known cost is that a
 	 * burst straddling a boundary can reach twice the ceiling in quick
 	 * succession, which for a limit this generous is not the interesting case.
+	 *
+	 * @return {@code null} when the attempt was allowed, otherwise how long
+	 *     until the budget refills — derived from the window the refusal was
+	 *     decided against, so the answer cannot disagree with the decision
 	 */
-	private boolean consumeGlobalBudget(Instant now) {
+	private Duration consumeGlobalBudget(Instant now) {
 		while (true) {
 			Window current = this.global.get();
 			Window next;
 
-			if (Duration.between(current.start(), now).compareTo(GLOBAL_WINDOW) >= 0) {
+			Duration elapsed = Duration.between(current.start(), now);
+			if (elapsed.compareTo(GLOBAL_WINDOW) >= 0) {
 				next = new Window(now, 1);
 			}
 			else if (current.used() >= this.properties.globalAttemptsPerMinute()) {
-				return false;
+				// Measured against the window this decision was made against,
+				// not against whatever `global` holds by the time the caller
+				// asks. Re-reading it afterwards let another thread roll the
+				// window in between, and the refused caller was then told to
+				// wait a full minute when the budget had just refilled.
+				Duration remaining = GLOBAL_WINDOW.minus(elapsed);
+				return remaining.isNegative() ? Duration.ZERO : remaining;
 			}
 			else {
 				next = new Window(current.start(), current.used() + 1);
 			}
 
 			if (this.global.compareAndSet(current, next)) {
-				return true;
+				return null;
 			}
 		}
-	}
-
-	private Duration untilWindowRolls(Instant now) {
-		Duration elapsed = Duration.between(this.global.get().start(), now);
-		Duration remaining = GLOBAL_WINDOW.minus(elapsed);
-		return remaining.isNegative() ? Duration.ZERO : remaining;
 	}
 
 	/**
@@ -196,13 +240,21 @@ public class LoginRateLimiter {
 	 * <p>Only entries past {@code maxLockout} of silence go: a client still
 	 * inside its backoff is the one entry that must survive, or serving the
 	 * limit would be a way to escape it.
+	 *
+	 * <p><b>A full scan, run on each failure from a new client once the map is
+	 * full.</b> Bounded by the global ceiling rather than by anything here — at
+	 * 60 attempts a minute that is at most 60 sweeps of
+	 * {@code maxTrackedClients} entries per minute. Cheap at these numbers, and
+	 * worth knowing before either is raised.
 	 */
 	private void evictSettled(Instant now) {
-		Instant idleSince = now.minus(this.properties.maxLockout());
-
 		for (Iterator<Map.Entry<String, Attempts>> entries = this.byClient.entrySet().iterator(); entries.hasNext();) {
 			Attempts attempts = entries.next().getValue();
-			if (attempts.remainingLockout(now).isZero() && attempts.lastFailure.isBefore(idleSince)) {
+			// The same predicate the escalation decays on: an entry is
+			// forgettable exactly when keeping it would no longer change what
+			// happens to that client next.
+			if (attempts.remainingLockout(now).isZero()
+					&& attempts.hasDecayed(now, this.properties.maxLockout())) {
 				entries.remove();
 			}
 		}
@@ -220,6 +272,17 @@ public class LoginRateLimiter {
 		private Duration remainingLockout(Instant now) {
 			Duration remaining = Duration.between(now, this.lockedUntil);
 			return remaining.isNegative() ? Duration.ZERO : remaining;
+		}
+
+		/**
+		 * Whether this client has been quiet long enough to start over.
+		 *
+		 * <p>One definition, used by both the escalation and the eviction sweep,
+		 * so the two cannot drift into disagreeing about how long a failure
+		 * counts for.
+		 */
+		private boolean hasDecayed(Instant now, Duration after) {
+			return Duration.between(this.lastFailure, now).compareTo(after) > 0;
 		}
 
 	}

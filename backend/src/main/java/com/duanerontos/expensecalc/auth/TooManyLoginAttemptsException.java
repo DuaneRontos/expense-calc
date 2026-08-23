@@ -17,7 +17,14 @@ import java.time.Duration;
  */
 public class TooManyLoginAttemptsException extends RuntimeException {
 
-	private final transient Duration retryAfter;
+	private static final long serialVersionUID = 1L;
+
+	/**
+	 * Not {@code transient}: {@link Duration} is {@code Serializable}, so marking
+	 * it would null the field on a deserialized copy and leave the handler
+	 * reading it to throw instead of answering.
+	 */
+	private final Duration retryAfter;
 
 	public TooManyLoginAttemptsException(Duration retryAfter) {
 		super("Too many sign-in attempts. Try again later.");

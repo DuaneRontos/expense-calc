@@ -102,13 +102,74 @@ class LoginRateLimiterTest {
 		MovableClock clock = new MovableClock();
 		LoginRateLimiter limiter = new LoginRateLimiter(properties(), clock);
 
+		// A second between failures — well inside the decay window, so this is
+		// unambiguously the *rapid* case the escalation exists for. An earlier
+		// version advanced ten minutes per failure and still expected
+		// escalation, which quietly asserted that failures never decay.
 		for (int attempt = 0; attempt < 20; attempt++) {
-			clock.advance(Duration.ofMinutes(10));
-			limiter.check(CLIENT);
+			clock.advance(Duration.ofSeconds(1));
 			limiter.recordFailure(CLIENT);
 		}
 
 		assertThat(lockoutFor(limiter)).isEqualTo(Duration.ofMinutes(5));
+	}
+
+	@Test
+	@DisplayName("forgets a client that has stayed quiet, however full the map is")
+	void backoffDecaysAfterSilence() {
+		// Someone who mistyped a few times last week should not meet a
+		// minute-long lockout on their first mistake today.
+		MovableClock clock = new MovableClock();
+		LoginRateLimiter limiter = new LoginRateLimiter(properties(), clock);
+
+		for (int attempt = 0; attempt < 5; attempt++) {
+			clock.advance(Duration.ofSeconds(1));
+			limiter.recordFailure(CLIENT);
+		}
+		assertThat(lockoutFor(limiter)).isGreaterThan(Duration.ZERO);
+
+		clock.advance(Duration.ofDays(4));
+		limiter.recordFailure(CLIENT);
+
+		// Back to the first of the free attempts, not to where it left off.
+		assertThat(lockoutFor(limiter)).isEqualTo(Duration.ZERO);
+	}
+
+	@Test
+	@DisplayName("treats a quiet client the same whether or not the map is full")
+	void decayDoesNotDependOnOtherClients() {
+		// The bug this pins: `recordFailure` never decayed on elapsed time while
+		// `evictSettled` forgot idle clients, so a quiet client's history
+		// survived or vanished according to how many strangers had failed in
+		// between. One person, one sequence, two different answers.
+		Duration roomy = lockoutAfterQuietSpell(10_000, 0);
+		Duration crowded = lockoutAfterQuietSpell(4, 20);
+
+		assertThat(roomy).isEqualTo(crowded);
+	}
+
+	/**
+	 * Five failures, four days of silence, one more — with `strangers` unrelated
+	 * addresses failing during the silence and a map of `capacity`.
+	 */
+	private static Duration lockoutAfterQuietSpell(int capacity, int strangers) {
+		MovableClock clock = new MovableClock();
+		LoginRateLimiter limiter = new LoginRateLimiter(
+				new LoginRateLimitProperties(2, Duration.ofSeconds(1), Duration.ofMinutes(5), 100_000, capacity),
+				clock);
+
+		for (int attempt = 0; attempt < 5; attempt++) {
+			clock.advance(Duration.ofSeconds(1));
+			limiter.recordFailure(CLIENT);
+		}
+
+		clock.advance(Duration.ofDays(4));
+		for (int stranger = 0; stranger < strangers; stranger++) {
+			limiter.recordFailure("198.51.100." + stranger);
+		}
+
+		limiter.recordFailure(CLIENT);
+		return lockoutFor(limiter);
 	}
 
 	@Test
@@ -118,12 +179,11 @@ class LoginRateLimiterTest {
 		LoginRateLimiter limiter = new LoginRateLimiter(properties(), clock);
 
 		for (int attempt = 0; attempt < 5; attempt++) {
-			clock.advance(Duration.ofMinutes(10));
-			limiter.check(CLIENT);
+			clock.advance(Duration.ofSeconds(1));
 			limiter.recordFailure(CLIENT);
 		}
+		assertThat(lockoutFor(limiter)).isGreaterThan(Duration.ZERO);
 
-		clock.advance(Duration.ofMinutes(10));
 		limiter.recordSuccess(CLIENT);
 
 		assertThatCode(() -> limiter.check(CLIENT)).doesNotThrowAnyException();
@@ -325,6 +385,22 @@ class LoginRateLimiterTest {
 		assertThatExceptionOfType(IllegalArgumentException.class)
 			.isThrownBy(() -> new LoginRateLimitProperties(-1, Duration.ofSeconds(1), Duration.ofMinutes(5), 60, 10))
 			.withMessageContaining("Neither can be negative");
+	}
+
+	@Test
+	@DisplayName("handles the fallback key used when a remote address is unavailable")
+	void toleratesTheFallbackClientKey() {
+		// `getRemoteAddr()` may be null, and ConcurrentHashMap rejects null keys
+		// — a 500 on an unauthenticated endpoint. AuthController substitutes a
+		// shared bucket rather than passing it through.
+		MovableClock clock = new MovableClock();
+		LoginRateLimiter limiter = new LoginRateLimiter(properties(), clock);
+
+		assertThatCode(() -> {
+			limiter.check("unknown");
+			limiter.recordFailure("unknown");
+			limiter.recordSuccess("unknown");
+		}).doesNotThrowAnyException();
 	}
 
 	/** The lockout currently in force, read back through the public surface. */
