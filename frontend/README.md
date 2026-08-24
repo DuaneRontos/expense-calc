@@ -24,9 +24,10 @@ npm test           # jest
 
 CI runs the last three on Node 22.
 
-**Component-render tests work.** `PeriodPicker`, `overview`, and `chipState`
-mount real components; `useReports`, `useManilaToday`, and `useDelayedFlag` use
-`renderHook`.
+**Component-render tests work.** The `.test.tsx` suites under
+`src/**/__tests__/` mount real components; `renderHook` drives the hook tests.
+`git grep -l "@testing-library/react-native" -- src` lists the current set —
+naming them here would go stale on the next one added.
 
 This file used to describe empty renders as a known gap. The cause was that
 `@testing-library/react-native` 14 **requires `test-renderer` as a peer

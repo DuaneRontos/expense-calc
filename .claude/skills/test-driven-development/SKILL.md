@@ -45,6 +45,15 @@ assertion could fail and the other could not. When you write the red step, ask
 what would have to break for this line to fail; if the answer is "nothing
 reachable", the test is decoration.
 
+**`toBeChecked()` is not the general remedy — reading what the platform
+actually exposes is.** `AppShell.test.tsx` hit the same class of bug with nav
+items that differed only by colour and weight, and could not use that fix:
+`role="button"` supports neither `checked` nor `selected` in ARIA, so the state
+had to move into the accessible label and the assertion became
+`getByLabelText('Expenses, current screen')`. Which matcher carries teeth
+depends on the role, so check what the role supports before asserting on it
+rather than copying an assertion that worked elsewhere.
+
 **Backend Testcontainers tests need a running Docker daemon.** Without one they
 fail in the test phase, which reads as red but is not *your* red. Never reach
 for `-DskipTests` to get past it — that skips the test you just wrote, which is
@@ -54,9 +63,11 @@ could not run it.
 ## Frontend render tests work — write them
 
 `@testing-library/react-native` 14 is a current dependency and renders
-properly. `PeriodPicker`, `overview`, and `chipState` mount real components;
-`useReports`, `useManilaToday`, and `useDelayedFlag` use `renderHook` from the
-same library.
+properly. The suites that mount are the `.test.tsx` files under
+`frontend/src/**/__tests__/`; `renderHook` from the same library is how the
+hook tests are written. Don't take a count from this file — `git grep -l
+"@testing-library/react-native" -- frontend/src` is current and a roster is
+stale the next time someone adds a test.
 
 What fixed it (#64) was installing `test-renderer`, which RNTL 14 **requires as
 a peer dependency** — not a workaround, and not something to remove later. The
@@ -86,8 +97,14 @@ cd backend && ./mvnw test -Dtest=TheNewTestClass
 ```
 
 ```bash
-cd frontend && npx jest path/to/the.test.ts
+cd frontend && npm test -- path/to/the.test.ts
 ```
+
+`npm test --` rather than `npx jest`, because that is what runs in both places.
+The review workflow's allowlist permits `npm ci`, `npm run` and `npm test` but
+deliberately excludes `npx`, which fetches and executes from the network — so
+an agent told to `npx jest` is refused in CI and reports the behavior as
+uncoverable. `npx jest` works locally if you prefer it.
 
 Run the whole suite once before you open a PR, not on every cycle. CI runs the
 backend on JDK 21 while your local JDK may be newer, and Hibernate's bytecode

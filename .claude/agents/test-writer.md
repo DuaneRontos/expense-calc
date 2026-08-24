@@ -38,9 +38,11 @@ quietly switching to `-DskipTests`, which would skip the very tests you wrote.
 **Frontend (`frontend/src/**`):** tests are colocated in `__tests__/` next to
 the module, `xxx.test.ts` or `xxx.test.tsx`, Jest. **Component renders work** —
 `@testing-library/react-native` 14 is a current dependency paired with its
-required peer `test-renderer`. `PeriodPicker`, `overview`, and `chipState`
-mount real components; `useReports`, `useManilaToday`, and `useDelayedFlag`
-drive hooks with `renderHook` from the same library.
+required peer `test-renderer`. The `.test.tsx` files under
+`frontend/src/**/__tests__/` mount real components; `renderHook` from the same
+library drives the hook tests. Run `git grep -l
+"@testing-library/react-native" -- frontend/src` for the current set rather
+than trusting a list written here, which goes stale on the next test added.
 
 Render when the behavior is about **announced state, accessibility, or what a
 user can perceive** — a chip that announces identically whether or not it is
@@ -72,8 +74,14 @@ so the report reflects only your own work:
 
 ```bash
 cd backend && ./mvnw test -Dtest=TheNewOrChangedTestClass
-cd frontend && npx jest path/to/the.test.ts
+cd frontend && npm test -- path/to/the.test.ts
 ```
+
+Use `npm test --`, not `npx jest`. The review workflow's allowlist permits
+`npm ci`, `npm run` and `npm test` but excludes `npx` deliberately, since it
+fetches and executes from the network — so `npx jest` is refused when you run
+inside a review and you would report a behavior as uncoverable when it was only
+the command that was wrong.
 
 ## How to report
 
