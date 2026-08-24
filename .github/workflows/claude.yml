@@ -106,8 +106,19 @@ jobs:
           # workflow needed it for the same reason and did not have it.
           show_full_output: true
 
-          # Opus costs more of the shared subscription pool per run than the
-          # action's Sonnet default. CI and interactive Claude Code draw on the
-          # same quota, so this is the first thing to drop if runs start
-          # failing with is_error:true (claude-code-action#1614).
-          claude_args: --model claude-opus-5
+          # No --model pin: the action's Sonnet default is deliberate now.
+          #
+          # Opus was pinned here because it reviews better, with the caveat
+          # written next to it that it costs more of the shared subscription
+          # pool and would be the first thing to drop if runs started failing
+          # with is_error:true. That happened: during the 2026-08-24 "Elevated
+          # errors for multiple models" incident, which named claude-opus-5
+          # specifically, three consecutive runs died on 529 Overloaded — with
+          # 3, 5 and then 10 internal retries each — while the pin sent every
+          # attempt straight at the affected model.
+          #
+          # Restoring it is one line, and worth doing if review quality drops
+          # noticeably. Keep the two workflows in step: a pin here and not in
+          # claude-code-review.yml would make the automatic review and the
+          # `@claude` re-review answer as different models, which is a
+          # difference nobody would think to look for.
