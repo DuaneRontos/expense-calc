@@ -64,9 +64,9 @@ original diagnosis went wrong because `react-test-renderer` is a different
 package that is still in the tree transitively, so "React, `react-test-renderer`
 and RNTL are all on matching versions" was true and irrelevant at the same time.
 
-That mistake outlived the fix in three files, this one included. **If you find a
-note claiming renders mount nothing, it predates #64 — check `package.json` and
-the test files before believing it.**
+That mistake outlived the fix in four places and was corrected in #82. **If you
+find a note claiming renders mount nothing, it predates #64 — check
+`package.json` and the test files before believing it.**
 
 Rendering is the right level for anything about **announced state,
 accessibility, or what a user can actually perceive** — the chip bug above was

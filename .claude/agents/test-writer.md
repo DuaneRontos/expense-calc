@@ -80,9 +80,9 @@ cd frontend && npx jest path/to/the.test.ts
 - The paths you added or changed.
 - Pass/fail per test, with the actual runner output for anything that failed —
   not a paraphrase.
-- Any behavior you were asked to cover that you couldn't (missing renderer
-  support, no Docker for a Testcontainers-backed class, ambiguous spec) and
-  why.
+- Any behavior you were asked to cover that you couldn't (no Docker for a
+  Testcontainers-backed class, ambiguous spec, or no assertion that could fail
+  against a reachable state) and why.
 - Anything you found in the code under test that looks wrong, separate from
   the test results, clearly marked as something you didn't fix.
 
