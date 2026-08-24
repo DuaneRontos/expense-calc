@@ -542,6 +542,44 @@ describe('auth', () => {
     expect(await client.logout()).toBeNull();
   });
 
+  it('reports an expired cookie as signed out, not as a failed sign-out', async () => {
+    // The second operand of the web claim, and the only claim-deciding operand
+    // in the file that nothing asserted. Delete `|| isMissingWebCookie(error)`
+    // and every test still passes while a user whose cookie simply expired is
+    // told "we could not sign you out, try again" — the exact symptom the
+    // narrowing two commits ago existed to remove.
+    //
+    // It is also the operand a reader is most likely to think redundant, since
+    // a 400 reading as a sign-out looks like the thing that was narrowed away.
+    const webStore: RefreshTokenStore = {
+      read: () => Promise.resolve(null),
+      write: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const fetchImpl = jest.fn().mockImplementation((url: string) => {
+      if (url.endsWith('/auth/refresh')) {
+        return Promise.resolve(
+          problem(400, {
+            type: 'https://expense-calc.invalid/problems/no-refresh-token',
+            title: 'No refresh token',
+          }),
+        );
+      }
+      return Promise.resolve(json(WEB_TOKENS));
+    });
+    const client = new ExpenseCalcClient({
+      baseUrl: 'http://api.test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      session: new Session(webStore),
+      clientType: 'web',
+    });
+
+    const outcome = await client.logout();
+
+    expect(outcome).not.toBeNull();
+    expect(outcome!.revokedSessions).toBe(0);
+  });
+
   it('does not read a middlebox 401 as a completed sign-out', async () => {
     // A proxy or WAF answering /auth/refresh with a bodyless 401 never reached
     // the API: nothing was revoked, no clearing Set-Cookie was sent, and the

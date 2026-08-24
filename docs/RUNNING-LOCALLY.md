@@ -187,7 +187,8 @@ will fail to start until it names its origins.
 
 **Reach the web client on the same host name as the API.** CORS and cookies do
 not draw the same boundary: CORS compares *origins*, where the port counts,
-while `SameSite` compares *sites*, where it does not and the host name does. `http://localhost:8081` and `http://localhost:8080` are two origins but one
+while `SameSite` compares *sites*, where it does not and the host name does.
+`http://localhost:8081` and `http://localhost:8080` are two origins but one
 site, so the cookie travels between them. `http://127.0.0.1:8081` and
 `http://localhost:8080` are two origins *and* two sites, so it does not travel
 at all.
