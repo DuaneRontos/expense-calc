@@ -49,6 +49,37 @@ function clientWith(
   });
 }
 
+/**
+ * The web store, which deliberately holds nothing.
+ *
+ * **Not `memoryStore(null)`.** `write` here is a no-op, matching
+ * `refreshTokenStore.web.ts` — the browser holds the token in an `httpOnly`
+ * cookie and a script cannot put anything there. That difference is
+ * load-bearing: the test that a web build never sends a body token stocks a
+ * store with a value to prove the client ignores it, which only means something
+ * if a web store's contents are irrelevant by construction.
+ */
+function webStore(read: string | null = null): RefreshTokenStore {
+  return {
+    read: () => Promise.resolve(read),
+    write: () => Promise.resolve(),
+    clear: () => Promise.resolve(),
+  };
+}
+
+/**
+ * A web-target client. Takes a `Session` rather than a store, because several
+ * tests assert on the session afterwards and need to hold the same instance.
+ */
+function webClient(fetchImpl: jest.Mock, session: Session = new Session(webStore())) {
+  return new ExpenseCalcClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: fetchImpl as unknown as typeof fetch,
+    session,
+    clientType: 'web',
+  });
+}
+
 describe('buildExpenseQuery', () => {
   it('repeats category rather than joining it, which the server would reject', () => {
     expect(buildExpenseQuery({ category: ['DINING', 'GROCERIES'] })).toBe(
@@ -199,12 +230,7 @@ describe('auth', () => {
     // The web path. An empty store is the normal state there rather than a
     // signed-out one, because the token is in a cookie no script can read.
     const fetchImpl = jest.fn().mockResolvedValue(json(TOKENS));
-    const client = new ExpenseCalcClient({
-      baseUrl: 'http://api.test',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-      session: new Session(memoryStore(null)),
-      clientType: 'web',
-    });
+    const client = webClient(fetchImpl);
 
     await client.refresh();
 
@@ -232,12 +258,7 @@ describe('auth', () => {
     // The server omits it for a web client and puts it in the cookie instead.
     // Treating the absence as a failure would break sign-in on web entirely.
     const fetchImpl = jest.fn().mockResolvedValue(json(WEB_TOKENS));
-    const client = new ExpenseCalcClient({
-      baseUrl: 'http://api.test',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-      session: new Session(memoryStore(null)),
-      clientType: 'web',
-    });
+    const client = webClient(fetchImpl);
 
     const result = await client.login({ username: 'duane', password: 'hunter2' });
 
@@ -263,21 +284,11 @@ describe('auth', () => {
     // and the web store is empty by design since the token became a cookie. So
     // testing `refresh()` directly passes while the app never refreshes at all,
     // which is the page-reload sign-out this whole change exists to fix.
-    const webStore: RefreshTokenStore = {
-      read: () => Promise.resolve(null),
-      write: () => Promise.resolve(),
-      clear: () => Promise.resolve(),
-    };
     const fetchImpl = jest
       .fn()
       .mockResolvedValueOnce(json(WEB_TOKENS))
       .mockResolvedValueOnce(json([]));
-    const client = new ExpenseCalcClient({
-      baseUrl: 'http://api.test',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-      session: new Session(webStore),
-      clientType: 'web',
-    });
+    const client = webClient(fetchImpl);
 
     await client.categories();
 
@@ -290,11 +301,6 @@ describe('auth', () => {
     // The server answers 400 when no cookie arrived, which on web means exactly
     // "you are signed out". Only 401 cleared the session, so a genuinely
     // signed-out web user got a request error on screen instead.
-    const webStore: RefreshTokenStore = {
-      read: () => Promise.resolve(null),
-      write: () => Promise.resolve(),
-      clear: () => Promise.resolve(),
-    };
     const fetchImpl = jest
       .fn()
       .mockResolvedValueOnce(json(WEB_TOKENS))
@@ -307,13 +313,8 @@ describe('auth', () => {
           title: 'No refresh token',
         }),
       );
-    const session = new Session(webStore);
-    const client = new ExpenseCalcClient({
-      baseUrl: 'http://api.test',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-      session,
-      clientType: 'web',
-    });
+    const session = new Session(webStore());
+    const client = webClient(fetchImpl, session);
 
     // Signed in first, so there is something to clear — otherwise the assertion
     // cannot tell "cleared" from "never set".
@@ -333,22 +334,12 @@ describe('auth', () => {
     // cookie, so without a signed-out flag the very next request refreshes from
     // a still-live cookie and silently signs the user back in, moments after a
     // screen told them they were out.
-    const webStore: RefreshTokenStore = {
-      read: () => Promise.resolve(null),
-      write: () => Promise.resolve(),
-      clear: () => Promise.resolve(),
-    };
     const fetchImpl = jest
       .fn()
       .mockResolvedValueOnce(json(WEB_TOKENS))
       .mockRejectedValueOnce(new TypeError('network down'))
       .mockResolvedValue(json([]));
-    const client = new ExpenseCalcClient({
-      baseUrl: 'http://api.test',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-      session: new Session(webStore),
-      clientType: 'web',
-    });
+    const client = webClient(fetchImpl);
 
     await client.login({ username: 'duane', password: 'hunter2' });
     await client.logout();
@@ -362,21 +353,11 @@ describe('auth', () => {
 
   it('signs back in normally after a failed logout', async () => {
     // The flag must not be a one-way door: logging in again clears it.
-    const webStore: RefreshTokenStore = {
-      read: () => Promise.resolve(null),
-      write: () => Promise.resolve(),
-      clear: () => Promise.resolve(),
-    };
     const fetchImpl = jest
       .fn()
       .mockRejectedValueOnce(new TypeError('network down'))
       .mockResolvedValue(json(WEB_TOKENS));
-    const client = new ExpenseCalcClient({
-      baseUrl: 'http://api.test',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-      session: new Session(webStore),
-      clientType: 'web',
-    });
+    const client = webClient(fetchImpl);
 
     await client.logout();
     await client.login({ username: 'duane', password: 'hunter2' });
@@ -389,18 +370,8 @@ describe('auth', () => {
     // Structural, not incidental. The server reads a body token as "device", so
     // a web build that sent one would get its refresh token back in a response
     // body a script can read — the one thing httpOnly exists to prevent.
-    const stockedStore: RefreshTokenStore = {
-      read: () => Promise.resolve('should-never-be-sent'),
-      write: () => Promise.resolve(),
-      clear: () => Promise.resolve(),
-    };
     const fetchImpl = jest.fn().mockResolvedValue(json(WEB_TOKENS));
-    const client = new ExpenseCalcClient({
-      baseUrl: 'http://api.test',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-      session: new Session(stockedStore),
-      clientType: 'web',
-    });
+    const client = webClient(fetchImpl, new Session(webStore('should-never-be-sent')));
 
     await client.refresh();
 
@@ -413,22 +384,12 @@ describe('auth', () => {
     // Only the server's own "no refresh token" problem means signed out. A 400
     // from a proxy would otherwise drop the user at a sign-in screen for a
     // reason that has nothing to do with their session.
-    const webStore: RefreshTokenStore = {
-      read: () => Promise.resolve(null),
-      write: () => Promise.resolve(),
-      clear: () => Promise.resolve(),
-    };
     const fetchImpl = jest
       .fn()
       .mockResolvedValueOnce(json(WEB_TOKENS))
       .mockResolvedValue(problem(400, { title: 'Gateway rejected the request' }));
-    const session = new Session(webStore);
-    const client = new ExpenseCalcClient({
-      baseUrl: 'http://api.test',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-      session,
-      clientType: 'web',
-    });
+    const session = new Session(webStore());
+    const client = webClient(fetchImpl, session);
 
     await client.login({ username: 'duane', password: 'hunter2' });
     await expect(client.refresh()).rejects.toBeInstanceOf(ApiError);
@@ -440,11 +401,6 @@ describe('auth', () => {
     // The race the flag alone does not close: a request 401s and passes the
     // resume check, the user signs out and the logout fails, then the refresh
     // response arrives. Adopting it would sign them back in through timing.
-    const webStore: RefreshTokenStore = {
-      read: () => Promise.resolve(null),
-      write: () => Promise.resolve(),
-      clear: () => Promise.resolve(),
-    };
     let releaseRefresh: (value: Response) => void = () => {};
     const fetchImpl = jest.fn().mockImplementation((url: string) => {
       if (url.endsWith('/auth/refresh')) {
@@ -457,13 +413,8 @@ describe('auth', () => {
       }
       return Promise.resolve(json(WEB_TOKENS));
     });
-    const session = new Session(webStore);
-    const client = new ExpenseCalcClient({
-      baseUrl: 'http://api.test',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-      session,
-      clientType: 'web',
-    });
+    const session = new Session(webStore());
+    const client = webClient(fetchImpl, session);
 
     // Signed in first, so `logout()`'s own request does not itself wait on the
     // refresh being held open below.
@@ -482,11 +433,6 @@ describe('auth', () => {
     // logout refreshes first, gets a 401, and the server's response clears the
     // cookie on the way past. Reporting that as unconfirmed would tell the user
     // to retry a sign-out that has already completely happened.
-    const webStore: RefreshTokenStore = {
-      read: () => Promise.resolve(null),
-      write: () => Promise.resolve(),
-      clear: () => Promise.resolve(),
-    };
     const fetchImpl = jest.fn().mockImplementation((url: string) => {
       if (url.endsWith('/auth/refresh')) {
         return Promise.resolve(
@@ -500,12 +446,7 @@ describe('auth', () => {
       }
       return Promise.resolve(json(WEB_TOKENS));
     });
-    const client = new ExpenseCalcClient({
-      baseUrl: 'http://api.test',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-      session: new Session(webStore),
-      clientType: 'web',
-    });
+    const client = webClient(fetchImpl);
 
     const outcome = await client.logout();
 
@@ -521,21 +462,11 @@ describe('auth', () => {
     // current one — the previous code returned null here too, so reverting the
     // fix cannot make this fail. Kept deliberately, and labelled so it is not
     // mistaken for proof.
-    const webStore: RefreshTokenStore = {
-      read: () => Promise.resolve(null),
-      write: () => Promise.resolve(),
-      clear: () => Promise.resolve(),
-    };
     const fetchImpl = jest
       .fn()
       .mockResolvedValueOnce(json(WEB_TOKENS))
       .mockRejectedValue(new TypeError('network down'));
-    const client = new ExpenseCalcClient({
-      baseUrl: 'http://api.test',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-      session: new Session(webStore),
-      clientType: 'web',
-    });
+    const client = webClient(fetchImpl);
 
     await client.login({ username: 'duane', password: 'hunter2' });
 
@@ -551,11 +482,6 @@ describe('auth', () => {
     //
     // It is also the operand a reader is most likely to think redundant, since
     // a 400 reading as a sign-out looks like the thing that was narrowed away.
-    const webStore: RefreshTokenStore = {
-      read: () => Promise.resolve(null),
-      write: () => Promise.resolve(),
-      clear: () => Promise.resolve(),
-    };
     const fetchImpl = jest.fn().mockImplementation((url: string) => {
       if (url.endsWith('/auth/refresh')) {
         return Promise.resolve(
@@ -567,12 +493,7 @@ describe('auth', () => {
       }
       return Promise.resolve(json(WEB_TOKENS));
     });
-    const client = new ExpenseCalcClient({
-      baseUrl: 'http://api.test',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-      session: new Session(webStore),
-      clientType: 'web',
-    });
+    const client = webClient(fetchImpl);
 
     const outcome = await client.logout();
 
@@ -586,11 +507,6 @@ describe('auth', () => {
     // cookie is live for the rest of its 30 days. Claiming a completed sign-out
     // there is the same defect as reading any 400 as "signed out" — the one
     // that was narrowed away one commit earlier.
-    const webStore: RefreshTokenStore = {
-      read: () => Promise.resolve(null),
-      write: () => Promise.resolve(),
-      clear: () => Promise.resolve(),
-    };
     const fetchImpl = jest.fn().mockImplementation((url: string) => {
       if (url.endsWith('/auth/refresh')) {
         // No problem document at all, as an HTML error page would give.
@@ -598,12 +514,7 @@ describe('auth', () => {
       }
       return Promise.resolve(json(WEB_TOKENS));
     });
-    const client = new ExpenseCalcClient({
-      baseUrl: 'http://api.test',
-      fetchImpl: fetchImpl as unknown as typeof fetch,
-      session: new Session(webStore),
-      clientType: 'web',
-    });
+    const client = webClient(fetchImpl);
 
     expect(await client.logout()).toBeNull();
   });
