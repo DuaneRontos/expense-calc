@@ -36,16 +36,22 @@ if it isn't, say so in your report rather than reporting a false pass or
 quietly switching to `-DskipTests`, which would skip the very tests you wrote.
 
 **Frontend (`frontend/src/**`):** tests are colocated in `__tests__/` next to
-the module, `xxx.test.ts` or `xxx.test.tsx`, Jest. **There are no working
-component-render tests in this repo** — `@testing-library/react-native` was
-tried and removed because `render()` mounts nothing under the current preset
-(see `frontend/README.md`). Every existing test is pure logic: geometry, money
-formatting, query serialization, hook logic exercised without a renderer. Stay
-inside that boundary — write tests for functions, hooks via `renderHook` where
-one is already used that way in the codebase, and pure transforms. If the
-behavior you were asked to test can only be verified by rendering a component,
-report that as a limitation instead of writing a test that silently tests
-nothing.
+the module, `xxx.test.ts` or `xxx.test.tsx`, Jest. **Component renders work** —
+`@testing-library/react-native` 14 is a current dependency paired with its
+required peer `test-renderer`. `PeriodPicker`, `overview`, and `chipState`
+mount real components; `useReports`, `useManilaToday`, and `useDelayedFlag`
+drive hooks with `renderHook` from the same library.
+
+Render when the behavior is about **announced state, accessibility, or what a
+user can perceive** — a chip that announces identically whether or not it is
+active is a bug no pure-logic test can see, because the logic is correct. Test
+pure logic directly where the behavior is pure logic: geometry, money
+formatting, query serialization, period math.
+
+The rule that matters is not about rendering, it is about vacuity: **if the
+test you are about to write would pass whether or not the behavior works,
+report that instead of writing it.** A green that cannot go red is worse than
+an absent test, because it reads as coverage.
 
 ## While writing
 

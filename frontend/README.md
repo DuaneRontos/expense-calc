@@ -24,12 +24,17 @@ npm test           # jest
 
 CI runs the last three on Node 22.
 
-**Component-render tests work.** `@testing-library/react-native` 14 renders
-under the `jest-expo` preset via the `test-renderer` shim, which is what fixed
-the empty-render problem this file previously documented as a known gap —
-solved in #64, so the caution is retired rather than outstanding.
-`PeriodPicker`, `overview`, and `chipState` mount real components;
-`useReports`, `useManilaToday`, and `useDelayedFlag` use `renderHook`.
+**Component-render tests work.** `PeriodPicker`, `overview`, and `chipState`
+mount real components; `useReports`, `useManilaToday`, and `useDelayedFlag` use
+`renderHook`.
+
+This file used to describe empty renders as a known gap. The cause was that
+`@testing-library/react-native` 14 **requires `test-renderer` as a peer
+dependency** and it was missing; #64 installed it and the gap closed. Note
+`test-renderer` is not `react-test-renderer` — the latter is a different
+package, still present transitively, and checking *its* version against React's
+is what made the original diagnosis read as "an integration problem rather than
+a version mismatch" when it was a missing peer.
 
 Render where the behavior is about announced state or accessibility — the
 period-chip bug in #69 was invisible to a pure-logic test because the logic was

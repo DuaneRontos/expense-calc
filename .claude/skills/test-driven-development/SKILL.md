@@ -53,15 +53,20 @@ could not run it.
 
 ## Frontend render tests work — write them
 
-`@testing-library/react-native` 14 is a current dependency and renders properly
-under `jest-expo` via the `test-renderer` shim. `PeriodPicker`, `overview`, and
-`chipState` mount real components; `useReports`, `useManilaToday`, and
-`useDelayedFlag` use `renderHook` from the same library.
+`@testing-library/react-native` 14 is a current dependency and renders
+properly. `PeriodPicker`, `overview`, and `chipState` mount real components;
+`useReports`, `useManilaToday`, and `useDelayedFlag` use `renderHook` from the
+same library.
 
-This was a documented gap until #64 added the shim, and `frontend/README.md`
-went on describing it as unsolved long after it was fixed. If you find a note
-anywhere claiming renders mount nothing, it predates #64 — check
-`package.json` and the test files before believing it.
+What fixed it (#64) was installing `test-renderer`, which RNTL 14 **requires as
+a peer dependency** — not a workaround, and not something to remove later. The
+original diagnosis went wrong because `react-test-renderer` is a different
+package that is still in the tree transitively, so "React, `react-test-renderer`
+and RNTL are all on matching versions" was true and irrelevant at the same time.
+
+That mistake outlived the fix in three files, this one included. **If you find a
+note claiming renders mount nothing, it predates #64 — check `package.json` and
+the test files before believing it.**
 
 Rendering is the right level for anything about **announced state,
 accessibility, or what a user can actually perceive** — the chip bug above was
