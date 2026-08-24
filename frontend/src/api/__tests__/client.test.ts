@@ -489,7 +489,14 @@ describe('auth', () => {
     };
     const fetchImpl = jest.fn().mockImplementation((url: string) => {
       if (url.endsWith('/auth/refresh')) {
-        return Promise.resolve(problem(401, { title: 'Session expired' }));
+        return Promise.resolve(
+          problem(401, {
+            // The type this API actually sends. A bare 401 is not proof — see
+            // the middlebox test below.
+            type: 'https://expense-calc.invalid/problems/unauthenticated',
+            title: 'Session expired',
+          }),
+        );
       }
       return Promise.resolve(json(WEB_TOKENS));
     });
@@ -509,6 +516,11 @@ describe('auth', () => {
   it('still reports an unreachable server as unconfirmed', async () => {
     // The case the null is reserved for: nothing was confirmed, and on web the
     // cookie may still be live.
+    //
+    // A guard against a future over-broad branch rather than evidence for the
+    // current one — the previous code returned null here too, so reverting the
+    // fix cannot make this fail. Kept deliberately, and labelled so it is not
+    // mistaken for proof.
     const webStore: RefreshTokenStore = {
       read: () => Promise.resolve(null),
       write: () => Promise.resolve(),
@@ -528,6 +540,49 @@ describe('auth', () => {
     await client.login({ username: 'duane', password: 'hunter2' });
 
     expect(await client.logout()).toBeNull();
+  });
+
+  it('does not read a middlebox 401 as a completed sign-out', async () => {
+    // A proxy or WAF answering /auth/refresh with a bodyless 401 never reached
+    // the API: nothing was revoked, no clearing Set-Cookie was sent, and the
+    // cookie is live for the rest of its 30 days. Claiming a completed sign-out
+    // there is the same defect as reading any 400 as "signed out" — the one
+    // that was narrowed away one commit earlier.
+    const webStore: RefreshTokenStore = {
+      read: () => Promise.resolve(null),
+      write: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const fetchImpl = jest.fn().mockImplementation((url: string) => {
+      if (url.endsWith('/auth/refresh')) {
+        // No problem document at all, as an HTML error page would give.
+        return Promise.resolve(new Response('<html>denied</html>', { status: 401 }));
+      }
+      return Promise.resolve(json(WEB_TOKENS));
+    });
+    const client = new ExpenseCalcClient({
+      baseUrl: 'http://api.test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      session: new Session(webStore),
+      clientType: 'web',
+    });
+
+    expect(await client.logout()).toBeNull();
+  });
+
+  it('reports a device with nothing stored as signed out', async () => {
+    // No cookie exists on device, so the only credential is the stored token —
+    // an empty store means there was never anything this client could revoke,
+    // and a bodyless 401 from the security filter is the expected answer.
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValue(new Response('', { status: 401 }));
+    const client = clientWith(fetchImpl, memoryStore(null));
+
+    const outcome = await client.logout();
+
+    expect(outcome).not.toBeNull();
+    expect(outcome!.revokedSessions).toBe(0);
   });
 
   it('does not attach a token to login itself', async () => {

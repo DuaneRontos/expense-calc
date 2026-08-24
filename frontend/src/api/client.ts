@@ -161,6 +161,15 @@ const REFRESH_SOURCE_HEADER = 'X-Refresh-Source';
  */
 const MISSING_REFRESH_TOKEN_PROBLEM = 'https://expense-calc.invalid/problems/no-refresh-token';
 
+/**
+ * The server's problem type for a rejected credential (spec §8).
+ *
+ * Matched rather than trusting a bare 401, because only *this API* answering
+ * with it proves the credential is dead. A 401 from a middlebox never reached
+ * the server, so nothing was revoked and the cookie is untouched.
+ */
+const UNAUTHENTICATED_PROBLEM = 'https://expense-calc.invalid/problems/unauthenticated';
+
 export class ExpenseCalcClient {
   private readonly baseUrl: string;
 
@@ -409,6 +418,32 @@ export class ExpenseCalcClient {
    * ever gains a constraint, would otherwise drop the user at a sign-in screen
    * for a reason that has nothing to do with their session.
    */
+  /**
+   * Whether this failure proves the client has no credential left that could
+   * still be live — as opposed to merely not having reached the server.
+   *
+   * **Not `isUnauthorized`, which is `status === 401` and nothing else.** That
+   * is claim-by-status, the exact thing narrowing {@link isMissingWebCookie}
+   * removed, and here it would be the stronger claim: it is what lets a screen
+   * show a plain signed-out state. A proxy or WAF answering `/auth/refresh`
+   * with a bodyless 401, or a second 401 on the retried logout after a
+   * successful refresh minted a *newer* 30-day cookie, would both report a
+   * completed sign-out while the cookie sat live in the browser.
+   */
+  private async holdsNoLiveCredential(error: unknown): Promise<boolean> {
+    if (!(error instanceof ApiError)) {
+      return false;
+    }
+
+    // Device: there is no cookie, so the only credential is the stored token.
+    // An empty store means there was never anything this client could revoke.
+    if (this.clientType !== 'web') {
+      return !(await this.session.isResumable());
+    }
+
+    return error.problem.type === UNAUTHENTICATED_PROBLEM || this.isMissingWebCookie(error);
+  }
+
   private isMissingWebCookie(error: ApiError): boolean {
     return (
       this.clientType === 'web' &&
@@ -477,6 +512,11 @@ export class ExpenseCalcClient {
    * sign-in screen is where this gets consumed; retrying on next start is the
    * fuller answer if it turns out to matter.
    *
+   * **A `revokedSessions: 0` may be this client's own answer rather than the
+   * server's**, and a caller cannot tell the two apart. It is used only where
+   * the credential was already rejected, so zero is accurate — but it describes
+   * this device, not the account.
+   *
    * **A credential the server has already rejected is a sign-out, not a
    * failure.** Signing out on another device revokes every refresh token, so
    * the next `logout()` here refreshes first, gets a 401, and the server's own
@@ -488,11 +528,17 @@ export class ExpenseCalcClient {
     try {
       return await this.request<LogoutResult>('/auth/logout', { method: 'POST' });
     } catch (error) {
-      // Not synthesising an answer the server did not give: "no sessions were
-      // revoked, because none were left" is what actually happened, and it is
-      // what a caller needs in order to say something true.
-      if (error instanceof ApiError && (error.isUnauthorized || this.isMissingWebCookie(error))) {
-        return { revokedSessions: 0, note: 'The session had already ended; there was nothing left to revoke.' };
+      if (await this.holdsNoLiveCredential(error)) {
+        return {
+          revokedSessions: 0,
+          // About *this* client, not about the account. `/auth/logout` revokes
+          // every session, but a dead credential here proves only that this one
+          // is gone — a web cookie that simply expired leaves a phone signed in
+          // on a younger token, and "there was nothing left to revoke" would be
+          // false of the account while true of this device.
+          note: 'This device is signed out. No other sessions could be revoked, because this '
+            + "device's own credential had already been rejected.",
+        };
       }
       return null;
     } finally {
