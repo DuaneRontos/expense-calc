@@ -112,15 +112,18 @@ export function AppShell({ children }: { children: ReactNode }) {
           {showsDrawer ? (
             <Pressable
               accessibilityRole="button"
-              // `expanded` reaches each platform by a different prop, so both
-              // are here. `accessibilityState` is what TalkBack reads and what
-              // sets the iOS state — the weakest of them, which VoiceOver may
-              // drop — while web needs the flat `aria-expanded`, because RNW
-              // never forwards `accessibilityState` to the DOM (issue #69).
-              // The label carries the action regardless, and that redundancy
-              // is the fix rather than a smell.
+              // The flat prop alone, for the reason PeriodPicker spells out:
+              // it is the only form that reaches all three targets, since RNW
+              // forwards no `accessibilityState` and RN merges `aria-expanded`
+              // back into it on native. Pairing it with a same-key
+              // `accessibilityState` would be dead weight — unlike the radios,
+              // which pass a *different* key there because ARIA has no form
+              // for the iOS trait on their role.
+              //
+              // The label carries the action too, because `expanded` is the
+              // weakest of the iOS states and VoiceOver may drop it. That
+              // redundancy is the fix, not a smell.
               aria-expanded={drawerOpen}
-              accessibilityState={{ expanded: drawerOpen }}
               accessibilityLabel={drawerOpen ? 'Hide filters' : 'Show filters'}
               onPress={() => setDrawerOpen((open) => !open)}
               style={{
