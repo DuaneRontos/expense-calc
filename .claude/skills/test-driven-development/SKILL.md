@@ -62,12 +62,19 @@ could not run it.
 
 ## Frontend render tests work — write them
 
-`@testing-library/react-native` 14 is a current dependency and renders
-properly. The suites that mount are the `.test.tsx` files under
-`frontend/src/**/__tests__/`; `renderHook` from the same library is how the
-hook tests are written. Don't take a count from this file — `git grep -l
-"@testing-library/react-native" -- frontend/src` is current and a roster is
-stale the next time someone adds a test.
+`@testing-library/react-native` 14 is installed with its required
+`test-renderer` peer, so component renders work and `renderHook` drives hook
+tests. That claim is anchored to `package.json` — the file that would have to
+change for it to stop being true.
+
+There is deliberately no list here of which suites currently mount. You need to
+know *whether you may render*, which is the line above; which files happen to
+render today is a different question, and one that changes on every commit.
+**Claims about capability survive; claims about inventory don't, in whatever
+syntax you write them.** Three earlier drafts of this paragraph got that wrong
+— a list of three filenames, then an extension rule, then a `git grep` — and
+the extension rule was false the day it was written, because a hook test is
+`.tsx` when its `renderHook` wrapper needs JSX and never mounts anything.
 
 What fixed it (#64) was installing `test-renderer`, which RNTL 14 **requires as
 a peer dependency** — not a workaround, and not something to remove later. The

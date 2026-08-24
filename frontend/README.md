@@ -24,10 +24,10 @@ npm test           # jest
 
 CI runs the last three on Node 22.
 
-**Component-render tests work.** The `.test.tsx` suites under
-`src/**/__tests__/` mount real components; `renderHook` drives the hook tests.
-`git grep -l "@testing-library/react-native" -- src` lists the current set —
-naming them here would go stale on the next one added.
+**Component-render tests work**, and `renderHook` drives hook tests. The
+dependency pair in `package.json` is what makes that true, so that is where to
+check it — this file deliberately keeps no list of which suites mount, because
+every version of such a list has gone stale.
 
 This file used to describe empty renders as a known gap. The cause was that
 `@testing-library/react-native` 14 **requires `test-renderer` as a peer

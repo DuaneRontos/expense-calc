@@ -38,11 +38,13 @@ quietly switching to `-DskipTests`, which would skip the very tests you wrote.
 **Frontend (`frontend/src/**`):** tests are colocated in `__tests__/` next to
 the module, `xxx.test.ts` or `xxx.test.tsx`, Jest. **Component renders work** —
 `@testing-library/react-native` 14 is a current dependency paired with its
-required peer `test-renderer`. The `.test.tsx` files under
-`frontend/src/**/__tests__/` mount real components; `renderHook` from the same
-library drives the hook tests. Run `git grep -l
-"@testing-library/react-native" -- frontend/src` for the current set rather
-than trusting a list written here, which goes stale on the next test added.
+required peer `test-renderer`, so you may render components and drive hooks
+with `renderHook`. Check `frontend/package.json` if you need to confirm that —
+it is what would have to change for it to stop being true.
+
+Which suites currently mount is deliberately not listed, here or in the skill.
+Read the neighbouring tests in the module you were given; that tells you the
+local convention without depending on a census that goes stale.
 
 Render when the behavior is about **announced state, accessibility, or what a
 user can perceive** — a chip that announces identically whether or not it is
