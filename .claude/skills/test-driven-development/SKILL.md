@@ -31,17 +31,19 @@ The test staying green is the licence to refactor; that is what it is for.
 
 ## Vacuous green is the failure mode here
 
-This codebase has two well-documented ways for a test to pass while testing
-nothing, and both look exactly like success:
+**A test that passes the first time you run it has told you nothing.** Break
+the code deliberately and watch it go red before you believe it. Two ways this
+codebase produces a green that means nothing:
 
-**Frontend component renders mount nothing.** `@testing-library/react-native`
-was installed and removed because `render()` returns an empty result under the
-`jest-expo` preset (see `frontend/README.md`). A component test written today
-passes without asserting anything real. **So don't write one** — test the logic
-underneath the component: the geometry function, the formatter, the query
-serializer, the hook. Every frontend test in this repo is pure logic for this
-reason. If the behavior you were asked to cover genuinely needs a mounted
-component, say so rather than producing a green that means nothing.
+**An assertion too weak to fail.** This is the common one, and there is a real
+instance in the repo. The period chips once carried `selected` alone, so on web
+they announced identically whether or not they were active — and
+`toBeSelected()` passed throughout the bug. `PeriodPicker.test.tsx` now asserts
+`toBeChecked()`, which reads `aria-checked ?? accessibilityState.checked`, the
+pair the platforms actually read. Same component, same render, same green — one
+assertion could fail and the other could not. When you write the red step, ask
+what would have to break for this line to fail; if the answer is "nothing
+reachable", the test is decoration.
 
 **Backend Testcontainers tests need a running Docker daemon.** Without one they
 fail in the test phase, which reads as red but is not *your* red. Never reach
@@ -49,9 +51,26 @@ for `-DskipTests` to get past it — that skips the test you just wrote, which i
 the one thing you actually needed to run. Start Docker, or say plainly that you
 could not run it.
 
-The general rule both cases point at: **a test that passes the first time you
-run it has told you nothing.** Break the code deliberately and watch it go red
-before you believe it.
+## Frontend render tests work — write them
+
+`@testing-library/react-native` 14 is a current dependency and renders properly
+under `jest-expo` via the `test-renderer` shim. `PeriodPicker`, `overview`, and
+`chipState` mount real components; `useReports`, `useManilaToday`, and
+`useDelayedFlag` use `renderHook` from the same library.
+
+This was a documented gap until #64 added the shim, and `frontend/README.md`
+went on describing it as unsolved long after it was fixed. If you find a note
+anywhere claiming renders mount nothing, it predates #64 — check
+`package.json` and the test files before believing it.
+
+Rendering is the right level for anything about **announced state,
+accessibility, or what a user can actually perceive** — the chip bug above was
+invisible to a pure-logic test because the logic was correct and the announced
+state was not. Keep testing pure logic where the behavior is pure logic:
+geometry, formatting, query serialization, period math.
+
+RNTL's `getBy*` queries throw when nothing matches, which is a useful property
+— a render test that passes has genuinely mounted something.
 
 ## Running just what you wrote
 
@@ -83,7 +102,12 @@ embarrass you in production. In this domain those are predictable:
   half-open `[from, to)` and resolve against `Asia/Manila` — the bugs live on
   the first and last day, and at the hours where UTC and Manila disagree about
   which month it is.
-- **The empty case.** An empty period is a 200 with no buckets, not a 404.
+- **The empty cases — both of them, because they differ.** A period with no
+  expenses at all is a 200 with `buckets: []`, not a 404. But an empty *slice
+  inside* a non-empty `over-time` period is a bucket with total `"0.00"` that
+  is still present — omitting it lets a line chart draw two points three months
+  apart as adjacent. Pinning "empty means absent" for `over-time` encodes the
+  opposite of the contract.
 - **The unmatched case**, in classification. `UNCLASSIFIED` is a real state
   that must be reached rather than fallen through to.
 
@@ -100,16 +124,25 @@ without reading the body.
 
 ## When a convention can be machine-checked, make it a build failure
 
-`NoAbsoluteValueInMoneyPathsTest` scans the source for `abs()` and for
-`double`/`float` in money paths and fails the build on a hit;
+`NoAbsoluteValueInMoneyPathsTest` fails the build on `abs()` or on
+`double`/`float`, scanning the whole backend main tree — `.java`, plus `.sql`
+and `.yml` under `src/main/resources`, because reporting aggregates in SQL and
+a Java-only scan would miss the path the arithmetic actually takes.
 `SignedAmountAggregationTest` pins the arithmetic those would break. This is
 TDD pointed at a convention rather than a feature, and it is the right move
 whenever a rule has a spelling a machine can find — a convention in prose gets
 violated by the next contributor, a convention with a red test does not.
 
-Be honest about scope when you write one. That test's own comment says it
-catches spellings, not intent: "filters out negatives" has no single spelling
-and it will not catch that.
+**Assert that your guard found something to scan.** That class's third test
+checks it saw at least 14 files, at least 200 code lines, and at least one
+`.sql`. Without it the guard silently becomes a no-op the day a path changes:
+a scan over zero files reports clean forever. *A guard that cannot fail is
+worse than none, because it reads as coverage* — the same principle as the
+failing-first rule, applied to the test itself.
+
+Be honest about scope. That test's own comment says it catches spellings, not
+intent: "filters out negatives" has no single spelling and it will not catch
+that.
 
 ## Delegation
 
@@ -124,9 +157,11 @@ prove the cases you thought of; the auditor finds the money paths you didn't.
 
 ## When reviewing test-driven work
 
-- Every new test was run and observed to fail before the code existed. If it
-  cannot be shown to have failed, it has not been established that it can.
-- No frontend test mounts a component — that green is vacuous here.
+- The PR records the failure the new test produced before the fix — the message
+  or the assertion diff. "Ran it and it failed" leaves no trace a reviewer can
+  check; the actual output does.
+- Every assertion could fail against some reachable state. An assertion that
+  holds whether or not the behavior works is the vacuous green above.
 - No `-DskipTests` anywhere near a change that added backend tests.
 - Money tests include a negative amount; period tests include a boundary date.
 - Amounts are compared with `compareTo()`, not `equals()`.
