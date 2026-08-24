@@ -112,11 +112,18 @@ export function AppShell({ children }: { children: ReactNode }) {
           {showsDrawer ? (
             <Pressable
               accessibilityRole="button"
-              // `expanded` is honoured by TalkBack and by RNW's `aria-expanded`,
-              // but it is the weakest of the iOS states and VoiceOver may drop
-              // it — so the label carries the action too. The redundancy is the
-              // fix, not a smell.
-              accessibilityState={{ expanded: drawerOpen }}
+              // The flat prop alone, for the reason PeriodPicker spells out:
+              // it is the only form that reaches all three targets, since RNW
+              // forwards no `accessibilityState` and RN merges `aria-expanded`
+              // back into it on native. Pairing it with a same-key
+              // `accessibilityState` would be dead weight — unlike the radios,
+              // which pass a *different* key there because ARIA has no form
+              // for the iOS trait on their role.
+              //
+              // The label carries the action too, because `expanded` is the
+              // weakest of the iOS states and VoiceOver may drop it. That
+              // redundancy is the fix, not a smell.
+              aria-expanded={drawerOpen}
               accessibilityLabel={drawerOpen ? 'Hide filters' : 'Show filters'}
               onPress={() => setDrawerOpen((open) => !open)}
               style={{
@@ -225,6 +232,13 @@ function NavButton({ item, align = 'center' }: { item: NavItem; align?: 'center'
   return (
     <Pressable
       accessibilityRole="button"
+      // The active destination is spelled out, the way SortControl spells out
+      // its sort state. ARIA has nothing for this on `role="button"` —
+      // `selected` and `checked` are both unsupported there — and RNW forwards
+      // no `accessibilityState` anyway (issue #69), so on web the label is the
+      // only thing that can carry it. Leaving it to the accent colour and the
+      // bolder weight would make colour the sole cue, which spec §10 rejects.
+      accessibilityLabel={item.active ? `${item.label}, current screen` : item.label}
       accessibilityState={{ selected: item.active }}
       onPress={item.onPress}
       style={{
