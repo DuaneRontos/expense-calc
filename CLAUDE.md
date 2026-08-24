@@ -72,14 +72,26 @@ starting an issue; most issue bodies name the section that governs them.
   earlier rounds' fixes — were taking quota from whoever was at a terminal.
   Whether a push deserves another round is a judgement only the author has.
 
-  It can run `cd backend && ./mvnw -B -q verify`, and is asked to reproduce a
-  bug before reporting it and to run a fix before suggesting one — a reviewer
-  that could only read the code got its diagnoses right but its remedies wrong.
-  Bash is otherwise off; the allowlist covers the build wrapper and git's
-  read-only verbs (`status`, `log`, `diff`, `show`, `branch`, `ls-files`,
-  `rev-parse`, `blame`) and nothing that moves a ref. Note Claude Code
-  separately refuses `cd <dir> && git ...` because that can run hooks from the
-  target directory — the allowlist does not override that.
+  It can run `cd backend && ./mvnw -B -q verify` and the three frontend checks,
+  and is asked to reproduce a bug before reporting it and to run a fix before
+  suggesting one — a reviewer that could only read the code got its diagnoses
+  right but its remedies wrong. The workflow installs `frontend/node_modules`
+  before the agent starts, so the reviewer can read the installed
+  `react-native` and `react-native-web` sources instead of recalling how a
+  prop behaves. That was the whole failure mode on the a11y series (#71, #83):
+  correct symptom, unusable fix, each one settled in seconds by opening the
+  package.
+
+  Bash is otherwise off; the allowlist covers the two build tools, `npm ci`,
+  `npm run`, `npm test`, and git's read-only verbs (`status`, `log`, `diff`,
+  `show`, `branch`, `ls-files`, `rev-parse`, `blame`) — nothing that moves a
+  ref, and **not `npx`**, which fetches and executes from the network. Note
+  Claude Code separately refuses `cd <dir> && git ...` because that can run
+  hooks from the target directory — the allowlist does not override that.
+
+  **Node is pinned to 22 to match `ci.yml`**, for the same reason the JDK is
+  pinned to 21: a reviewer testing on a different runtime than the merge gate
+  reports failures nobody else sees. The two files have to move together.
 
 Both authenticate with the `CLAUDE_CODE_OAUTH_TOKEN` repository secret, which
 draws on a Claude Pro/Max subscription. Regenerate it with `claude setup-token`

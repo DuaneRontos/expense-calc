@@ -75,6 +75,28 @@ jobs:
           java-version: '21'
           cache: maven
 
+      # Same reasoning as the JDK above, and the same failure if it drifts: a
+      # reviewer running the frontend checks on a different Node than ci.yml
+      # would report failures the merge gate never sees, or miss ones it does.
+      - if: steps.pr_state.outputs.state == 'OPEN'
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Installed here rather than left to the agent. Reviews kept concluding
+      # "could not verify — node_modules is absent", and reasoning about
+      # react-native internals instead of reading them produced remedies that
+      # were confidently wrong: `accessibilityState` fixes that are inert under
+      # react-native-web (#71), an `aria-current` that is not in RN's types
+      # (#83), a claim that RNTL's `render` is synchronous when it is `async`.
+      # Every one of those was settled in seconds by opening the installed
+      # package. Cached, so it costs about ten seconds.
+      - if: steps.pr_state.outputs.state == 'OPEN'
+        working-directory: frontend
+        run: npm ci
+
       - if: steps.pr_state.outputs.state == 'OPEN'
         uses: anthropics/claude-code-action@v1
         with:
@@ -114,6 +136,18 @@ jobs:
             INFO you would read back into context for nothing. Failures still
             print. Drop it if you need the full log to diagnose something.
 
+            And the frontend checks, which are the three ci.yml runs:
+
+                cd frontend && npm run lint
+                cd frontend && npm run typecheck
+                cd frontend && npm test
+
+            `npm test -- <path>` runs one suite. `node_modules` is already
+            installed, so you can also read the installed sources — when a
+            claim depends on how react-native or react-native-web actually
+            behaves, open the package under `frontend/node_modules` and check,
+            rather than reasoning from memory about what the prop does.
+
             Tests need Docker for the Testcontainers suites; the runner has it.
             Reproduce a bug before reporting it, and run the fix you are about
             to suggest before suggesting it. Say which findings you executed and
@@ -122,7 +156,17 @@ jobs:
           # Bash is off by default, so the reviewer could read code but never
           # run it — and unexecuted remedies have been wrong often enough to
           # cost more than the runtime saves. Scoped rather than opened
-          # generally: the build wrapper, and git's read-only verbs.
+          # generally: the two build tools, and git's read-only verbs.
+          #
+          # npm was added after the reverse of the intended failure kept
+          # happening on frontend PRs. The reviewer diagnosed symptoms
+          # correctly and then prescribed fixes that did not work, because it
+          # was reasoning about react-native and react-native-web from memory
+          # with the packages sitting uninstalled a directory away. Its own
+          # reviews said so each time — "could not verify". `npx` is
+          # deliberately not here: it fetches and executes packages from the
+          # network, which is a different thing entirely from running this
+          # repo's own scripts. `npm test -- <path>` covers targeted runs.
           #
           # The git verbs were added because the reviewer kept reaching for them
           # and being denied, which cost turns and ended runs on a non-zero exit
@@ -149,4 +193,4 @@ jobs:
           # and the `@claude` re-review are never different models.
           claude_args: >-
             --model claude-opus-5
-            --allowedTools "Bash(cd:*),Bash(./mvnw:*),Bash(backend/mvnw:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git branch:*),Bash(git ls-files:*),Bash(git rev-parse:*),Bash(git blame:*)"
+            --allowedTools "Bash(cd:*),Bash(./mvnw:*),Bash(backend/mvnw:*),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git branch:*),Bash(git ls-files:*),Bash(git rev-parse:*),Bash(git blame:*)"
