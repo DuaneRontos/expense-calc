@@ -112,10 +112,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           {showsDrawer ? (
             <Pressable
               accessibilityRole="button"
-              // `expanded` is honoured by TalkBack and by RNW's `aria-expanded`,
-              // but it is the weakest of the iOS states and VoiceOver may drop
-              // it — so the label carries the action too. The redundancy is the
-              // fix, not a smell.
+              // `expanded` reaches each platform by a different prop, so both
+              // are here. `accessibilityState` is what TalkBack reads and what
+              // sets the iOS state — the weakest of them, which VoiceOver may
+              // drop — while web needs the flat `aria-expanded`, because RNW
+              // never forwards `accessibilityState` to the DOM (issue #69).
+              // The label carries the action regardless, and that redundancy
+              // is the fix rather than a smell.
+              aria-expanded={drawerOpen}
               accessibilityState={{ expanded: drawerOpen }}
               accessibilityLabel={drawerOpen ? 'Hide filters' : 'Show filters'}
               onPress={() => setDrawerOpen((open) => !open)}
@@ -225,6 +229,13 @@ function NavButton({ item, align = 'center' }: { item: NavItem; align?: 'center'
   return (
     <Pressable
       accessibilityRole="button"
+      // The active destination is spelled out, the way SortControl spells out
+      // its sort state. ARIA has nothing for this on `role="button"` —
+      // `selected` and `checked` are both unsupported there — and RNW forwards
+      // no `accessibilityState` anyway (issue #69), so on web the label is the
+      // only thing that can carry it. Leaving it to the accent colour and the
+      // bolder weight would make colour the sole cue, which spec §10 rejects.
+      accessibilityLabel={item.active ? `${item.label}, current screen` : item.label}
       accessibilityState={{ selected: item.active }}
       onPress={item.onPress}
       style={{
