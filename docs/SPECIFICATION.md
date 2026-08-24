@@ -314,7 +314,7 @@ precision problem the backend exists to avoid.
 | `GET` | `/categories` | Taxonomy with display labels — the client never hardcodes it |
 | `GET` | `/reports/by-category` | §7 |
 | `GET` | `/reports/over-time` | §7, takes `bucket=day\|week\|month` |
-| `GET` | `/reports/compare` | §7, takes two periods |
+| `GET` | `/reports/compare` | §7, takes one period; the prior period is derived |
 
 **Errors** are RFC 7807 `application/problem+json` with a machine-readable
 `type`, a human `detail`, and field-level violations for 400s. The client
