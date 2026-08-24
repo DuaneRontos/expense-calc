@@ -241,6 +241,12 @@ class WebRefreshCookieTest {
 
 		assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
 		assertThat(rejected.getHeaders().getFirst(HttpHeaders.SET_COOKIE)).contains("Max-Age=0");
+		// Pinned because the web client keys a *completed sign-out* off this
+		// exact URI — a stronger claim than the missing-token one. Rename it and
+		// every sign-out after a remote revocation silently reverts to "we could
+		// not sign you out", with both suites green.
+		assertThat(rejected.getBody()).containsEntry("type",
+				"https://expense-calc.invalid/problems/unauthenticated");
 	}
 
 	@Test

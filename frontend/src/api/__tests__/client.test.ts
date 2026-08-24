@@ -574,6 +574,10 @@ describe('auth', () => {
     // No cookie exists on device, so the only credential is the stored token —
     // an empty store means there was never anything this client could revoke,
     // and a bodyless 401 from the security filter is the expected answer.
+    //
+    // A regression guard, not evidence: the earlier bare-status branch answered
+    // this the same way, so reverting cannot make it fail. Labelled so it is
+    // not mistaken for proof of the device narrowing.
     const fetchImpl = jest
       .fn()
       .mockResolvedValue(new Response('', { status: 401 }));
@@ -583,6 +587,18 @@ describe('auth', () => {
 
     expect(outcome).not.toBeNull();
     expect(outcome!.revokedSessions).toBe(0);
+  });
+
+  it('does not read a server error on a device as a completed sign-out', async () => {
+    // The evidence for the device narrowing. A phone with no secure lock screen
+    // signs in with `persisted: false`, so the store is empty — and a 500 on
+    // logout has nothing to do with its credential being gone. Reporting a
+    // completed sign-out there tells the user every other session was already
+    // dealt with while the server never processed the request.
+    const fetchImpl = jest.fn().mockResolvedValue(problem(500, { title: 'Internal Server Error' }));
+    const client = clientWith(fetchImpl, memoryStore(null));
+
+    expect(await client.logout()).toBeNull();
   });
 
   it('does not attach a token to login itself', async () => {

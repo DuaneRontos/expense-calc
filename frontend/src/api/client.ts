@@ -320,16 +320,6 @@ export class ExpenseCalcClient {
   }
 
   /**
-   * `POST /auth/refresh` — exchanges the stored refresh token for a new pair,
-   * collapsing concurrent callers into one exchange.
-   *
-   * **This is the public entry point, and the guard is the reason.** The
-   * unguarded exchange used to be the public method while the guard was
-   * private, so a screen calling `api.refresh()` directly — a plausible thing
-   * to reach for — raced any in-flight refresh and produced exactly the
-   * rotation collision the guard exists to prevent.
-   */
-  /**
    * Whether a refresh is worth attempting at all.
    *
    * **On web this cannot be answered from the client**, and asking the session
@@ -357,6 +347,16 @@ export class ExpenseCalcClient {
     return Promise.resolve(!this.signedOut);
   }
 
+  /**
+   * `POST /auth/refresh` — exchanges the stored refresh token for a new pair,
+   * collapsing concurrent callers into one exchange.
+   *
+   * **This is the public entry point, and the guard is the reason.** The
+   * unguarded exchange used to be the public method while the guard was
+   * private, so a screen calling `api.refresh()` directly — a plausible thing
+   * to reach for — raced any in-flight refresh and produced exactly the
+   * rotation collision the guard exists to prevent.
+   */
   refresh(): Promise<void> {
     this.refreshing ??= this.exchangeRefreshToken()
       .catch(async (error: unknown) => {
@@ -404,21 +404,6 @@ export class ExpenseCalcClient {
   }
 
   /**
-   * The refresh exchange itself. Always reached through {@link refresh}.
-   *
-   * The old token dies the moment this succeeds, so a client that loses the
-   * response has to sign in again. That is the correct trade: a refresh token
-   * that survives being used never expires in practice once captured.
-   */
-  /**
-   * A web refresh the browser sent no cookie with: signed out, not broken.
-   *
-   * Matched on the server's own problem type rather than on the bare status. A
-   * 400 from a proxy, or from the auth validation handler if the refresh body
-   * ever gains a constraint, would otherwise drop the user at a sign-in screen
-   * for a reason that has nothing to do with their session.
-   */
-  /**
    * Whether this failure proves the client has no credential left that could
    * still be live — as opposed to merely not having reached the server.
    *
@@ -435,15 +420,31 @@ export class ExpenseCalcClient {
       return false;
     }
 
-    // Device: there is no cookie, so the only credential is the stored token.
-    // An empty store means there was never anything this client could revoke.
+    // Device: there is no cookie, so the only credential is the stored token,
+    // and an empty store means there was never anything this client could
+    // revoke.
+    //
+    // **The status check stays.** Dropping it traded claim-by-status for
+    // claim-by-nothing: a 500 on `/auth/logout` from a phone whose `login()`
+    // returned `persisted: false` has an empty store too, and would have been
+    // reported as a completed sign-out while every other session stayed live
+    // and the server never processed the request. An empty store is evidence
+    // about *this* client; the 401 is what says the server rejected it.
     if (this.clientType !== 'web') {
-      return !(await this.session.isResumable());
+      return error.isUnauthorized && !(await this.session.isResumable());
     }
 
     return error.problem.type === UNAUTHENTICATED_PROBLEM || this.isMissingWebCookie(error);
   }
 
+  /**
+   * A web refresh the browser sent no cookie with: signed out, not broken.
+   *
+   * Matched on the server's own problem type rather than on the bare status. A
+   * 400 from a proxy, or from the auth validation handler if the refresh body
+   * ever gains a constraint, would otherwise drop the user at a sign-in screen
+   * for a reason that has nothing to do with their session.
+   */
   private isMissingWebCookie(error: ApiError): boolean {
     return (
       this.clientType === 'web' &&
@@ -452,6 +453,13 @@ export class ExpenseCalcClient {
     );
   }
 
+  /**
+   * The refresh exchange itself. Always reached through {@link refresh}.
+   *
+   * The old token dies the moment this succeeds, so a client that loses the
+   * response has to sign in again. That is the correct trade: a refresh token
+   * that survives being used never expires in practice once captured.
+   */
   private async exchangeRefreshToken(): Promise<void> {
     const viaCookie = this.clientType === 'web';
     const refreshToken = viaCookie ? null : await this.session.refreshToken();
@@ -514,8 +522,8 @@ export class ExpenseCalcClient {
    *
    * **A `revokedSessions: 0` may be this client's own answer rather than the
    * server's**, and a caller cannot tell the two apart. It is used only where
-   * the credential was already rejected, so zero is accurate — but it describes
-   * this device, not the account.
+   * this client's credential was already gone — rejected, or never sent — so
+   * zero is accurate, but it describes this device rather than the account.
    *
    * **A credential the server has already rejected is a sign-out, not a
    * failure.** Signing out on another device revokes every refresh token, so
@@ -537,7 +545,7 @@ export class ExpenseCalcClient {
           // on a younger token, and "there was nothing left to revoke" would be
           // false of the account while true of this device.
           note: 'This device is signed out. No other sessions could be revoked, because this '
-            + "device's own credential had already been rejected.",
+            + "device's own credential was already gone.",
         };
       }
       return null;
