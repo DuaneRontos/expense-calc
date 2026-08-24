@@ -193,7 +193,7 @@ class WebRefreshCookieTest {
 		// renaming it would turn every web sign-out into a request error with
 		// both suites still green.
 		assertThat(response.getBody()).containsEntry("type",
-				"https://expense-calc.invalid/problems/bad-request");
+				"https://expense-calc.invalid/problems/no-refresh-token");
 	}
 
 	@Test

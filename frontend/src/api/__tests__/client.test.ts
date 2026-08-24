@@ -303,7 +303,7 @@ describe('auth', () => {
           // The type is what the client matches on, so the mock has to carry
           // it. Without it this test passed against every version of the code,
           // including one with the feature deleted.
-          type: 'https://expense-calc.invalid/problems/bad-request',
+          type: 'https://expense-calc.invalid/problems/no-refresh-token',
           title: 'No refresh token',
         }),
       );
@@ -475,6 +475,59 @@ describe('auth', () => {
 
     await expect(inFlight).rejects.toBeInstanceOf(ApiError);
     expect(session.currentAccessToken()).toBeNull();
+  });
+
+  it('reports an already-revoked session as signed out, not as unconfirmed', async () => {
+    // Signing out on another device revokes every refresh token, so this
+    // logout refreshes first, gets a 401, and the server's response clears the
+    // cookie on the way past. Reporting that as unconfirmed would tell the user
+    // to retry a sign-out that has already completely happened.
+    const webStore: RefreshTokenStore = {
+      read: () => Promise.resolve(null),
+      write: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const fetchImpl = jest.fn().mockImplementation((url: string) => {
+      if (url.endsWith('/auth/refresh')) {
+        return Promise.resolve(problem(401, { title: 'Session expired' }));
+      }
+      return Promise.resolve(json(WEB_TOKENS));
+    });
+    const client = new ExpenseCalcClient({
+      baseUrl: 'http://api.test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      session: new Session(webStore),
+      clientType: 'web',
+    });
+
+    const outcome = await client.logout();
+
+    expect(outcome).not.toBeNull();
+    expect(outcome!.revokedSessions).toBe(0);
+  });
+
+  it('still reports an unreachable server as unconfirmed', async () => {
+    // The case the null is reserved for: nothing was confirmed, and on web the
+    // cookie may still be live.
+    const webStore: RefreshTokenStore = {
+      read: () => Promise.resolve(null),
+      write: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(WEB_TOKENS))
+      .mockRejectedValue(new TypeError('network down'));
+    const client = new ExpenseCalcClient({
+      baseUrl: 'http://api.test',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      session: new Session(webStore),
+      clientType: 'web',
+    });
+
+    await client.login({ username: 'duane', password: 'hunter2' });
+
+    expect(await client.logout()).toBeNull();
   });
 
   it('does not attach a token to login itself', async () => {

@@ -33,7 +33,16 @@ public class AuthProblemHandler {
 
 	private static final URI RATE_LIMITED = URI.create("https://expense-calc.invalid/problems/too-many-attempts");
 
-	private static final URI BAD_REFRESH_REQUEST = URI.create("https://expense-calc.invalid/problems/bad-request");
+	/**
+	 * Named for its meaning, not its status.
+	 *
+	 * <p>A generic {@code /problems/bad-request} is what the next auth handler
+	 * needing a 400 would reach for — and the web client reads this exact URI as
+	 * "signed out", so that reuse would sign a user out over an unrelated
+	 * validation failure with both test suites still green. Distinct from
+	 * {@link #INVALID_REQUEST} for the same reason.
+	 */
+	private static final URI NO_REFRESH_TOKEN = URI.create("https://expense-calc.invalid/problems/no-refresh-token");
 
 	private static final URI CSRF_REQUIRED = URI.create("https://expense-calc.invalid/problems/csrf-required");
 
@@ -109,7 +118,7 @@ public class AuthProblemHandler {
 	@ExceptionHandler(MissingRefreshTokenException.class)
 	public ProblemDetail handleMissingRefreshToken(MissingRefreshTokenException problem) {
 		ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, problem.getMessage());
-		detail.setType(BAD_REFRESH_REQUEST);
+		detail.setType(NO_REFRESH_TOKEN);
 		detail.setTitle("No refresh token");
 		return detail;
 	}

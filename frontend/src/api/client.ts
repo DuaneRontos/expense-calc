@@ -151,8 +151,15 @@ export const CLIENT_TYPE: ClientType = Platform.OS === 'web' ? 'web' : 'device';
  */
 const REFRESH_SOURCE_HEADER = 'X-Refresh-Source';
 
-/** The server's problem type for "no refresh token arrived" (issue #57). */
-const MISSING_REFRESH_TOKEN_PROBLEM = 'https://expense-calc.invalid/problems/bad-request';
+/**
+ * The server's problem type for "no refresh token arrived" (issue #57).
+ *
+ * Named for its meaning rather than its status. A generic `/problems/bad-request`
+ * is the URI the next auth handler needing a 400 would reach for — and the
+ * client reads this one as "signed out", so that reuse would sign a user out
+ * over an unrelated validation failure, with both suites still green.
+ */
+const MISSING_REFRESH_TOKEN_PROBLEM = 'https://expense-calc.invalid/problems/no-refresh-token';
 
 export class ExpenseCalcClient {
   private readonly baseUrl: string;
@@ -456,24 +463,37 @@ export class ExpenseCalcClient {
    * on a flaky connection should not be left holding a usable token because the
    * request timed out.
    *
-   * **A `null` return on web means the sign-out did not reach the server, and
-   * the refresh cookie is still live.** Nothing client-side can revoke it — the
-   * cookie is `httpOnly` and the token stays valid server-side for the rest of
-   * its 30 days. This client stops using it, but a *new* one has no way to know
-   * that: a page reload constructs a fresh instance with `signedOut` false, and
-   * the still-valid cookie signs the user back in.
+   * **`null` means the sign-out was not confirmed — and on web that matters**,
+   * because the refresh cookie may still be live. Nothing client-side can
+   * revoke it: the cookie is `httpOnly` and the token stays valid server-side
+   * for the rest of its 30 days. This client stops using it, but a *new* one
+   * has no way to know that — a page reload builds a fresh instance with
+   * `signedOut` false, and the still-valid cookie signs the user back in.
    *
    * So a caller must surface a `null` rather than showing a plain signed-out
-   * screen — "we could not sign you out on this device, try again" is the true
-   * statement. A persisted marker would be worse than none: it would hide a live
-   * credential behind a local screen and call that signed out. #14's sign-in
-   * screen is where this gets consumed; retrying the logout on next start is the
+   * screen: "we could not sign you out on this device, try again" is the true
+   * statement. A persisted marker would be worse than none — it would hide a
+   * live credential behind a local screen and call that signed out. #14's
+   * sign-in screen is where this gets consumed; retrying on next start is the
    * fuller answer if it turns out to matter.
+   *
+   * **A credential the server has already rejected is a sign-out, not a
+   * failure.** Signing out on another device revokes every refresh token, so
+   * the next `logout()` here refreshes first, gets a 401, and the server's own
+   * response clears the cookie on the way past. Reporting that as unconfirmed
+   * would tell a user to retry a sign-out that has already fully happened —
+   * the exact opposite of the true statement above.
    */
   async logout(): Promise<LogoutResult | null> {
     try {
       return await this.request<LogoutResult>('/auth/logout', { method: 'POST' });
-    } catch {
+    } catch (error) {
+      // Not synthesising an answer the server did not give: "no sessions were
+      // revoked, because none were left" is what actually happened, and it is
+      // what a caller needs in order to say something true.
+      if (error instanceof ApiError && (error.isUnauthorized || this.isMissingWebCookie(error))) {
+        return { revokedSessions: 0, note: 'The session had already ended; there was nothing left to revoke.' };
+      }
       return null;
     } finally {
       // Set even when the call failed, which is the point: local state is
