@@ -84,6 +84,21 @@ app:
       # memory-exhaustion vector reachable by the attacker it exists to stop.
       max-tracked-clients: ${APP_AUTH_RATE_LIMIT_MAX_TRACKED_CLIENTS:10000}
 
+    # issue #57 — spec §9.2 puts the web client's refresh token in an
+    # httpOnly cookie, which only the server can set: such a cookie is
+    # unwritable from JavaScript by definition, which is the whole point.
+    # Device clients still receive theirs in the body, for SecureStore.
+    refresh-cookie:
+      name: ${APP_AUTH_REFRESH_COOKIE_NAME:refresh_token}
+      # Scoped, so the credential is not attached to every expense read. Naming
+      # the cookie __Host-refresh_token instead would block a subdomain from
+      # overwriting it but force Path=/, and this application has no subdomains.
+      path: ${APP_AUTH_REFRESH_COOKIE_PATH:/api/v1/auth}
+      # Browsers treat http://localhost as a secure context, so local dev needs
+      # no exception. Turn this off only to serve the web client from a plain
+      # HTTP LAN address — and note a __Host- name refuses to start without it.
+      secure: ${APP_AUTH_REFRESH_COOKIE_SECURE:true}
+
   # issue #58 — which browser origins may call this API. Empty by default, so
   # an unconfigured deployment is reachable only from its own origin; a browser
   # refuses a cross-origin response the server has not named. Set this wherever
@@ -91,9 +106,16 @@ app:
   # Only browsers are affected — iOS and Android send no Origin header.
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:}
-    # False until #57 moves the refresh token into a cookie. That change also
-    # has to restore CSRF protection, and it forbids a wildcard origin.
-    allow-credentials: ${APP_CORS_ALLOW_CREDENTIALS:false}
+    # True since #57: the web client's refresh token is an httpOnly cookie, and
+    # a browser will not send a cookie cross-origin unless the server says so.
+    # Two things move with it, both enforced rather than documented — a wildcard
+    # origin is now rejected (CorsProperties), and a cookie-authenticated
+    # refresh must carry X-Refresh-Source (RefreshCookies.CSRF_HEADER), because
+    # a cookie is attached by the browser rather than by the client.
+    #
+    # Still inert while allowed-origins is empty: no cross-origin caller is
+    # permitted at all, so there is nothing for credentials to apply to.
+    allow-credentials: ${APP_CORS_ALLOW_CREDENTIALS:true}
 
   # spec §4 / §9.6 — v1 is Philippine Peso only. Anything else is rejected at
   # the API boundary with a 400, before persistence. Consumed by #5.

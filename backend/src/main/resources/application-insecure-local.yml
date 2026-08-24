@@ -27,8 +27,20 @@ app:
   # serve here — `npm run web` is served from 8081 and the API from 8080, which
   # a browser treats as two different origins.
   #
+  # `http://127.0.0.1:8081` used to be listed too, and was removed with #57.
+  # CORS and cookies do not draw the same boundary: CORS compares *origins*,
+  # where the port matters, while SameSite compares *sites*, where it does not
+  # and the host name does. `127.0.0.1` and `localhost` are different sites, so
+  # the refresh cookie — SameSite=Strict — is simply not sent from a client
+  # served at 127.0.0.1 against an API on localhost.
+  #
+  # Left in, the failure is nasty precisely because CORS passes: sign-in returns
+  # 200 and the browser stores the cookie, then a reload silently signs the user
+  # out with nothing in any log to say why — the exact symptom #57 removed,
+  # reappearing on one of two addresses that look interchangeable.
+  #
   # Safe to publish for the same reason the credentials above are: this profile
   # cannot be deployed. SecurityStartupGuard refuses to start with it active
   # against a non-local database or a declared production deployment.
   cors:
-    allowed-origins: http://localhost:8081,http://127.0.0.1:8081
+    allowed-origins: http://localhost:8081

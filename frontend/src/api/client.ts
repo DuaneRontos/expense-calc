@@ -5,6 +5,7 @@ import { Session, type AdoptResult } from './session';
 import type {
   CategoryBreakdown,
   CategoryView,
+  ClientType,
   CreateExpenseRequest,
   ExpenseDetail,
   ExpensePage,
@@ -115,12 +116,59 @@ export interface ClientOptions {
   /** Injected in tests. Defaults to the platform `fetch`. */
   fetchImpl?: typeof fetch;
   session?: Session;
+  /**
+   * Which half of spec §9.2's storage table to follow. Defaults to
+   * {@link CLIENT_TYPE}, this build's platform.
+   *
+   * Injectable for the same reason `fetchImpl` is: jest runs the native
+   * variant of every platform-split module, so without this the web branch —
+   * the one issue #57 exists for — could be type-checked and never executed.
+   */
+  clientType?: ClientType;
 }
 
 interface RequestOptions extends RequestInit {
   /** Endpoints that must not carry a token or trigger a refresh. */
   anonymous?: boolean;
 }
+
+/**
+ * Which half of spec §9.2's storage table this build follows (issue #57).
+ *
+ * Derived once from the platform rather than passed in by a screen: it is a
+ * property of the bundle, not of the sign-in form, and a screen that got it
+ * wrong would fail silently in both directions.
+ */
+export const CLIENT_TYPE: ClientType = Platform.OS === 'web' ? 'web' : 'device';
+
+/**
+ * Sent on a refresh that authenticates with the cookie (issue #57).
+ *
+ * **The header's presence is the CSRF defence, not its value.** The browser
+ * attaches the cookie by itself, so an attacker's page can cause the request;
+ * it cannot make the browser add a header, and a cross-origin `fetch` that adds
+ * one is preflighted against the API's origin allowlist.
+ */
+const REFRESH_SOURCE_HEADER = 'X-Refresh-Source';
+
+/**
+ * The server's problem type for "no refresh token arrived" (issue #57).
+ *
+ * Named for its meaning rather than its status. A generic `/problems/bad-request`
+ * is the URI the next auth handler needing a 400 would reach for — and the
+ * client reads this one as "signed out", so that reuse would sign a user out
+ * over an unrelated validation failure, with both suites still green.
+ */
+const MISSING_REFRESH_TOKEN_PROBLEM = 'https://expense-calc.invalid/problems/no-refresh-token';
+
+/**
+ * The server's problem type for a rejected credential (spec §8).
+ *
+ * Matched rather than trusting a bare 401, because only *this API* answering
+ * with it proves the credential is dead. A 401 from a middlebox never reached
+ * the server, so nothing was revoked and the cookie is untouched.
+ */
+const UNAUTHENTICATED_PROBLEM = 'https://expense-calc.invalid/problems/unauthenticated';
 
 export class ExpenseCalcClient {
   private readonly baseUrl: string;
@@ -139,6 +187,16 @@ export class ExpenseCalcClient {
    * is signed out by their own app loading a screen.
    */
   private refreshing: Promise<void> | null = null;
+
+  private readonly clientType: ClientType;
+
+  /**
+   * Set once sign-out is requested, cleared when a session is adopted.
+   *
+   * Only meaningful on web, where the credential is a cookie this code cannot
+   * delete. See {@link canResume}.
+   */
+  private signedOut = false;
 
   constructor(options: ClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? defaultBaseUrl()).replace(/\/$/, '');
@@ -163,6 +221,7 @@ export class ExpenseCalcClient {
     // neither can jest, which injects a mock.
     this.fetchImpl = options.fetchImpl ?? ((input, init) => globalThis.fetch(input, init));
     this.session = options.session ?? new Session();
+    this.clientType = options.clientType ?? CLIENT_TYPE;
   }
 
   private async send<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -183,6 +242,11 @@ export class ExpenseCalcClient {
     const response = await this.fetchImpl(`${this.baseUrl}${API_BASE_PATH}${path}`, {
       ...init,
       headers,
+      // Without this a browser sends no cookie on a cross-origin request, so
+      // the refresh cookie the server set would never come back and the web
+      // client would be signed out by every page refresh — the exact bug #57
+      // exists to fix. Ignored by the native platforms, which have no cookies.
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -212,7 +276,7 @@ export class ExpenseCalcClient {
       return this.send<T>(path, options);
     }
 
-    if (this.session.needsRefresh() && (await this.session.isResumable())) {
+    if (this.session.needsRefresh() && (await this.canResume())) {
       try {
         await this.refresh();
       } catch (error) {
@@ -241,7 +305,7 @@ export class ExpenseCalcClient {
       if (!(error instanceof ApiError) || !error.isUnauthorized) {
         throw error;
       }
-      if (!(await this.session.isResumable())) {
+      if (!(await this.canResume())) {
         throw error;
       }
 
@@ -253,6 +317,34 @@ export class ExpenseCalcClient {
       }
       return this.send<T>(path, options);
     }
+  }
+
+  /**
+   * Whether a refresh is worth attempting at all.
+   *
+   * **On web this cannot be answered from the client**, and asking the session
+   * gets the wrong answer. `Session.isResumable()` is the truthiness of the
+   * store, and since #57 the web store is empty *by design* — the browser holds
+   * the credential in an `httpOnly` cookie no script can read. Gating on it
+   * there made both refresh paths unreachable, so a page reload still signed a
+   * web user out: the cookie sat in the browser and was never exchanged.
+   *
+   * So on web: assume yes, and let `/auth/refresh` be the thing that says
+   * otherwise. It is one cheap request, and it is the only participant that can
+   * actually see the cookie.
+   */
+  private canResume(): Promise<boolean> {
+    if (this.clientType !== 'web') {
+      return this.session.isResumable();
+    }
+
+    // **Except once sign-out has been asked for.** `logout()` clears local state
+    // even when the call fails, and on web `store.clear()` cannot touch the
+    // cookie — only the server can. Without this flag a failed sign-out shows
+    // the user a signed-out screen and then silently signs them back in on the
+    // next request, because the cookie is still live and this method would
+    // otherwise still say "try".
+    return Promise.resolve(!this.signedOut);
   }
 
   /**
@@ -271,7 +363,12 @@ export class ExpenseCalcClient {
         // A rejected refresh token is not recoverable: it has either expired or
         // been rotated away. Clearing here means the next request presents no
         // credential and gets a clean 401 rather than replaying a dead token.
-        if (error instanceof ApiError && error.isUnauthorized) {
+        //
+        // A 400 counts on web. The server answers that when no token arrived at
+        // all, which for a cookie client means precisely "you are signed out" —
+        // and treating it as a transport error instead put a request failure on
+        // screen where a sign-in prompt belonged.
+        if (error instanceof ApiError && (error.isUnauthorized || this.isMissingWebCookie(error))) {
           await this.session.clear();
         }
         throw error;
@@ -293,13 +390,67 @@ export class ExpenseCalcClient {
    * when the access token expires — so the caller gets told rather than the
    * user discovering it fifteen minutes later at a sign-in screen.
    */
-  async login(credentials: LoginRequest): Promise<AdoptResult> {
+  async login(credentials: Omit<LoginRequest, 'client'>): Promise<AdoptResult> {
     const tokens = await this.send<Tokens>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify(credentials),
+      // `client` is this build's, never the caller's: the server uses it to
+      // decide whether the refresh token comes back in a cookie or in the body,
+      // and a screen is not the thing that knows which platform it is on.
+      body: JSON.stringify({ ...credentials, client: this.clientType }),
       anonymous: true,
     });
-    return this.session.adopt(tokens);
+    this.signedOut = false;
+    return this.session.adopt(tokens, this.clientType === 'web');
+  }
+
+  /**
+   * Whether this failure proves the client has no credential left that could
+   * still be live — as opposed to merely not having reached the server.
+   *
+   * **Not `isUnauthorized`, which is `status === 401` and nothing else.** That
+   * is claim-by-status, the exact thing narrowing {@link isMissingWebCookie}
+   * removed, and here it would be the stronger claim: it is what lets a screen
+   * show a plain signed-out state. A proxy or WAF answering `/auth/refresh`
+   * with a bodyless 401, or a second 401 on the retried logout after a
+   * successful refresh minted a *newer* 30-day cookie, would both report a
+   * completed sign-out while the cookie sat live in the browser.
+   */
+  private async holdsNoLiveCredential(error: unknown): Promise<boolean> {
+    if (!(error instanceof ApiError)) {
+      return false;
+    }
+
+    // Device: there is no cookie, so the only credential is the stored token,
+    // and an empty store means there was never anything this client could
+    // revoke.
+    //
+    // **The status check stays.** Dropping it traded claim-by-status for
+    // claim-by-nothing: a 500 on `/auth/logout` from a phone whose `login()`
+    // returned `persisted: false` has an empty store too, and would have been
+    // reported as a completed sign-out while every other session stayed live
+    // and the server never processed the request. An empty store is evidence
+    // about *this* client; the 401 is what says the server rejected it.
+    if (this.clientType !== 'web') {
+      return error.isUnauthorized && !(await this.session.isResumable());
+    }
+
+    return error.problem.type === UNAUTHENTICATED_PROBLEM || this.isMissingWebCookie(error);
+  }
+
+  /**
+   * A web refresh the browser sent no cookie with: signed out, not broken.
+   *
+   * Matched on the server's own problem type rather than on the bare status. A
+   * 400 from a proxy, or from the auth validation handler if the refresh body
+   * ever gains a constraint, would otherwise drop the user at a sign-in screen
+   * for a reason that has nothing to do with their session.
+   */
+  private isMissingWebCookie(error: ApiError): boolean {
+    return (
+      this.clientType === 'web' &&
+      error.status === 400 &&
+      error.problem.type === MISSING_REFRESH_TOKEN_PROBLEM
+    );
   }
 
   /**
@@ -310,17 +461,42 @@ export class ExpenseCalcClient {
    * that survives being used never expires in practice once captured.
    */
   private async exchangeRefreshToken(): Promise<void> {
-    const refreshToken = await this.session.refreshToken();
-    if (!refreshToken) {
+    const viaCookie = this.clientType === 'web';
+    const refreshToken = viaCookie ? null : await this.session.refreshToken();
+
+    // On web there is nothing to read: the token is in an `httpOnly` cookie the
+    // browser attaches to this request on its own, and no script can see it.
+    // An empty store is the normal state there, not an expired session.
+    if (!refreshToken && !viaCookie) {
       throw new ApiError({ status: 401, title: 'Session expired' });
     }
 
+    // **Both keyed off the client type, not off whether the store happened to
+    // hold something.** The server picks its branch the same way — a body token
+    // means "device" — so a web build that ever put a value in that store would
+    // send one, be classified as a device, and get the refresh token back in a
+    // response body a script can read. That is the single outcome `httpOnly`
+    // exists to prevent, reached without either side doing anything it thinks
+    // is wrong.
     const tokens = await this.send<Tokens>('/auth/refresh', {
       method: 'POST',
-      body: JSON.stringify({ refreshToken }),
+      body: JSON.stringify(viaCookie ? {} : { refreshToken }),
+      headers: viaCookie ? { [REFRESH_SOURCE_HEADER]: 'cookie' } : undefined,
       anonymous: true,
     });
-    await this.session.adopt(tokens);
+
+    // **Dropped on the floor if a sign-out landed while this was in flight.**
+    // A refresh only starts once `canResume()` said yes, so on web the flag was
+    // false when this began — the one interleaving that arrives here with it set
+    // is a failed logout during an in-flight refresh, and adopting then would
+    // sign the user back in through a race instead of through a request. There
+    // is deliberately no `signedOut = false` here: `login()` is the only place
+    // that should lift it.
+    if (this.signedOut) {
+      throw new ApiError({ status: 401, title: 'Signed out' });
+    }
+
+    await this.session.adopt(tokens, viaCookie);
   }
 
   /**
@@ -329,13 +505,54 @@ export class ExpenseCalcClient {
    * Local state is cleared even if the call fails. A user who pressed sign out
    * on a flaky connection should not be left holding a usable token because the
    * request timed out.
+   *
+   * **`null` means the sign-out was not confirmed — and on web that matters**,
+   * because the refresh cookie may still be live. Nothing client-side can
+   * revoke it: the cookie is `httpOnly` and the token stays valid server-side
+   * for the rest of its 30 days. This client stops using it, but a *new* one
+   * has no way to know that — a page reload builds a fresh instance with
+   * `signedOut` false, and the still-valid cookie signs the user back in.
+   *
+   * So a caller must surface a `null` rather than showing a plain signed-out
+   * screen: "we could not sign you out on this device, try again" is the true
+   * statement. A persisted marker would be worse than none — it would hide a
+   * live credential behind a local screen and call that signed out. #14's
+   * sign-in screen is where this gets consumed; retrying on next start is the
+   * fuller answer if it turns out to matter.
+   *
+   * **A `revokedSessions: 0` may be this client's own answer rather than the
+   * server's**, and a caller cannot tell the two apart. It is used only where
+   * this client's credential was already gone — rejected, or never sent — so
+   * zero is accurate, but it describes this device rather than the account.
+   *
+   * **A credential the server has already rejected is a sign-out, not a
+   * failure.** Signing out on another device revokes every refresh token, so
+   * the next `logout()` here refreshes first, gets a 401, and the server's own
+   * response clears the cookie on the way past. Reporting that as unconfirmed
+   * would tell a user to retry a sign-out that has already fully happened —
+   * the exact opposite of the true statement above.
    */
   async logout(): Promise<LogoutResult | null> {
     try {
       return await this.request<LogoutResult>('/auth/logout', { method: 'POST' });
-    } catch {
+    } catch (error) {
+      if (await this.holdsNoLiveCredential(error)) {
+        return {
+          revokedSessions: 0,
+          // About *this* client, not about the account. `/auth/logout` revokes
+          // every session, but a dead credential here proves only that this one
+          // is gone — a web cookie that simply expired leaves a phone signed in
+          // on a younger token, and "there was nothing left to revoke" would be
+          // false of the account while true of this device.
+          note: 'This device is signed out. No other sessions could be revoked, because this '
+            + "device's own credential was already gone.",
+        };
+      }
       return null;
     } finally {
+      // Set even when the call failed, which is the point: local state is
+      // cleared regardless, and on web the cookie outlives it.
+      this.signedOut = true;
       await this.session.clear();
     }
   }

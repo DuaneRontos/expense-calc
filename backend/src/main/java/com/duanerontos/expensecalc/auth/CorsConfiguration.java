@@ -72,10 +72,17 @@ public class CorsConfiguration {
 		config.setAllowedMethods(List.of(HttpMethod.GET.name(), HttpMethod.POST.name(), HttpMethod.PATCH.name(),
 				HttpMethod.DELETE.name(), HttpMethod.OPTIONS.name()));
 
-		// Named rather than wildcarded. `*` is rejected outright once
-		// credentials are allowed, so listing them keeps this working unchanged
-		// if #57 turns that on.
-		config.setAllowedHeaders(List.of(HttpHeaders.AUTHORIZATION, HttpHeaders.CONTENT_TYPE, HttpHeaders.ACCEPT));
+		// Named rather than wildcarded. `*` is rejected outright once credentials
+		// are allowed, which #57 does turn on.
+		//
+		// RefreshCookies.CSRF_HEADER is listed because the preflight is load
+		// bearing, not incidental: that header is the CSRF defence precisely
+		// because setting it forces a preflight, and this API answers that
+		// preflight only for the origins named above. Omitting it here would
+		// make the browser refuse the refresh from the very origins that are
+		// supposed to work, while changing nothing for an attacker.
+		config.setAllowedHeaders(List.of(HttpHeaders.AUTHORIZATION, HttpHeaders.CONTENT_TYPE, HttpHeaders.ACCEPT,
+				RefreshCookies.CSRF_HEADER));
 
 		// Without this a browser hides the header, so a client cannot read where
 		// the expense it just created lives. `POST /expenses` returns 201 with a

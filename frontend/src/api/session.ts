@@ -47,7 +47,32 @@ export class Session {
    * Now the session is either fully adopted or untouched, and the caller learns
    * whether it will outlive the access token.
    */
-  async adopt(tokens: Tokens): Promise<AdoptResult> {
+  async adopt(tokens: Tokens, viaCookie = false): Promise<AdoptResult> {
+    // Web sends none: the server put it in an `httpOnly` cookie the browser
+    // holds and no script can read (issue #57). There is nothing to persist and
+    // nothing that can fail, so the session outlives the access token by way of
+    // the cookie rather than by way of this store.
+    //
+    // **Keyed off the caller, not off the response shape.** A device build that
+    // somehow received a web-shaped response would otherwise take this branch
+    // and report `persisted: true` while nothing was stored — the exact
+    // opposite of the signal this result exists to give, and the session would
+    // then end in fifteen minutes with no warning.
+    if (viaCookie) {
+      this.accessToken = tokens.accessToken;
+      this.expiresAtMs = this.now() + tokens.expiresInSeconds * 1000;
+      return { persisted: true };
+    }
+
+    // Falsy rather than `=== undefined`: a `refreshToken: null` in the JSON —
+    // a serializer change, a gateway that normalises absent fields — would
+    // otherwise be handed to the store as a value.
+    if (!tokens.refreshToken) {
+      this.accessToken = tokens.accessToken;
+      this.expiresAtMs = this.now() + tokens.expiresInSeconds * 1000;
+      return { persisted: false };
+    }
+
     let persisted = true;
     try {
       await this.store.write(tokens.refreshToken);

@@ -1,5 +1,7 @@
 package com.duanerontos.expensecalc.auth;
 
+import java.util.List;
+
 import com.duanerontos.expensecalc.TestcontainersConfiguration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -99,14 +101,36 @@ class CorsTest {
 	}
 
 	@Test
-	@DisplayName("does not allow credentials, because nothing here uses a cookie yet")
-	void withholdsCredentials() {
-		// Spec §9.2 keeps the access token in memory and sends it as a header.
-		// The flag turns on with #57 and not before — and that is the same
-		// change that must restore CSRF protection.
+	@DisplayName("allows credentials, because the web refresh token is now a cookie")
+	void allowsCredentials() {
+		// Turned on by #57. A browser will not send an httpOnly cookie
+		// cross-origin unless the server says so, and spec §9.2 puts the web
+		// client's refresh token in one. The obligations that travel with this
+		// flag are enforced elsewhere and pinned by their own tests: a wildcard
+		// origin is rejected (CorsStartupTest), and a cookie-authenticated
+		// refresh must carry X-Refresh-Source (WebRefreshCookieTest).
 		ResponseEntity<String> response = get("/api/v1/categories", ALLOWED);
 
-		assertThat(response.getHeaders().getAccessControlAllowCredentials()).isFalse();
+		assertThat(response.getHeaders().getAccessControlAllowCredentials()).isTrue();
+	}
+
+	@Test
+	@DisplayName("permits the CSRF header, whose preflight is what makes it a defence")
+	void allowsTheCsrfHeader() {
+		// Not incidental. X-Refresh-Source works as a CSRF defence *because*
+		// setting it forces a preflight this API answers only for named
+		// origins. Omitting it here would block the refresh from exactly the
+		// origins meant to work, while changing nothing for an attacker.
+		HttpHeaders headers = new HttpHeaders();
+		headers.setOrigin(ALLOWED);
+		headers.setAccessControlRequestMethod(HttpMethod.POST);
+		headers.setAccessControlRequestHeaders(List.of(RefreshCookies.CSRF_HEADER));
+
+		ResponseEntity<String> response = this.http.exchange("/api/v1/auth/refresh", HttpMethod.OPTIONS,
+				new HttpEntity<>(headers), String.class);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(response.getHeaders().getAccessControlAllowHeaders()).contains(RefreshCookies.CSRF_HEADER);
 	}
 
 	private ResponseEntity<String> get(String path, String origin) {

@@ -62,7 +62,8 @@ class LoginRateLimitOperabilityTest {
 	private ResponseEntity<Map<String, Object>> login(String password) {
 		return this.http.exchange(RequestEntity.post("/api/v1/auth/login")
 			.contentType(MediaType.APPLICATION_JSON)
-			.body(Map.of("username", USERNAME, "password", password)), new ParameterizedTypeReference<>() {
+			.body(Map.of("username", USERNAME, "password", password, "client", "device")),
+			new ParameterizedTypeReference<>() {
 			});
 	}
 

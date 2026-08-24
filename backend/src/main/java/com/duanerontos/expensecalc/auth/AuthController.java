@@ -6,6 +6,7 @@ import java.util.Objects;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -17,13 +18,24 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Sign in, refresh, sign out (spec §9.2).
  *
- * <p><b>Nothing here returns the refresh token in a cookie.</b> Spec §9.2 puts
- * the web client's refresh token in an {@code httpOnly; Secure;
- * SameSite=Strict} cookie, and device clients in the Keychain or Keystore —
- * three targets, two storage mechanisms, and only the client knows which it is.
- * The API returns both tokens in the body and each client stores them per that
- * table (#13). Setting the cookie server-side would be right for web and wrong
- * for the other two.
+ * <p><b>Where the refresh token goes depends on who asked</b> (issue #57). Spec
+ * §9.2 gives three targets two storage mechanisms: an {@code httpOnly; Secure;
+ * SameSite=Strict} cookie for web, the Keychain or Keystore for iOS and
+ * Android. Only the client knows which it is, so {@link ClientType} is declared
+ * on the login request and the server honours exactly one mechanism per caller
+ * — the cookie <em>or</em> the body, never both. Both would put the credential
+ * somewhere a script can read it, which is the single thing {@code httpOnly}
+ * exists to prevent.
+ *
+ * <p><b>Refresh follows the token it was given.</b> A cookie in means a cookie
+ * out; a body token in means a body token out. Nothing has to be declared twice,
+ * and a client cannot accidentally migrate its own credential between
+ * mechanisms halfway through a session.
+ *
+ * <p><b>The cookie path carries a CSRF obligation the header path does not.</b>
+ * A browser attaches a cookie on its own, so {@code /auth/refresh} becomes
+ * cross-site reachable the moment it accepts one. See
+ * {@link RefreshCookies#CSRF_HEADER}.
  */
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -37,18 +49,55 @@ public class AuthController {
 
 	private final LoginRateLimiter rateLimiter;
 
+	private final RefreshCookies cookies;
+
 	public AuthController(TokenService tokens, AuthProperties properties, PasswordEncoder passwordEncoder,
-			LoginRateLimiter rateLimiter) {
+			LoginRateLimiter rateLimiter, RefreshCookies cookies) {
 		this.tokens = tokens;
 		this.properties = properties;
 		this.passwordEncoder = passwordEncoder;
 		this.rateLimiter = rateLimiter;
+		this.cookies = cookies;
 	}
 
-	public record LoginRequest(@NotBlank String username, @NotBlank String password) {
+	/**
+	 * @param client required, because guessing it is the failure this avoids. A
+	 *     web caller mistaken for a device gets its refresh token in a body it
+	 *     must not keep; a device mistaken for web gets a cookie it cannot read
+	 *     and no token at all. Both fail silently
+	 */
+	public record LoginRequest(@NotBlank String username, @NotBlank String password,
+			@NotNull ClientType client) {
 	}
 
-	public record RefreshRequest(@NotBlank String refreshToken) {
+	/**
+	 * @param refreshToken omitted by a web client, whose token is in a cookie
+	 *     the browser attaches and JavaScript cannot read. No longer
+	 *     {@code @NotBlank}: that annotation made a cookie-only refresh a 400
+	 *     before it reached the service
+	 */
+	public record RefreshRequest(String refreshToken) {
+	}
+
+	/**
+	 * What a caller gets back.
+	 *
+	 * <p>{@code refreshToken} is null for a web client and omitted from the
+	 * JSON: its token is in the {@code Set-Cookie} on the same response, and
+	 * putting it in both places would hand a script the value the cookie is
+	 * hiding.
+	 */
+	@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+	public record TokenResponse(String accessToken, String refreshToken, long expiresInSeconds) {
+
+		static TokenResponse forDevice(TokenService.Tokens issued) {
+			return new TokenResponse(issued.accessToken(), issued.refreshToken(), issued.expiresInSeconds());
+		}
+
+		static TokenResponse forWeb(TokenService.Tokens issued) {
+			return new TokenResponse(issued.accessToken(), null, issued.expiresInSeconds());
+		}
+
 	}
 
 	/**
@@ -66,15 +115,18 @@ public class AuthController {
 	 * protect. See {@link LoginRateLimiter}.
 	 */
 	@PostMapping("/login")
-	public ResponseEntity<TokenService.Tokens> login(@Valid @RequestBody LoginRequest request,
+	public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request,
 			HttpServletRequest httpRequest) {
 		// `getRemoteAddr()` may be null — the servlet contract permits it, and
 		// connectors where the peer address is not resolvable do return it. The
 		// limiter keys a ConcurrentHashMap, which rejects null, so passing it
 		// straight through is a 500 on an unauthenticated endpoint. Such callers
 		// share one bucket, which is the conservative reading.
-		String client = Objects.requireNonNullElse(httpRequest.getRemoteAddr(), "unknown");
-		this.rateLimiter.check(client);
+		//
+		// Named `caller` rather than `client`: in this file `client` now means
+		// the ClientType on the request, which is a different thing entirely.
+		String caller = Objects.requireNonNullElse(httpRequest.getRemoteAddr(), "unknown");
+		this.rateLimiter.check(caller);
 
 		boolean passwordMatches = this.passwordEncoder.matches(request.password(), this.properties.passwordHash());
 		boolean usernameMatches = this.properties.username().equals(request.username());
@@ -84,12 +136,12 @@ public class AuthController {
 			// oracle the constant-time comparison above exists to prevent: a
 			// wrong username and a wrong password cost the same and count the
 			// same.
-			this.rateLimiter.recordFailure(client);
+			this.rateLimiter.recordFailure(caller);
 			throw new InvalidCredentialsException();
 		}
 
-		this.rateLimiter.recordSuccess(client);
-		return ResponseEntity.ok(this.tokens.issue());
+		this.rateLimiter.recordSuccess(caller);
+		return issueTo(request.client(), this.tokens.issue());
 	}
 
 	/**
@@ -101,8 +153,34 @@ public class AuthController {
 	 * wrong hands never expires in practice.
 	 */
 	@PostMapping("/refresh")
-	public ResponseEntity<TokenService.Tokens> refresh(@Valid @RequestBody RefreshRequest request) {
-		return ResponseEntity.ok(this.tokens.rotate(request.refreshToken()));
+	public ResponseEntity<TokenResponse> refresh(@Valid @RequestBody RefreshRequest request,
+			HttpServletRequest httpRequest) {
+		String fromBody = request.refreshToken();
+
+		if (fromBody != null && !fromBody.isBlank()) {
+			// A device client. The token is in a body an attacker's page cannot
+			// construct, so there is nothing for CSRF to exploit and no header
+			// to demand.
+			return issueTo(ClientType.DEVICE, this.tokens.rotate(fromBody));
+		}
+
+		String fromCookie = this.cookies.read(httpRequest).orElseThrow(MissingRefreshTokenException::new);
+
+		// The browser attached that cookie on its own, which is exactly what
+		// CSRF exploits. A cross-site request cannot set this header.
+		if (!this.cookies.hasCsrfHeader(httpRequest)) {
+			throw new MissingCsrfHeaderException();
+		}
+
+		try {
+			return issueTo(ClientType.WEB, this.tokens.rotate(fromCookie));
+		}
+		catch (InvalidRefreshTokenException rejected) {
+			// Rethrown with the header that removes it. A browser cannot drop an
+			// httpOnly cookie itself, so a bare 401 leaves a dead credential in
+			// place for its full Max-Age, re-sent on every /auth request.
+			throw new RejectedRefreshCookieException(this.cookies.cleared(), rejected);
+		}
 	}
 
 	/**
@@ -119,8 +197,32 @@ public class AuthController {
 	@PostMapping("/logout")
 	public ResponseEntity<Map<String, Object>> logout() {
 		int revoked = this.tokens.revokeAll();
-		return ResponseEntity.ok(Map.of("revokedSessions", revoked, "note",
-				"Access tokens already issued remain valid until they expire."));
+
+		// Cleared unconditionally rather than only for a caller that sent one.
+		// A device client has no cookie and discards the header; a web client
+		// that kept it would be holding a credential the server has already
+		// revoked — which works, but only because the server says no, and the
+		// browser has no way to tell.
+		return ResponseEntity.ok()
+			.header(this.cookies.header(), this.cookies.cleared())
+			.body(Map.of("revokedSessions", revoked, "note",
+					"Access tokens already issued remain valid until they expire."));
+	}
+
+	/**
+	 * Hands the token back by whichever mechanism {@code client} uses.
+	 *
+	 * <p>One place, so "cookie or body, never both" is a property of the code
+	 * rather than a rule three call sites have to remember.
+	 */
+	private ResponseEntity<TokenResponse> issueTo(ClientType client, TokenService.Tokens issued) {
+		if (client == ClientType.WEB) {
+			return ResponseEntity.ok()
+				.header(this.cookies.header(), this.cookies.issued(issued.refreshToken()))
+				.body(TokenResponse.forWeb(issued));
+		}
+
+		return ResponseEntity.ok(TokenResponse.forDevice(issued));
 	}
 
 }
