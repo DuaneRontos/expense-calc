@@ -143,9 +143,10 @@ jobs:
           # fork PRs, so the OAuth token, and therefore this job, is unavailable
           # to a fork. Switching it to `pull_request_target` would hand an
           # attacker-authored build both the token and a shell.
-          # No --model pin — see the note in claude.yml. Dropped during the
-          # 2026-08-24 model-errors incident, which the Opus pin walked every
-          # run into; the two workflows are kept in step so the automatic
-          # review and the `@claude` re-review are never different models.
+          # --model pin — see the note in claude.yml for why Opus, what it
+          # costs, and the 2026-08-24 incident that had it dropped for a few
+          # hours. The two workflows are kept in step so the automatic review
+          # and the `@claude` re-review are never different models.
           claude_args: >-
+            --model claude-opus-5
             --allowedTools "Bash(cd:*),Bash(./mvnw:*),Bash(backend/mvnw:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git branch:*),Bash(git ls-files:*),Bash(git rev-parse:*),Bash(git blame:*)"

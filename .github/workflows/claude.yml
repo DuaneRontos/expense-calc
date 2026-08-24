@@ -106,19 +106,26 @@ jobs:
           # workflow needed it for the same reason and did not have it.
           show_full_output: true
 
-          # No --model pin: the action's Sonnet default is deliberate now.
+          # Opus, because it reviews better. Costs more of the shared
+          # subscription pool per run than the action's Sonnet default — CI and
+          # interactive Claude Code draw on the same quota, so this stays the
+          # first thing to drop if runs start failing with is_error:true
+          # (claude-code-action#1614).
           #
-          # Opus was pinned here because it reviews better, with the caveat
-          # written next to it that it costs more of the shared subscription
-          # pool and would be the first thing to drop if runs started failing
-          # with is_error:true. That happened: during the 2026-08-24 "Elevated
+          # Dropped once already, in #74: during the 2026-08-24 "Elevated
           # errors for multiple models" incident, which named claude-opus-5
           # specifically, three consecutive runs died on 529 Overloaded — with
           # 3, 5 and then 10 internal retries each — while the pin sent every
-          # attempt straight at the affected model.
+          # attempt straight at the affected model. Restored the same day once
+          # that incident was marked resolved on status.claude.com.
           #
-          # Restoring it is one line, and worth doing if review quality drops
-          # noticeably. Keep the two workflows in step: a pin here and not in
+          # The lesson from that round is the diagnosis, not the pin: 529
+          # Overloaded on a pinned model during a named incident means unpin
+          # and wait it out, not debug the workflow. Check the status page
+          # before changing anything here.
+          #
+          # Keep the two workflows in step: a pin here and not in
           # claude-code-review.yml would make the automatic review and the
           # `@claude` re-review answer as different models, which is a
           # difference nobody would think to look for.
+          claude_args: --model claude-opus-5
