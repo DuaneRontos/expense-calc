@@ -22,9 +22,9 @@ never touches a repository; a repository never returns a DTO.
 | Entity / domain | Its own invariants — an entity that cannot be constructed invalid | Knowing about HTTP, DTOs, or Spring |
 
 **Packages are by feature, not by layer.** `api/` is the write side, `query/`
-the filtered read, `report/` the aggregations, `classification/` the rule
-engine, `expense/` the entity and its repository, `money/` the minor-unit
-conversion. A new feature gets its own package with its controller, service,
+the filtered read, `report/` the aggregations, `auth/` the JWT and refresh-token
+flow, `classification/` the rule engine, `expense/` the entity and its
+repository, `money/` the minor-unit conversion. A new feature gets its own package with its controller, service,
 DTOs, and exception handler in it — not a new class in four existing
 layer-shaped packages.
 
