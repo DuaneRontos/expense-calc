@@ -1,6 +1,7 @@
 package com.duanerontos.expensecalc.auth;
 
 import java.util.Map;
+import java.util.Objects;
 
 import com.duanerontos.expensecalc.TestcontainersConfiguration;
 import org.junit.jupiter.api.DisplayName;
@@ -166,8 +167,29 @@ class AuthenticationOperabilityTest {
 		String accessToken = (String) signIn().get("accessToken");
 
 		// Logging out is not something an anonymous caller may do to someone else.
-		assertThat(this.http.exchange(RequestEntity.post("/api/v1/auth/logout").build(), String.class).getStatusCode())
-			.isEqualTo(HttpStatus.UNAUTHORIZED);
+		ResponseEntity<String> anonymous = this.http.exchange(RequestEntity.post("/api/v1/auth/logout").build(),
+				String.class);
+		assertThat(anonymous.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+
+		// **And it must carry no problem document** (issue #57). This 401 comes
+		// from the security filter, not from AuthProblemHandler, because no
+		// authenticationEntryPoint is configured — and the web client reads a
+		// present `.../problems/unauthenticated` type as proof that *this API*
+		// rejected the credential, which it reports to the user as a completed
+		// sign-out.
+		//
+		// Adding an entry point that emits RFC 7807 here is a plausible
+		// consistency improvement — every other 401 in this API is a problem
+		// document. It would also mean a client that had just rotated its own
+		// refresh cookie, then hit a 401 from an instance with an older signing
+		// key, would tell the user they were signed out while holding a live
+		// 30-day credential. The complement of the pin in
+		// WebRefreshCookieTest.rejectedCookieIsCleared: that one fixes where the
+		// type must appear, this one where it must not.
+		// Null today — the filter writes no body at all — so normalised rather
+		// than asserted as null, since a future harmless body would be fine and
+		// only the type must never appear.
+		assertThat(Objects.toString(anonymous.getBody(), "")).doesNotContain("unauthenticated");
 
 		ResponseEntity<Map<String, Object>> loggedOut = this.http.exchange(RequestEntity.post("/api/v1/auth/logout")
 			.header("Authorization", "Bearer " + accessToken)
