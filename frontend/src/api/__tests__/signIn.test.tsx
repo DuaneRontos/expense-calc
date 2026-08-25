@@ -29,22 +29,36 @@ afterEach(() => {
 });
 
 /**
+ * The default 5s is too close for this suite on a shared runner.
+ *
+ * Nothing here asserts on speed: the first test pays this file's cold-start cost
+ * — the first `render` initialises a good deal of React Native — and it timed
+ * out in CI while taking well under a second locally. Raised rather than chased,
+ * because a timeout that only fails on a loaded machine reports a defect nobody
+ * has.
+ */
+jest.setTimeout(20_000);
+
+/**
  * Fills both fields and submits.
  *
- * **`fireEvent.changeText` for the fields, `userEvent.press` for the button.**
- * Typing keystroke-by-keystroke costs roughly a second per field and nothing
- * here tests keystroke handling — with four callers this suite's first test was
- * landing at 5.5s against jest's 5s default and failing on a cold run. The press
- * stays `userEvent`, which respects `disabled`; `fireEvent.press` does not, and
- * the readiness test below depends on that difference.
+ * **`fireEvent` throughout, not `userEvent`.** Typing keystroke by keystroke
+ * cost roughly a second per field, and `userEvent.press` chains several real
+ * timer waits plus React Native's 130ms minimum press duration — none of which
+ * this file is testing. Together they had the first test at 5.5s locally and
+ * over the limit in CI.
+ *
+ * The one place `userEvent` still earns its cost is the readiness test below:
+ * `user.press` respects `disabled` and `fireEvent.press` does not, which is
+ * exactly the difference that test exists to detect.
  */
-async function fillIn(user: ReturnType<typeof userEvent.setup>) {
+async function fillIn() {
   // Awaited, like `render` above: this renderer is async, and an un-awaited
   // `fireEvent` leaves the state update unflushed — the field keeps its old
-  // value, the button stays disabled, and the press below does nothing.
+  // value, the button stays disabled, and the press does nothing.
   await fireEvent.changeText(screen.getByLabelText('Username'), 'dev');
   await fireEvent.changeText(screen.getByLabelText('Password'), 'dev');
-  await user.press(screen.getByRole('button', { name: 'Sign in' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Sign in' }));
 }
 
 describe('sign-in screen', () => {
@@ -54,10 +68,8 @@ describe('sign-in screen', () => {
     // establish the cookie that `/auth/refresh` looks for, and a cold load
     // could only ever find no session.
     const login = jest.spyOn(api, 'login').mockResolvedValue({ persisted: true });
-    const user = userEvent.setup();
-
     await render(<SignIn />);
-    await fillIn(user);
+    await fillIn();
 
     await waitFor(() => expect(login).toHaveBeenCalledWith({ username: 'dev', password: 'dev' }));
     // `replace`, not `push`: going "back" to a sign-in form from inside a live
@@ -74,10 +86,8 @@ describe('sign-in screen', () => {
         detail: 'Username or password is incorrect.',
       }),
     );
-    const user = userEvent.setup();
-
     await render(<SignIn />);
-    await fillIn(user);
+    await fillIn();
 
     // The server's own sentence, not a generic one. Spec §8 asks for `detail`
     // to be surfaced rather than replaced.
@@ -91,10 +101,8 @@ describe('sign-in screen', () => {
     // session then ends silently in fifteen minutes. `session.ts` names this
     // screen as the place that tells the user rather than letting them find out.
     jest.spyOn(api, 'login').mockResolvedValue({ persisted: false });
-    const user = userEvent.setup();
-
     await render(<SignIn />);
-    await fillIn(user);
+    await fillIn();
 
     expect(await screen.findByText(/sign in again/i)).toBeOnTheScreen();
   });
@@ -113,10 +121,8 @@ describe('sign-in screen', () => {
     jest.spyOn(api, 'login').mockRejectedValue(
       new ApiError({ status: 401, title: 'Unauthenticated', detail: 'Wrong password.' }),
     );
-    const user = userEvent.setup();
-
     await render(<SignIn />);
-    await fillIn(user);
+    await fillIn();
 
     expect(await screen.findByText('Wrong password.')).toHaveProp(
       'accessibilityLiveRegion',
@@ -126,10 +132,8 @@ describe('sign-in screen', () => {
 
   it('announces a sign-in that could not be persisted', async () => {
     jest.spyOn(api, 'login').mockResolvedValue({ persisted: false });
-    const user = userEvent.setup();
-
     await render(<SignIn />);
-    await fillIn(user);
+    await fillIn();
 
     expect(await screen.findByText(/sign in again/i)).toHaveProp(
       'accessibilityLiveRegion',
