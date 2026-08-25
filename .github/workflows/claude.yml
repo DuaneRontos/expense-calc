@@ -49,10 +49,17 @@ jobs:
       # both resolve to empty, which leaves checkout on the default branch and
       # lets the action create a fresh branch itself:
       #
-      #  - Merged or closed: the head branch is usually deleted here, and
-      #    checkout fails hard on a missing ref ("A branch or tag with the name
-      #    X could not be found") before the action can post anything. The
-      #    action already handles these by branching from the default branch.
+      #  - Merged or closed: a merged PR's work is already in the default
+      #    branch, so that is the tree worth reasoning about — and the head
+      #    branch may be gone, in which case checkout fails hard on a missing
+      #    ref ("A branch or tag with the name X could not be found") before the
+      #    action can post anything. Deleted by hand, not by
+      #    `deleteBranchOnMerge`, which is false here. Closed-without-merging is
+      #    the weak case — that branch often survives, and neither reason above
+      #    applies to it — but the state check cannot tell the difference
+      #    cheaply, and failing checkout is worse than reading the wrong tree.
+      #    The action already handles these by branching from the default
+      #    branch.
       #  - Forks: the action converts a detached PR-head checkout into a real
       #    branch and pushes to `origin`, which is *this* repo — so a commit
       #    would land here as a branch attached to no PR while the fork saw

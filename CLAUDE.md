@@ -55,7 +55,10 @@ starting an issue; most issue bodies name the section that governs them.
   A merged PR's work is already *in* the default branch, so that is the tree to
   reason about — and the head branch may simply not exist, in which case naming
   it as `ref` fails checkout on a missing ref before the agent can report
-  anything.
+  anything. **Closed-without-merging is the weak case** — neither reason covers
+  it, since nothing landed and nobody cleans up the branch of a PR they
+  abandoned — but the check cannot tell it apart from the others cheaply, and
+  failing checkout is worse than reading the wrong tree.
 
   **The repo does not delete head branches automatically** —
   `deleteBranchOnMerge` is false, which `gh repo view --json
