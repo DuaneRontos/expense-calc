@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 
 import { api } from '../../src/api/client';
 import { ApiError } from '../../src/api/problem';
+import { RequestFailure } from '../../src/api/RequestFailure';
 import { ExpenseFormFields } from '../../src/expenses/ExpenseFormFields';
 import { ReclassifyControl } from '../../src/expenses/ReclassifyControl';
 import {
@@ -42,7 +43,7 @@ function toValues(expense: Detail): ExpenseFormValues {
  */
 export default function ExpenseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { expense, loading, error, replace } = useExpenseDetail(id);
+  const { expense, loading, error, reload, replace } = useExpenseDetail(id);
   // One hook per action. Sharing them made a field save show "Saving…" on the
   // reclassify button, and would land a reclassify violation beside the edit
   // fields rather than in the block it came from.
@@ -70,12 +71,31 @@ export default function ExpenseDetailScreen() {
   }
 
   if (error && !expense) {
-    const notFound = error instanceof ApiError && error.isNotFound;
+    // **A 404 is the only one of these that is about the expense.** The others
+    // are about the request, and saying "could not load this expense" for a
+    // refused credential sends the reader looking for a deleted row when the
+    // answer is that they are signed out. `RequestFailure` draws that line, and
+    // `reload` gives it something to offer where retrying can actually help.
+    if (error instanceof ApiError && error.isNotFound) {
+      return (
+        <View style={{ padding: spacing.md, gap: spacing.sm }}>
+          <Text style={{ color: palette.text, fontWeight: '600' }}>
+            That expense no longer exists.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.replace('/expenses')}
+            style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
+          >
+            <Text style={{ color: palette.accent }}>Back to the list</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
     return (
-      <View style={{ padding: spacing.md, gap: spacing.sm }}>
-        <Text style={{ color: palette.text, fontWeight: '600' }}>
-          {notFound ? 'That expense no longer exists.' : 'Could not load this expense.'}
-        </Text>
+      <View style={{ padding: spacing.md }}>
+        <RequestFailure error={error} onRetry={reload} retrying={loading} />
         <Pressable
           accessibilityRole="button"
           onPress={() => router.replace('/expenses')}

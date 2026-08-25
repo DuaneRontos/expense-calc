@@ -7,6 +7,7 @@ import { useExpenseQuery } from './ExpenseQueryProvider';
 import { assertSendableAmount } from '../money/format';
 import { MIN_TOUCH_TARGET } from '../layout/breakpoints';
 import { colorForCategory, palette, spacing } from '../theme/tokens';
+import { needsSignIn } from '../api/problem';
 
 /**
  * The filter controls of spec §2 and issue #14.
@@ -49,14 +50,22 @@ export function ExpenseFilters() {
             <Text style={{ color: palette.textMuted, fontSize: 12 }}>
               Categories could not be loaded.
             </Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Retry loading categories"
-              onPress={retryCategories}
-              style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
-            >
-              <Text style={{ color: palette.accent }}>Try again</Text>
-            </Pressable>
+            {/*
+              No retry against a refused credential: it reproduces the identical
+              refusal. The message stays — it is still true — but the list's own
+              failure card is what offers the way in, and a second sign-in link
+              here would sit right beside it.
+            */}
+            {needsSignIn(categoriesError) ? null : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Retry loading categories"
+                onPress={retryCategories}
+                style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
+              >
+                <Text style={{ color: palette.accent }}>Try again</Text>
+              </Pressable>
+            )}
           </View>
         ) : null}
 

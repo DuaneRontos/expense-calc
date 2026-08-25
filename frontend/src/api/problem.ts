@@ -69,6 +69,22 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Whether the only thing that can resolve this failure is signing in.
+ *
+ * One name for a decision five places were making separately, and getting
+ * differently: "Try again" against a refused credential reproduces the identical
+ * refusal for as long as someone is willing to tap. The Overview learned that in
+ * #86; the expense screens and the two category loaders kept the copied branch.
+ *
+ * Takes `unknown` because every caller holds an `Error | null` at best — a
+ * connection failure is a `TypeError` with no status, and is emphatically not
+ * this.
+ */
+export function needsSignIn(error: unknown): boolean {
+  return error instanceof ApiError && error.isUnauthorized;
+}
+
 function isViolation(value: unknown): value is Violation {
   if (typeof value !== 'object' || value === null) {
     return false;
