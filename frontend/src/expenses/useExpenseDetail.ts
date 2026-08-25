@@ -38,6 +38,12 @@ export function useExpenseDetail(id: string | undefined) {
       return;
     }
 
+    // **Set on every load, not just the first.** `loading` starts true and was
+    // only ever cleared, so a reload ran with it already false — which left the
+    // failure card's retry unable to say it was doing anything, and any future
+    // caller of `reload` in the same position.
+    setLoading(true);
+
     try {
       const result = await api.expense(id);
       if (mine !== generation.current) {

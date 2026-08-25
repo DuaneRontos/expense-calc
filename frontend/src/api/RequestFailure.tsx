@@ -38,9 +38,17 @@ export function RequestFailure({
   // Not `instanceof ApiError` at each use: a `TypeError` from `fetch` is a
   // connection failure with no status and no document, so reading one prints
   // "undefined" in place of the one sentence worth showing.
+  const signIn = needsSignIn(error);
+
   const heading = problem ? (problem.title ?? 'Request failed') : 'Could not reach the server';
+  // **The fallback has to know which button is underneath it.** Every 401 this
+  // app can surface arrives without a `detail` — the filter chain answers a
+  // tokenless request before any controller runs, and `client.ts` raises its own
+  // "Session expired" and "Signed out" with none — so the generic sentence put
+  // "Try again in a moment." directly above the button that exists precisely
+  // because trying again cannot work.
   const detail = problem
-    ? (problem.detail ?? 'Try again in a moment.')
+    ? (problem.detail ?? (signIn ? 'Sign in to continue.' : 'Try again in a moment.'))
     : 'Check that the API is running and try again.';
 
   return (
@@ -55,7 +63,7 @@ export function RequestFailure({
       </Text>
       <Text style={{ color: palette.textMuted }}>{detail}</Text>
 
-      {needsSignIn(error) ? (
+      {signIn ? (
         <Pressable
           accessibilityRole="button"
           onPress={() => router.navigate('/sign-in')}

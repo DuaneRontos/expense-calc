@@ -76,4 +76,17 @@ describe('the category loaders, when the credential is refused', () => {
     expect(screen.getByText('Categories could not be loaded.')).toBeOnTheScreen();
     expect(screen.queryByLabelText('Retry loading categories')).toBeNull();
   });
+
+  it('keeps the reclassify retry for a failure retrying could fix', async () => {
+    // **The pair, without which the test above proves nothing.** Deleting that
+    // control outright left the whole suite green: an assertion that something
+    // is absent cannot tell "hidden because signed out" from "never rendered".
+    failure.current = new ApiError({ status: 503, title: 'Service Unavailable' });
+
+    await render(
+      <ReclassifyControl current="GROCERIES" onReclassify={() => {}} submitting={false} errors={{}} />,
+    );
+
+    expect(screen.getByLabelText('Retry loading categories')).toBeOnTheScreen();
+  });
 });

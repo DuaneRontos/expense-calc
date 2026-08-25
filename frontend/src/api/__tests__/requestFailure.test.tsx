@@ -60,6 +60,23 @@ describe('RequestFailure', () => {
     expect(screen.getByText('Sign in to view your expenses.')).toBeOnTheScreen();
   });
 
+  it('does not tell a signed-out reader to try again, directly above a sign-in button', async () => {
+    // **Every 401 this app can actually surface carries no `detail`.** The
+    // filter chain answers a tokenless request before any controller runs, so
+    // `readProblem` sees only a status and a title; and `client.ts` raises its
+    // own "Session expired" and "Signed out" with none either. The generic
+    // fallback therefore printed "Try again in a moment." immediately above the
+    // button that exists because trying again cannot work.
+    //
+    // The browser check that missed this used a stub which does return a
+    // `detail` — so the fixture, not the code, was what made it read correctly.
+    await render(<RequestFailure error={new ApiError({ status: 401, title: 'Session expired' })} />);
+
+    expect(screen.getByText('Session expired')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeOnTheScreen();
+    expect(screen.queryByText('Try again in a moment.')).toBeNull();
+  });
+
   it('does not blame the server for a request that never reached one', async () => {
     // A `TypeError` from fetch is a connection failure: there is no status and
     // no problem document, so reading one would print "undefined".

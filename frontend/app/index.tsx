@@ -49,7 +49,6 @@ export default function Overview() {
 
   const stale = loading && breakdown !== null;
 
-
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <Head>

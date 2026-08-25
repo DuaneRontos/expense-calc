@@ -62,7 +62,11 @@ export default function ExpenseDetailScreen() {
     }
   }, [expense]);
 
-  if (loading && !expense) {
+  // **`!error` too, so a retry does not hide the card that launched it.** The
+  // spinner is for a first load with nothing to show; once a failure is on
+  // screen the card stays up and its button carries the attempt, which is the
+  // difference between a tap that looks ignored and one that looks answered.
+  if (loading && !expense && !error) {
     return (
       <View style={{ padding: spacing.xl, alignItems: 'center' }}>
         <ActivityIndicator color={palette.accent} />
@@ -94,7 +98,7 @@ export default function ExpenseDetailScreen() {
     }
 
     return (
-      <View style={{ padding: spacing.md }}>
+      <View style={{ padding: spacing.md, gap: spacing.sm }}>
         <RequestFailure error={error} onRetry={reload} retrying={loading} />
         <Pressable
           accessibilityRole="button"
