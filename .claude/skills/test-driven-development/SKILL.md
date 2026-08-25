@@ -92,8 +92,14 @@ invisible to a pure-logic test because the logic was correct and the announced
 state was not. Keep testing pure logic where the behavior is pure logic:
 geometry, formatting, query serialization, period math.
 
-RNTL's `getBy*` queries throw when nothing matches, which is a useful property
-— a render test that passes has genuinely mounted something.
+**A render test needs at least one `getBy*` to anchor it.** `getBy*` throws
+when nothing matches, so it cannot pass against an empty tree — but `queryBy*`
+returns `null` by design, and `toBeNull()`, `toHaveLength(0)` and any
+`not.toBe*` are all satisfied by a render that mounted nothing. A test built
+only from negative assertions is the vacuous green this section is about.
+`AppShell.test.tsx` pairs them in the same test — `getByLabelText('Overview')`
+alongside `queryByLabelText('Overview, current screen')).toBeNull()` — so the
+absence it asserts is an absence *within a tree known to exist*.
 
 ## Running just what you wrote
 
@@ -106,6 +112,12 @@ cd backend && ./mvnw test -Dtest=TheNewTestClass
 ```bash
 cd frontend && npm test -- path/to/the.test.ts
 ```
+
+`npm test` is `jest --ci`, which **fails** on a snapshot it would otherwise
+write rather than writing it. No snapshot tests exist today, so nothing is
+affected now — but if you add the first one, that red is the flag, not your
+behavior, and step 1 above asks you to read the failure and confirm it names
+what you meant.
 
 `npm test --` rather than `npx jest`, because that is what runs in both places.
 The review workflow's allowlist permits `npm ci`, `npm run` and `npm test` but
@@ -177,8 +189,12 @@ that.
 
 `test-writer` (subagent) writes and runs focused tests against a named module
 and reports pass/fail with real output. Hand it the red step when the tests are
-substantial enough to be their own task — it will not touch the code under
-test, which is what keeps the discipline intact.
+substantial enough to be their own task. Its brief forbids it from editing the
+code under test, but that is a prompt-level rule and it holds `Write` and
+`Edit` for its own test files — so check that the diff it hands back is
+confined to tests. Contrast `money-safety-auditor` below, whose read-only is
+enforced by its tool list rather than promised in its prompt; when a guarantee
+matters, look at which of the two kinds you have.
 
 `money-safety-auditor` (subagent) is the verifier half: read-only, reports with
 `file:line` evidence. Run it after green on anything carrying an amount. Tests

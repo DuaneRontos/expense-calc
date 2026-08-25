@@ -28,19 +28,23 @@ would silently pass if a negative were dropped or `abs()`'d. Reporting periods
 resolve against `Asia/Manila`; a test that pins date/period behavior should say
 so in its name or setup rather than relying on the host clock.
 
-Some existing test classes (anything using `TestcontainersConfiguration`, e.g.
-`ExpenseRepositoryTest`, `CategoryTypeTest`) start a real Postgres via
-Testcontainers and need a Docker daemon. If you add tests to one of those
-classes, or a new class in the same style, `./mvnw test` needs Docker running —
-if it isn't, say so in your report rather than reporting a false pass or
-quietly switching to `-DskipTests`, which would skip the very tests you wrote.
+**Docker is the normal case here, not an edge case.** Anything importing
+`TestcontainersConfiguration` starts a real Postgres, and every `@DataJpaTest`
+and `@SpringBootTest` in this repo does — there are no exceptions, so assume
+your new persistence, web-layer, or startup test needs a running daemon. The
+annotation is the tell, and you can check it before writing a line.
+
+If Docker isn't running, say so in your report rather than reporting a false
+pass or quietly switching to `-DskipTests`, which would skip the very tests you
+wrote.
 
 **Frontend (`frontend/src/**`):** tests are colocated in `__tests__/` next to
 the module, `xxx.test.ts` or `xxx.test.tsx`, Jest. **Component renders work** —
-`@testing-library/react-native` 14 is a current dependency paired with its
+`@testing-library/react-native` 14 sits in `devDependencies` paired with its
 required peer `test-renderer`, so you may render components and drive hooks
 with `renderHook`. Check `frontend/package.json` if you need to confirm that —
-it is what would have to change for it to stop being true.
+it is what would have to change for it to stop being true, and look in
+`devDependencies`, not `dependencies`.
 
 Which suites currently mount is deliberately not listed, here or in the skill.
 Read the neighbouring tests in the module you were given; that tells you the
