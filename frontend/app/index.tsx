@@ -1,4 +1,5 @@
 import Head from 'expo-router/head';
+import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -50,6 +51,18 @@ export default function Overview() {
 
   const stale = loading && breakdown !== null;
 
+  /**
+   * Whether the reports refused the credential rather than failed to produce.
+   *
+   * **"Try again" is the wrong control for a 401**, and offering it is worse
+   * than offering nothing: retrying without signing in reproduces the identical
+   * refusal for as long as someone is willing to tap, and each tap fans out
+   * three more requests. Since the cold-start fix lets a browser holding no
+   * refresh cookie through unauthenticated, this is the state a deployed API
+   * puts a signed-out visitor in — the honest answer to it is a way in.
+   */
+  const needsSignIn = error instanceof ApiError && error.isUnauthorized;
+
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <Head>
@@ -75,17 +88,29 @@ export default function Overview() {
             tens of seconds on web, the natural response to that is to tap
             again and fan out another three requests.
           */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ disabled: loading, busy: loading }}
-            disabled={loading}
-            onPress={retry}
-            style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
-          >
-            <Text style={{ color: loading ? palette.textMuted : palette.accent, fontWeight: '600' }}>
-              {loading ? 'Trying…' : 'Try again'}
-            </Text>
-          </Pressable>
+          {needsSignIn ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.navigate('/sign-in')}
+              style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
+            >
+              <Text style={{ color: palette.accent, fontWeight: '600' }}>Sign in</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ disabled: loading, busy: loading }}
+              disabled={loading}
+              onPress={retry}
+              style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
+            >
+              <Text
+                style={{ color: loading ? palette.textMuted : palette.accent, fontWeight: '600' }}
+              >
+                {loading ? 'Trying…' : 'Try again'}
+              </Text>
+            </Pressable>
+          )}
         </View>
       ) : showSpinner && !breakdown ? (
         <View style={{ paddingVertical: spacing.xl * 2, alignItems: 'center' }}>

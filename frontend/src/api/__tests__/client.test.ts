@@ -397,6 +397,126 @@ describe('auth', () => {
     expect(session.currentAccessToken()).not.toBeNull();
   });
 
+  it('loads on a cold web start, where no cookie means no session yet', async () => {
+    // The reported bug. A browser that has never signed in sends no cookie, so
+    // the cold-start refresh answers 400 `no-refresh-token` — and with nothing
+    // in memory to fall back on, that rejection reached the screen. Every
+    // request on the Overview failed before one was even attempted.
+    //
+    // On a device the identical state is an empty store: `canResume()` says no,
+    // no refresh is attempted, and the request goes out unauthenticated. Web is
+    // the only target where "no session yet" was a failure rather than a state,
+    // and it is the same fact discovered by asking instead of by reading.
+    const fetchImpl = jest.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).endsWith('/auth/refresh')
+          ? problem(400, {
+              type: 'https://expense-calc.invalid/problems/no-refresh-token',
+              title: 'No refresh token',
+            })
+          : json([]),
+      ),
+    );
+    const client = webClient(fetchImpl);
+
+    await expect(client.categories()).resolves.toEqual([]);
+
+    // Anchored on the call actually reaching `/categories`, so the assertion
+    // below cannot pass against a client that never sent one.
+    const attempt = fetchImpl.mock.calls.find((call) =>
+      String(call[0]).endsWith('/categories'),
+    );
+    expect(attempt).toBeDefined();
+    expect(new Headers(attempt![1].headers).get('Authorization')).toBeNull();
+  });
+
+  it('stops asking for a refresh once the server says the browser holds no cookie', async () => {
+    // `canResume()` on web is "assume yes, and let /auth/refresh be the thing
+    // that says otherwise". It asked and then ignored the answer: every request
+    // for the life of the page re-ran the same doomed exchange, so a screen
+    // firing three reads on mount spent three round trips learning the same
+    // thing it had already been told.
+    const fetchImpl = jest.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).endsWith('/auth/refresh')
+          ? problem(400, {
+              type: 'https://expense-calc.invalid/problems/no-refresh-token',
+              title: 'No refresh token',
+            })
+          : json([]),
+      ),
+    );
+    const client = webClient(fetchImpl);
+
+    await client.categories();
+    await client.categories();
+
+    const refreshes = fetchImpl.mock.calls.filter((call) =>
+      String(call[0]).endsWith('/auth/refresh'),
+    );
+    expect(refreshes).toHaveLength(1);
+  });
+
+  it('refreshes again after a sign-in, since the browser now holds a cookie', async () => {
+    // The counterpart to the test above, and the reason the flag is lifted by
+    // `login()` rather than left latched. Without this, a user who signed in
+    // after a cold start would hold an access token that could never be
+    // renewed, and the session would end silently in fifteen minutes.
+    let signedIn = false;
+    const fetchImpl = jest.fn().mockImplementation((url: string) => {
+      const target = String(url);
+      if (target.endsWith('/auth/login')) {
+        signedIn = true;
+        return Promise.resolve(json(WEB_TOKENS));
+      }
+      if (target.endsWith('/auth/refresh')) {
+        return Promise.resolve(
+          signedIn
+            ? json(WEB_TOKENS)
+            : problem(400, {
+                type: 'https://expense-calc.invalid/problems/no-refresh-token',
+                title: 'No refresh token',
+              }),
+        );
+      }
+      return Promise.resolve(json([]));
+    });
+    // A clock the test advances, so the post-login request needs a refresh
+    // rather than reusing the token `login()` just put in memory.
+    let now = 1_000_000;
+    const client = webClient(fetchImpl, new Session(webStore(), () => now));
+
+    await client.categories(); // cold start: learns there is no cookie
+    await client.login({ username: 'dev', password: 'dev' });
+    now += 900_000; // the access token from login has expired
+
+    await expect(client.categories()).resolves.toEqual([]);
+
+    const refreshes = fetchImpl.mock.calls.filter((call) =>
+      String(call[0]).endsWith('/auth/refresh'),
+    );
+    expect(refreshes).toHaveLength(2);
+  });
+
+  it('still fails a cold web start when the refresh breaks rather than refuses', async () => {
+    // The line the fix must not cross. A 503 from `/auth/refresh` says nothing
+    // about whether a cookie exists — the request never reached the code that
+    // can see one. Swallowing that too would show an empty Overview to a signed
+    // -in user whose session was fine and whose auth service was down.
+    //
+    // **Only `/auth/refresh` fails here, and that is the whole assertion.**
+    // Failing every URL instead made this pass against a client that swallowed
+    // the refusal and then simply hit the same 503 on `/categories` — a reject
+    // either way, and no way to tell which one it was. Serving `/categories`
+    // leaves the propagated refresh as the only thing that can reject.
+    const fetchImpl = jest.fn().mockImplementation((url: string) =>
+      Promise.resolve(String(url).endsWith('/auth/refresh') ? problem(503) : json([])),
+    );
+    const client = webClient(fetchImpl);
+
+    await expect(client.categories()).rejects.toBeInstanceOf(ApiError);
+  });
+
   it('drops a refresh that lands after a sign-out', async () => {
     // The race the flag alone does not close: a request 401s and passes the
     // resume check, the user signs out and the logout fails, then the refresh
