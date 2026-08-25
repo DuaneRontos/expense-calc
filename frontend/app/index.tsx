@@ -1,15 +1,13 @@
 import Head from 'expo-router/head';
-import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { ApiError } from '../src/api/problem';
+import { RequestFailure } from '../src/api/RequestFailure';
 import { BarChart } from '../src/charts/BarChart';
 import { ComparisonChart } from '../src/charts/ComparisonChart';
 import { DonutChart } from '../src/charts/DonutChart';
 import { useLayout } from '../src/layout/useLayout';
 import { webTitleFor } from '../src/layout/navigation';
-import { MIN_TOUCH_TARGET } from '../src/layout/breakpoints';
 import { formatMoney } from '../src/money/format';
 import { PeriodPicker } from '../src/reports/PeriodPicker';
 import { bucketLegendTitle, describePeriod, PERIOD_CHOICES } from '../src/reports/periods';
@@ -51,18 +49,6 @@ export default function Overview() {
 
   const stale = loading && breakdown !== null;
 
-  /**
-   * Whether the reports refused the credential rather than failed to produce.
-   *
-   * **"Try again" is the wrong control for a 401**, and offering it is worse
-   * than offering nothing: retrying without signing in reproduces the identical
-   * refusal for as long as someone is willing to tap, and each tap fans out
-   * three more requests. Since the cold-start fix lets a browser holding no
-   * refresh cookie through unauthenticated, this is the state a deployed API
-   * puts a signed-out visitor in — the honest answer to it is a way in.
-   */
-  const needsSignIn = error instanceof ApiError && error.isUnauthorized;
-
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <Head>
@@ -72,46 +58,7 @@ export default function Overview() {
       <PeriodPicker selected={choice} onSelect={setChoice} period={period} />
 
       {error ? (
-        <View style={{ gap: spacing.sm, paddingVertical: spacing.lg }}>
-          <Text style={{ color: palette.negative, fontWeight: '600' }}>
-            {error instanceof ApiError ? (error.problem.title ?? 'Request failed') : 'Could not reach the server'}
-          </Text>
-          <Text style={{ color: palette.textMuted }}>
-            {error instanceof ApiError
-              ? (error.problem.detail ?? 'Try again in a moment.')
-              : 'Check that the API is running and try again.'}
-          </Text>
-          {/*
-            The card stays up while the retry runs, and the button carries the
-            attempt. Re-rendering the identical card would answer the tap with
-            nothing at all — and on a connection-refused, which can hang for
-            tens of seconds on web, the natural response to that is to tap
-            again and fan out another three requests.
-          */}
-          {needsSignIn ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.navigate('/sign-in')}
-              style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
-            >
-              <Text style={{ color: palette.accent, fontWeight: '600' }}>Sign in</Text>
-            </Pressable>
-          ) : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ disabled: loading, busy: loading }}
-              disabled={loading}
-              onPress={retry}
-              style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
-            >
-              <Text
-                style={{ color: loading ? palette.textMuted : palette.accent, fontWeight: '600' }}
-              >
-                {loading ? 'Trying…' : 'Try again'}
-              </Text>
-            </Pressable>
-          )}
-        </View>
+        <RequestFailure error={error} onRetry={retry} retrying={loading} />
       ) : showSpinner && !breakdown ? (
         <View style={{ paddingVertical: spacing.xl * 2, alignItems: 'center' }}>
           <ActivityIndicator color={palette.accent} />

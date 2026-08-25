@@ -6,6 +6,7 @@ import { MAX_REASON_LENGTH, type FieldErrors } from './expenseFormRules';
 import { MIN_TOUCH_TARGET } from '../layout/breakpoints';
 import { colorForCategory, palette, spacing } from '../theme/tokens';
 import type { Category } from '../api/types';
+import { needsSignIn } from '../api/problem';
 
 /**
  * Changing an expense's category (spec §4, issue #15).
@@ -70,14 +71,22 @@ export function ReclassifyControl({
           <Text style={{ color: palette.textMuted, fontSize: 12 }}>
             Categories could not be loaded.
           </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retry loading categories"
-            onPress={retry}
-            style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
-          >
-            <Text style={{ color: palette.accent }}>Try again</Text>
-          </Pressable>
+          {/*
+            No retry against a refused credential: it reproduces the identical
+            refusal. The message stays — it is still true and still worth saying
+            — but the screen's own failure card is what offers the way in, and a
+            second sign-in link here would sit right beside it.
+          */}
+          {needsSignIn(categoriesError) ? null : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading categories"
+              onPress={retry}
+              style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
+            >
+              <Text style={{ color: palette.accent }}>Try again</Text>
+            </Pressable>
+          )}
         </View>
       ) : null}
 

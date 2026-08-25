@@ -7,7 +7,7 @@ import { ExpenseRow } from '../../src/expenses/ExpenseRow';
 import { SortControl } from '../../src/expenses/SortControl';
 import { useExpenseQuery } from '../../src/expenses/ExpenseQueryProvider';
 import { useExpenses } from '../../src/expenses/useExpenses';
-import { ApiError } from '../../src/api/problem';
+import { RequestFailure } from '../../src/api/RequestFailure';
 import { MIN_TOUCH_TARGET } from '../../src/layout/breakpoints';
 import { webTitleFor } from '../../src/layout/navigation';
 import { palette, spacing } from '../../src/theme/tokens';
@@ -180,27 +180,11 @@ function EmptyState({
   onRetry: () => void;
 }) {
   if (error) {
-    // Spec §8: the server's `detail` is the sentence worth showing. A 400 here
-    // means a filter the server would not accept, which is the user's to fix.
-    const detail = error instanceof ApiError ? error.problem.detail : undefined;
-
-    return (
-      <View style={{ gap: spacing.sm, paddingVertical: spacing.xl }}>
-        <Text style={{ color: palette.negative, fontWeight: '600' }}>
-          {error instanceof ApiError ? (error.problem.title ?? 'Request failed') : 'Could not reach the server'}
-        </Text>
-        <Text style={{ color: palette.textMuted }}>
-          {detail ?? 'Check that the API is running and try again.'}
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={onRetry}
-          style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
-        >
-          <Text style={{ color: palette.accent, fontWeight: '600' }}>Try again</Text>
-        </Pressable>
-      </View>
-    );
+    // Spec §8's "surface the server's `detail`" lives in the card now, along
+    // with the choice between retrying and signing in — a 400 here is a filter
+    // the server would not accept and is the user's to fix, but a 401 is not
+    // something tapping "Try again" can resolve.
+    return <RequestFailure error={error} onRetry={onRetry} />;
   }
 
   // "No spending in this period" is a valid answer, not an error (spec §7), and
