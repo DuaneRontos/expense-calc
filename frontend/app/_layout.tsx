@@ -67,6 +67,14 @@ export default function RootLayout() {
             */}
             <Stack.Screen name="index" options={{ title: labelFor('overview') }} />
             <Stack.Screen name="expenses" options={{ title: labelFor('expenses') }} />
+            {/*
+              A literal rather than `labelFor`, because sign-in is deliberately
+              not a nav destination — a permanent "Sign in" tab beside Overview
+              and Expenses would be chrome for something you do once. Declared
+              all the same: undeclared, the native screen-change announcement
+              reads the route file name, so this one announced as "sign-in".
+            */}
+            <Stack.Screen name="sign-in" options={{ title: 'Sign in' }} />
           </Stack>
         </AppShell>
       </ExpenseQueryProvider>

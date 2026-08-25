@@ -13,6 +13,12 @@ jest.mock('expo-router/head', () => ({
   default: () => null,
 }));
 
+// `mock`-prefixed so jest's hoisted factory may read it. See `AppShell.test.tsx`.
+const mockNavigate = jest.fn();
+jest.mock('expo-router', () => ({
+  router: { navigate: (...args: unknown[]) => mockNavigate(...args) },
+}));
+
 const PERIOD = { from: '2026-08-01', to: '2026-09-01' };
 
 const breakdown = (): CategoryBreakdown => ({
@@ -56,6 +62,7 @@ function gate() {
 
 afterEach(() => {
   jest.restoreAllMocks();
+  mockNavigate.mockClear();
 });
 
 describe('Overview', () => {
@@ -78,6 +85,34 @@ describe('Overview', () => {
 
     await waitFor(() => expect(screen.getByText('Net per week')).toBeOnTheScreen());
     expect(screen.queryByText('Net per month')).toBeNull();
+  });
+
+  it('offers sign-in rather than a retry when the reports refuse the credential', async () => {
+    // The other half of the cold-start fix. The client now lets a browser with
+    // no cookie through unauthenticated, which against a deployed API means the
+    // reports come back 401 — and "Try again" is the wrong control for that,
+    // because trying again without signing in produces the identical 401 for
+    // as long as the user is willing to tap.
+    const failure = new ApiError({
+      status: 401,
+      type: 'https://expense-calc.invalid/problems/unauthenticated',
+      title: 'Unauthenticated',
+      detail: 'Sign in to view your expenses.',
+    });
+    jest.spyOn(api, 'byCategory').mockRejectedValue(failure);
+    jest.spyOn(api, 'overTime').mockRejectedValue(failure);
+    jest.spyOn(api, 'compare').mockRejectedValue(failure);
+
+    await render(<Overview />);
+
+    const button = await screen.findByRole('button', { name: 'Sign in' });
+    // Anchored on a control known to be present, so the absence asserted next
+    // is an absence within a tree that exists.
+    expect(button).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+
+    await userEvent.setup().press(button);
+    expect(mockNavigate).toHaveBeenCalledWith('/sign-in');
   });
 
   it('answers a retry with something other than the card already on screen', async () => {

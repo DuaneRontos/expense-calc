@@ -130,6 +130,17 @@ export interface ClientOptions {
 interface RequestOptions extends RequestInit {
   /** Endpoints that must not carry a token or trigger a refresh. */
   anonymous?: boolean;
+  /**
+   * Endpoints where a *confirmed* absence of credential is the answer rather
+   * than something to send anyway.
+   *
+   * Sending unauthenticated is the right move for a read: the server decides,
+   * and a permit-all local profile serves it while a deployed one refuses it.
+   * `/auth/logout` is the exception — an unauthenticated call there revokes
+   * nothing, so the round trip can only replace a specific answer this client
+   * already holds ("this device has no credential") with a generic 401.
+   */
+  requiresCredential?: boolean;
 }
 
 /**
@@ -198,6 +209,23 @@ export class ExpenseCalcClient {
    */
   private signedOut = false;
 
+  /**
+   * Set once `/auth/refresh` has answered that the browser sent no cookie.
+   *
+   * Only meaningful on web, and it is the missing half of {@link canResume}'s
+   * bargain: that method assumes a session exists and defers to `/auth/refresh`
+   * to say otherwise, but nothing recorded the answer — so every request for the
+   * life of the page re-ran the same refused exchange, and a screen firing three
+   * reads on mount spent three round trips learning the same thing twice over.
+   *
+   * Lifted only by `login()`, like {@link signedOut}, but kept separate from it
+   * because the two are different facts: one is "the user asked to leave", the
+   * other is "there was never anything here". Merging them would make the
+   * sign-out race guard in {@link exchangeRefreshToken} fire on a cold start,
+   * where no sign-out has happened.
+   */
+  private noSessionToResume = false;
+
   constructor(options: ClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? defaultBaseUrl()).replace(/\/$/, '');
     // Wrapped rather than captured bare, so `fetch` is invoked on the global
@@ -225,7 +253,11 @@ export class ExpenseCalcClient {
   }
 
   private async send<T>(path: string, options: RequestOptions = {}): Promise<T> {
-    const { anonymous, ...init } = options;
+    // Both client-only options are stripped: what remains is a `RequestInit`.
+    // `requiresCredential` used to survive into the spread below, so every test
+    // asserting on the injected `fetch` saw a key that is no part of an HTTP
+    // request. Browsers ignore it, which is what kept it invisible.
+    const { anonymous, requiresCredential: _requiresCredential, ...init } = options;
     const headers = new Headers(init.headers);
     headers.set('Accept', 'application/json, application/problem+json');
     if (init.body !== undefined) {
@@ -286,11 +318,48 @@ export class ExpenseCalcClient {
         // the screen while a perfectly good token sat in memory — and the 401
         // path below, which exists for exactly this, never ran.
         //
-        // With nothing in memory there is no fallback, so that still propagates.
-        if (!this.session.currentAccessToken()) {
+        // **Except when the refusal is itself the answer.** A web client with no
+        // cookie has no access token either, so the fallback above cannot save
+        // it — and a browser that has simply never signed in was left unable to
+        // load anything at all, with `/auth/refresh`'s 400 on screen in place of
+        // the report it asked for.
+        //
+        // A device reaches the identical state by reading an empty store: it
+        // says no from `canResume()`, attempts nothing, and the request goes out
+        // unauthenticated. Web can only learn the same fact by asking, and the
+        // answer deserves the same treatment — "no session yet" is a state on
+        // both targets, not a failure on one of them.
+        //
+        // Narrow on purpose. A 503 here says nothing about whether a cookie
+        // exists, because the request never reached the code that can see one.
+        const noSessionYet =
+          error instanceof ApiError
+          && this.isMissingWebCookie(error)
+          && !options.requiresCredential;
+
+        if (!noSessionYet && !this.session.currentAccessToken()) {
           throw error;
         }
       }
+    }
+
+    // **Asked again here, because the block above can be skipped entirely.**
+    // Once `noSessionToResume` latches, `canResume()` says no and the proactive
+    // refresh never runs — so the `requiresCredential` test inside its catch
+    // stops being reached, and the round trip it exists to avoid went out after
+    // all. What came back was the filter chain's bodyless 401 rather than
+    // `AuthProblemHandler`'s document, which `holdsNoLiveCredential` cannot
+    // match, so `logout()` answered "we could not sign you out" for a browser
+    // that was definitively signed out.
+    //
+    // Raised as the problem the server would have sent had it been asked, so
+    // both orderings reach `holdsNoLiveCredential` by the same door.
+    if (options.requiresCredential && this.noSessionToResume && !this.session.currentAccessToken()) {
+      throw new ApiError({
+        status: 400,
+        type: MISSING_REFRESH_TOKEN_PROBLEM,
+        title: 'No refresh token',
+      });
     }
 
     // Snapshotted before the request so a 401 that arrives after another
@@ -344,7 +413,11 @@ export class ExpenseCalcClient {
     // the user a signed-out screen and then silently signs them back in on the
     // next request, because the cookie is still live and this method would
     // otherwise still say "try".
-    return Promise.resolve(!this.signedOut);
+    // **And once it has said otherwise.** The assumption above is the opening
+    // position, not a standing one: `/auth/refresh` is the only participant that
+    // can see the cookie, so when it reports there is none, that is the answer
+    // this method went looking for.
+    return Promise.resolve(!this.signedOut && !this.noSessionToResume);
   }
 
   /**
@@ -369,6 +442,10 @@ export class ExpenseCalcClient {
         // and treating it as a transport error instead put a request failure on
         // screen where a sign-in prompt belonged.
         if (error instanceof ApiError && (error.isUnauthorized || this.isMissingWebCookie(error))) {
+          // Latched before the clear, so `canResume()` stops saying "try" from
+          // the moment the server said not to. Web-only by construction:
+          // `isMissingWebCookie` is false on every other target.
+          this.noSessionToResume ||= this.isMissingWebCookie(error);
           await this.session.clear();
         }
         throw error;
@@ -400,6 +477,11 @@ export class ExpenseCalcClient {
       anonymous: true,
     });
     this.signedOut = false;
+    // The server has just set the cookie, so the refusal recorded on a cold
+    // start no longer describes this browser. Left latched, the session would
+    // end silently when this access token expired and nothing was allowed to
+    // renew it.
+    this.noSessionToResume = false;
     return this.session.adopt(tokens, this.clientType === 'web');
   }
 
@@ -534,7 +616,16 @@ export class ExpenseCalcClient {
    */
   async logout(): Promise<LogoutResult | null> {
     try {
-      return await this.request<LogoutResult>('/auth/logout', { method: 'POST' });
+      // `requiresCredential` because the catch below is the better answer. Left
+      // to fall through unauthenticated, a sign-out from a browser holding no
+      // cookie would spend a round trip revoking nothing and come back with a
+      // generic 401 — replacing "this device is signed out" with "we could not
+      // sign you out", which is the wrong sentence and the reverse of the
+      // narrowing `isMissingWebCookie` exists for.
+      return await this.request<LogoutResult>('/auth/logout', {
+        method: 'POST',
+        requiresCredential: true,
+      });
     } catch (error) {
       if (await this.holdsNoLiveCredential(error)) {
         return {

@@ -24,6 +24,7 @@ export function FormField({
   multiline,
   editable = true,
   accessory,
+  secureTextEntry,
 }: {
   label: string;
   value: string;
@@ -37,6 +38,15 @@ export function FormField({
   multiline?: boolean;
   editable?: boolean;
   accessory?: ReactNode;
+  /**
+   * Masks the value, for the one field in the app that carries a credential.
+   *
+   * Passed through rather than left to a caller rendering its own `TextInput`:
+   * the alternative is a second input in the app that has to re-derive this
+   * component's label wiring, error placement and touch target, and the field
+   * most worth getting right is a poor one to make the exception.
+   */
+  secureTextEntry?: boolean;
 }) {
   return (
     <View style={{ gap: spacing.xs }}>
@@ -58,6 +68,7 @@ export function FormField({
           autoCorrect={false}
           multiline={multiline}
           editable={editable}
+          secureTextEntry={secureTextEntry}
           style={{
             flex: 1,
             borderWidth: 1,
