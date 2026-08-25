@@ -253,7 +253,11 @@ export class ExpenseCalcClient {
   }
 
   private async send<T>(path: string, options: RequestOptions = {}): Promise<T> {
-    const { anonymous, ...init } = options;
+    // Both client-only options are stripped: what remains is a `RequestInit`.
+    // `requiresCredential` used to survive into the spread below, so every test
+    // asserting on the injected `fetch` saw a key that is no part of an HTTP
+    // request. Browsers ignore it, which is what kept it invisible.
+    const { anonymous, requiresCredential: _requiresCredential, ...init } = options;
     const headers = new Headers(init.headers);
     headers.set('Accept', 'application/json, application/problem+json');
     if (init.body !== undefined) {
@@ -337,6 +341,25 @@ export class ExpenseCalcClient {
           throw error;
         }
       }
+    }
+
+    // **Asked again here, because the block above can be skipped entirely.**
+    // Once `noSessionToResume` latches, `canResume()` says no and the proactive
+    // refresh never runs — so the `requiresCredential` test inside its catch
+    // stops being reached, and the round trip it exists to avoid went out after
+    // all. What came back was the filter chain's bodyless 401 rather than
+    // `AuthProblemHandler`'s document, which `holdsNoLiveCredential` cannot
+    // match, so `logout()` answered "we could not sign you out" for a browser
+    // that was definitively signed out.
+    //
+    // Raised as the problem the server would have sent had it been asked, so
+    // both orderings reach `holdsNoLiveCredential` by the same door.
+    if (options.requiresCredential && this.noSessionToResume && !this.session.currentAccessToken()) {
+      throw new ApiError({
+        status: 400,
+        type: MISSING_REFRESH_TOKEN_PROBLEM,
+        title: 'No refresh token',
+      });
     }
 
     // Snapshotted before the request so a 401 that arrives after another

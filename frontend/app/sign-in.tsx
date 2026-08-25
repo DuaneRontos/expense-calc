@@ -118,12 +118,28 @@ export default function SignIn() {
         secureTextEntry
       />
 
+      {/*
+        Both of these appear only after a press, and the button label returns to
+        "Sign in" — so with nothing announced a screen-reader user gets silence.
+        The warning is the worse of the two: the sign-in *worked*, so nothing
+        else on screen is going to mention that the session will not survive.
+
+        `accessibilityLiveRegion` rather than `aria-live`, matching `AppShell`.
+        It is the cross-platform spelling — react-native-web maps it onto
+        `aria-live`, and Android reads it natively, which bare `aria-live` would
+        not cover. The deprecation `warnOnce` for this prop is commented out in
+        the installed react-native-web, so it costs no build warning.
+      */}
       {error ? (
-        <Text style={{ color: palette.negative, fontSize: 13 }}>{error}</Text>
+        <Text accessibilityLiveRegion="polite" style={{ color: palette.negative, fontSize: 13 }}>
+          {error}
+        </Text>
       ) : null}
 
       {warning ? (
-        <Text style={{ color: palette.text, fontSize: 13 }}>{warning}</Text>
+        <Text accessibilityLiveRegion="polite" style={{ color: palette.text, fontSize: 13 }}>
+          {warning}
+        </Text>
       ) : null}
 
       <View style={{ flexDirection: 'row', gap: spacing.md, alignItems: 'center' }}>

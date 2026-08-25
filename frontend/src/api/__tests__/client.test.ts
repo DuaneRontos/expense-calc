@@ -517,6 +517,76 @@ describe('auth', () => {
     await expect(client.categories()).rejects.toBeInstanceOf(ApiError);
   });
 
+  it('hands fetch a RequestInit, not the options this client reads itself', async () => {
+    // `anonymous` was destructured out and its sibling was not, so
+    // `requiresCredential` was spread into the init object. Browsers ignore an
+    // unknown member, which is exactly why nothing caught it — but every test in
+    // this file asserts on the injected `fetch`, so the leak is visible to the
+    // one observer that matters here.
+    //
+    // **Signed in first, and asserted on the `/auth/logout` call specifically.**
+    // Reading `calls[0]` instead caught the refresh, which never carries the
+    // flag — so the assertion held whether or not the option leaked.
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(WEB_TOKENS))
+      .mockResolvedValueOnce(json({ revokedSessions: 1 }));
+    const client = webClient(fetchImpl);
+
+    await client.login({ username: 'dev', password: 'dev' });
+    await client.logout();
+
+    const call = fetchImpl.mock.calls.find((entry) => String(entry[0]).endsWith('/auth/logout'));
+    expect(call).toBeDefined();
+    expect(Object.keys(call![1])).toContain('method');
+    expect(Object.keys(call![1])).not.toContain('requiresCredential');
+    expect(Object.keys(call![1])).not.toContain('anonymous');
+  });
+
+  it('answers a sign-out the same way whether or not a screen loaded first', async () => {
+    // `requiresCredential` was only consulted inside the proactive refresh's
+    // catch. Once `noSessionToResume` latches, `canResume()` says no, that whole
+    // block is skipped, and the flag is never read — so the round trip it exists
+    // to avoid went out anyway.
+    //
+    // What comes back is Spring Security's bodyless 401, from the filter chain
+    // rather than from `AuthProblemHandler`, so it carries no problem type.
+    // `holdsNoLiveCredential` matches neither branch and `logout()` returns
+    // `null` — "we could not sign you out, try again" — for a browser that is
+    // definitively signed out. The same fact, two opposite sentences, decided by
+    // whether a screen happened to mount first.
+    const refused = problem(400, {
+      type: 'https://expense-calc.invalid/problems/no-refresh-token',
+      title: 'No refresh token',
+    });
+    const fetchImpl = jest.fn().mockImplementation((url: string) => {
+      const target = String(url);
+      if (target.endsWith('/auth/refresh')) {
+        return Promise.resolve(refused);
+      }
+      if (target.endsWith('/auth/logout')) {
+        // Bodyless, as the entry point sends it — no problem document.
+        return Promise.resolve(new Response(null, { status: 401 }));
+      }
+      return Promise.resolve(json([]));
+    });
+    const client = webClient(fetchImpl);
+
+    // The cold start that latches. Nothing about it concerns signing out.
+    await client.categories();
+
+    const outcome = await client.logout();
+
+    expect(outcome).not.toBeNull();
+    expect(outcome!.revokedSessions).toBe(0);
+    // And nothing was sent: an unauthenticated `/auth/logout` revokes nothing,
+    // so the only thing the round trip can do is replace a specific answer this
+    // client already holds with a generic refusal.
+    expect(
+      fetchImpl.mock.calls.filter((call) => String(call[0]).endsWith('/auth/logout')),
+    ).toHaveLength(0);
+  });
+
   it('drops a refresh that lands after a sign-out', async () => {
     // The race the flag alone does not close: a request 401s and passes the
     // resume check, the user signs out and the logout fails, then the refresh

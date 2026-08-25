@@ -1,4 +1,4 @@
-import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, userEvent, waitFor } from '@testing-library/react-native';
 
 // Imported from outside `app/` on purpose: expo-router turns *every* `.tsx`
 // under that directory into a route, so a test file beside the screen would be
@@ -28,9 +28,22 @@ afterEach(() => {
   mockReplace.mockClear();
 });
 
+/**
+ * Fills both fields and submits.
+ *
+ * **`fireEvent.changeText` for the fields, `userEvent.press` for the button.**
+ * Typing keystroke-by-keystroke costs roughly a second per field and nothing
+ * here tests keystroke handling — with four callers this suite's first test was
+ * landing at 5.5s against jest's 5s default and failing on a cold run. The press
+ * stays `userEvent`, which respects `disabled`; `fireEvent.press` does not, and
+ * the readiness test below depends on that difference.
+ */
 async function fillIn(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByLabelText('Username'), 'dev');
-  await user.type(screen.getByLabelText('Password'), 'dev');
+  // Awaited, like `render` above: this renderer is async, and an un-awaited
+  // `fireEvent` leaves the state update unflushed — the field keeps its old
+  // value, the button stays disabled, and the press below does nothing.
+  await fireEvent.changeText(screen.getByLabelText('Username'), 'dev');
+  await fireEvent.changeText(screen.getByLabelText('Password'), 'dev');
   await user.press(screen.getByRole('button', { name: 'Sign in' }));
 }
 
@@ -84,6 +97,44 @@ describe('sign-in screen', () => {
     await fillIn(user);
 
     expect(await screen.findByText(/sign in again/i)).toBeOnTheScreen();
+  });
+
+  it('announces both outcomes, which appear with no other cue that anything happened', async () => {
+    // Both messages arrive after a press, and the button label goes back to
+    // "Sign in" — so without a live region a screen-reader user gets silence.
+    // That is worst for the persistence warning, which is the one message on
+    // this screen that exists *only* to be read: the sign-in worked, so nothing
+    // else on screen is going to say the session will not survive.
+    //
+    // `accessibilityLiveRegion` rather than `aria-live`, matching
+    // `AppShell.tsx:159`. It is the cross-platform spelling — react-native-web
+    // maps it to `aria-live`, and Android reads it natively, which bare
+    // `aria-live` would not cover.
+    jest.spyOn(api, 'login').mockRejectedValue(
+      new ApiError({ status: 401, title: 'Unauthenticated', detail: 'Wrong password.' }),
+    );
+    const user = userEvent.setup();
+
+    await render(<SignIn />);
+    await fillIn(user);
+
+    expect(await screen.findByText('Wrong password.')).toHaveProp(
+      'accessibilityLiveRegion',
+      'polite',
+    );
+  });
+
+  it('announces a sign-in that could not be persisted', async () => {
+    jest.spyOn(api, 'login').mockResolvedValue({ persisted: false });
+    const user = userEvent.setup();
+
+    await render(<SignIn />);
+    await fillIn(user);
+
+    expect(await screen.findByText(/sign in again/i)).toHaveProp(
+      'accessibilityLiveRegion',
+      'polite',
+    );
   });
 
   it('refuses to submit before both fields are filled', async () => {
