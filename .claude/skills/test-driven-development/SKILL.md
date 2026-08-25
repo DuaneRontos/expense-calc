@@ -45,6 +45,13 @@ assertion could fail and the other could not. When you write the red step, ask
 what would have to break for this line to fail; if the answer is "nothing
 reachable", the test is decoration.
 
+The same question works on prose, and it is how the rules in this file get
+checked: **ask what would have to be true for this check to answer wrongly.**
+A check offered as a stand-in for a property is usually a subset of it — the
+annotation that stands in for "needs Docker", `getBy*` for "throws when absent",
+"colocated" for a layout with one routed exception. Each reads as true because
+you check it against the case that made you write it.
+
 **`toBeChecked()` is not the general remedy — reading what the platform
 actually exposes is.** `AppShell.test.tsx` hit the same class of bug with nav
 items that differed only by colour and weight, and could not use that fix:
@@ -92,10 +99,13 @@ invisible to a pure-logic test because the logic was correct and the announced
 state was not. Keep testing pure logic where the behavior is pure logic:
 geometry, formatting, query serialization, period math.
 
-**A render test needs at least one `getBy*` to anchor it.** `getBy*` throws
-when nothing matches, so it cannot pass against an empty tree — but `queryBy*`
-returns `null` by design, and `toBeNull()`, `toHaveLength(0)` and any
-`not.toBe*` are all satisfied by a render that mounted nothing. A test built
+**A render test needs at least one query that throws when nothing matches to
+anchor it** — `getBy*`, `getAllBy*`, or `findBy*` (which is the right anchor
+for something that arrives asynchronously, as `overview.test.tsx` does with
+`findByRole` after a rejected fetch settles). Those cannot pass against an
+empty tree. But `queryBy*` returns `null` by design, and `toBeNull()`,
+`toHaveLength(0)` and any `not.toBe*` are all satisfied by a render that
+mounted nothing. A test built
 only from negative assertions is the vacuous green this section is about.
 `AppShell.test.tsx` pairs them in the same test — `getByLabelText('Overview')`
 alongside `queryByLabelText('Overview, current screen')).toBeNull()` — so the
@@ -163,6 +173,13 @@ under `backend/src/test/java`. Frontend tests are colocated in `__tests__/`
 next to the module. One behavior per test, named so a failure says what broke
 without reading the body.
 
+**Screens under `frontend/app/` are the exception, and getting it wrong is
+silent.** expo-router turns every `.tsx` under `app/` into a route, so a test
+file placed beside a screen is served as a URL rather than failing — a green
+suite plus a route that renders a test. Their tests live under
+`src/<domain>/__tests__/` and import across, as `overview.test.tsx` does for
+`app/index.tsx`.
+
 ## When a convention can be machine-checked, make it a build failure
 
 `NoAbsoluteValueInMoneyPathsTest` fails the build on `abs()` or on
@@ -172,7 +189,16 @@ a Java-only scan would miss the path the arithmetic actually takes.
 `SignedAmountAggregationTest` pins the arithmetic those would break. This is
 TDD pointed at a convention rather than a feature, and it is the right move
 whenever a rule has a spelling a machine can find — a convention in prose gets
-violated by the next contributor, a convention with a red test does not.
+violated by the next contributor, a convention with a red test gets violated
+deliberately or not at all.
+
+**Deliberately is the part to design for.** That class carries an `ALLOWED`
+exclusion set, currently empty, and its failure message ends "If a path
+genuinely is not a money path, add it to `ALLOWED` with a reason." So the red
+*can* be silenced in one line — on purpose, because the alternative is a guard
+someone rewrites the assertion to escape. Give each hole a one-line cost and a
+reason beside it; that is the same instinct as `findsTheSources()`, pointed at
+the exceptions rather than at the scan.
 
 **Assert that your guard found something to scan.** That class's third test
 checks it saw at least 14 files, at least 200 code lines, and at least one
@@ -190,9 +216,9 @@ that.
 `test-writer` (subagent) writes and runs focused tests against a named module
 and reports pass/fail with real output. Hand it the red step when the tests are
 substantial enough to be their own task. Its brief forbids it from editing the
-code under test, but that is a prompt-level rule and it holds `Write` and
-`Edit` for its own test files — so check that the diff it hands back is
-confined to tests. Contrast `money-safety-auditor` below, whose read-only is
+code under test, but that is a prompt-level rule and it holds `Write`, `Edit`
+and `Bash` — the last being the widest of the three — so check that the diff it
+hands back is confined to tests. Contrast `money-safety-auditor` below, whose read-only is
 enforced by its tool list rather than promised in its prompt; when a guarantee
 matters, look at which of the two kinds you have.
 

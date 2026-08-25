@@ -28,18 +28,28 @@ would silently pass if a negative were dropped or `abs()`'d. Reporting periods
 resolve against `Asia/Manila`; a test that pins date/period behavior should say
 so in its name or setup rather than relying on the host clock.
 
-**Docker is the normal case here, not an edge case.** Anything importing
-`TestcontainersConfiguration` starts a real Postgres, and every `@DataJpaTest`
-and `@SpringBootTest` in this repo does — there are no exceptions, so assume
-your new persistence, web-layer, or startup test needs a running daemon. The
-annotation is the tell, and you can check it before writing a line.
+**Docker is the normal case here, not an edge case.** The thing that starts a
+real Postgres is the reference to `TestcontainersConfiguration`, so that is
+what to grep for — in the class you are writing, or in its neighbours.
+
+Every `@DataJpaTest` and `@SpringBootTest` in this repo carries it, but do not
+invert that into a test: `CorsStartupTest` and `MissingCredentialsStartupTest`
+need Docker while carrying neither annotation, because they assert that startup
+*fails* and `@SpringBootTest` would fail the context load before the body ran.
+They build `new SpringApplication(…, TestcontainersConfiguration.class)` by
+hand. So a startup test is exactly where checking the annotation answers "no"
+and the container still starts.
 
 If Docker isn't running, say so in your report rather than reporting a false
 pass or quietly switching to `-DskipTests`, which would skip the very tests you
 wrote.
 
-**Frontend (`frontend/src/**`):** tests are colocated in `__tests__/` next to
-the module, `xxx.test.ts` or `xxx.test.tsx`, Jest. **Component renders work** —
+**Frontend:** tests are colocated in `__tests__/` next to the module,
+`xxx.test.ts` or `xxx.test.tsx`, Jest — **except for screens under
+`frontend/app/`**, where expo-router turns every `.tsx` into a route, so a test
+placed beside the screen is served as a URL instead of failing. Those tests go
+under `src/<domain>/__tests__/` and import across, as `overview.test.tsx` does
+for `app/index.tsx`. **Component renders work** —
 `@testing-library/react-native` 14 sits in `devDependencies` paired with its
 required peer `test-renderer`, so you may render components and drive hooks
 with `renderHook`. Check `frontend/package.json` if you need to confirm that —
@@ -80,6 +90,9 @@ so the report reflects only your own work:
 
 ```bash
 cd backend && ./mvnw test -Dtest=TheNewOrChangedTestClass
+```
+
+```bash
 cd frontend && npm test -- path/to/the.test.ts
 ```
 
