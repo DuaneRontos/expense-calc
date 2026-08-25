@@ -51,12 +51,23 @@ starting an issue; most issue bodies name the section that governs them.
   re-review path.
 
   Only an **open, same-repo** PR resolves to a branch. A merged or closed one
-  falls back to the default branch, and that fallback is the point: this repo
-  deletes head branches on merge, so naming a deleted branch as `ref` would
-  fail checkout on a missing ref before the agent could report anything. Fork
-  PRs fall back too, deliberately — the action turns a PR-head checkout into a
-  real branch and pushes it to `origin`, which is this repo, so a commit would
-  land here attached to no PR while the fork saw nothing.
+  falls back to the default branch, and that fallback is the point twice over.
+  A merged PR's work is already *in* the default branch, so that is the tree to
+  reason about — and the head branch may simply not exist, in which case naming
+  it as `ref` fails checkout on a missing ref before the agent can report
+  anything.
+
+  **The repo does not delete head branches automatically** —
+  `deleteBranchOnMerge` is false, which `gh repo view --json
+  deleteBranchOnMerge` will confirm. This file claimed the opposite for a while
+  and used it as the sole justification for the fallback; the fallback was right
+  and the reason was wrong. Branches here are deleted by hand, whenever someone
+  gets round to it, which is exactly the unpredictability that makes the
+  fallback worth having rather than a setting to look up.
+
+  Fork PRs fall back too, deliberately — the action turns a PR-head checkout
+  into a real branch and pushes it to `origin`, which is this repo, so a commit
+  would land here attached to no PR while the fork saw nothing.
 
   `claude.yml` itself is exempt from the byte-identical rule below: its events
   always run the default branch's copy of the workflow, so it cannot differ
