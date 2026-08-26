@@ -29,6 +29,14 @@ export class Session {
   /** Epoch milliseconds, or null when there is no access token. */
   private expiresAtMs: number | null = null;
 
+  /**
+   * Subscribers to whether a session exists, for `useSyncExternalStore`.
+   *
+   * A `Set` so an unsubscribe is exact rather than by index, and so double
+   * subscription by a component that re-runs its effect is idempotent.
+   */
+  private readonly listeners = new Set<() => void>();
+
   constructor(
     private readonly store: RefreshTokenStore = refreshTokenStore,
     private readonly now: () => number = Date.now,
@@ -61,6 +69,7 @@ export class Session {
     if (viaCookie) {
       this.accessToken = tokens.accessToken;
       this.expiresAtMs = this.now() + tokens.expiresInSeconds * 1000;
+      this.notify();
       return { persisted: true };
     }
 
@@ -70,6 +79,7 @@ export class Session {
     if (!tokens.refreshToken) {
       this.accessToken = tokens.accessToken;
       this.expiresAtMs = this.now() + tokens.expiresInSeconds * 1000;
+      this.notify();
       return { persisted: false };
     }
 
@@ -87,11 +97,57 @@ export class Session {
 
     this.accessToken = tokens.accessToken;
     this.expiresAtMs = this.now() + tokens.expiresInSeconds * 1000;
+    this.notify();
     return { persisted };
   }
 
   currentAccessToken(): string | null {
     return this.accessToken;
+  }
+
+  /**
+   * Whether this client currently holds a live session.
+   *
+   * The in-memory access token, which is the only honest answer available
+   * synchronously: on web the refresh cookie is `httpOnly`, so "is there a
+   * session" cannot be answered from script until a refresh has said so.
+   *
+   * An **arrow property, not a method**, because `useSyncExternalStore` calls
+   * it unbound and re-subscribes whenever `subscribe` changes identity. A bare
+   * method loses `this`; a fresh arrow per render resubscribes forever.
+   */
+  readonly isSignedIn = (): boolean => this.accessToken !== null;
+
+  /**
+   * How many listeners are attached.
+   *
+   * Observability for the leak that has no other symptom: a hook that forgets
+   * to unsubscribe on unmount behaves identically until something notifies a
+   * component React has already discarded. Asserting the count is the only way
+   * to see it before that happens.
+   */
+  listenerCount(): number {
+    return this.listeners.size;
+  }
+
+  /** Registers a listener and returns its unsubscribe. Arrow, for the reason above. */
+  readonly subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  };
+
+  /**
+   * Called only after a transition has actually happened.
+   *
+   * A failed `adopt()` notifies nothing: it leaves the session untouched, so
+   * there is no change to report and a subscriber would re-read the same value.
+   */
+  private notify(): void {
+    for (const listener of this.listeners) {
+      listener();
+    }
   }
 
   refreshToken(): Promise<string | null> {
@@ -130,5 +186,6 @@ export class Session {
     this.accessToken = null;
     this.expiresAtMs = null;
     await this.store.clear();
+    this.notify();
   }
 }

@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MIN_TOUCH_TARGET } from './breakpoints';
+import { SignOutButton } from './SignOutButton';
 import { APP_NAME, useActiveDestination, useNavItems, useShowsFilters, type NavItem } from './navigation';
 import { useLayout } from './useLayout';
 import { ExpenseFilters } from '../expenses/ExpenseFilters';
@@ -139,6 +140,14 @@ export function AppShell({ children }: { children: ReactNode }) {
               </Text>
             </Pressable>
           ) : null}
+
+          {/*
+            Last in the row and outside the drawer guard: signing out is
+            available on every route under this chrome, including the ones with
+            nothing to filter. It renders nothing at all when there is no
+            session, so on an auth-disabled backend this row is unchanged.
+          */}
+          <SignOutButton />
         </View>
       </View>
 
