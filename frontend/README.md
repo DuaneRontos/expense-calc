@@ -24,6 +24,66 @@ npm test           # jest
 
 CI runs the last three on Node 22.
 
+### `testTimeout` is 30s, and that is about the cache, not slow tests
+
+`package.json` sets `testTimeout: 30000`, well above jest's 5s default. Nothing
+here is slow: on a developer machine a warm cache runs the whole suite in about
+two seconds with the longest single test around 550ms. A 4-core CI runner
+measures 4s and 388ms — same order, different box, which is the point.
+
+The setting exists for the **first** run after `jest --clearCache`, or on any
+fresh checkout, where each test file's first test absorbs the babel transform
+of the Expo and React Native dependency graph behind it. The same test measured
+156ms warm and 1,886ms cold in isolation, and under full-suite worker
+contention the slowest ones reached 9–21 seconds.
+
+Left at the default that produced a **flaky suite rather than a slow one**:
+render-heavy tests timed out at 5,000ms in no fixed order, one to four per run,
+across `chipState`, `overview`, `expensesFailure` and `categoryFailure`. It
+reproduced on every cold run and never once on a warm one — which is the worst
+shape for a merge gate, because **CI installs into a fresh runner every time**
+and so only ever runs cold.
+
+Raise it further rather than adding per-test timeouts if this reappears: a
+per-test override fixes the one test that happened to lose the race and leaves
+the next one to find it.
+
+### There are two timeout budgets, and `testTimeout` is only one
+
+`waitFor` and every `findBy*` arm their **own** timer rather than deferring to
+jest's. It reads `asyncUtilTimeout` from
+`@testing-library/react-native`, which defaults to **1,000ms** — so raising
+`testTimeout` alone left async waits on a budget thirty times tighter, in the
+suites that were flaking hardest. There are 27 such waits across `useReports`,
+`expensesFailure`, `signIn` and `overview`.
+
+`jest.setup.js` raises it to 10s, registered through `setupFilesAfterEnv`
+because the jest-expo preset provides no setup file that calls `configure()`.
+
+**It is deliberately below `testTimeout`.** A `waitFor` that runs out reports
+the assertion that never became true; jest's timer reports only
+`Exceeded timeout of Nms`, naming no wait. Keeping the async budget the smaller
+of the two means the more useful message is always the one that fires — so
+raise `testTimeout` first if you ever need this above 30s.
+
+### A typecheck failure naming a route that exists is a stale generated file
+
+`experiments.typedRoutes` makes expo-router generate `.expo/types/router.d.ts`
+from whatever is in `app/` at the time. It is git-ignored, so it is regenerated
+per machine and can fall behind when a route is added on another branch:
+
+```
+error TS2345: Argument of type '"/sign-in"' is not assignable to parameter of
+type '"/expenses" | "/" | RelativePathString | ...'
+```
+
+The route is there and CI is green, because CI installs into a fresh checkout
+with no `.expo/` at all. Delete the stale file and it regenerates:
+
+```bash
+rm -f frontend/.expo/types/router.d.ts
+```
+
 **Component-render tests work**, and `renderHook` drives hook tests. The
 dependency pair in `package.json` is what makes that true, so that is where to
 check it — this file deliberately keeps no list of which suites mount, because

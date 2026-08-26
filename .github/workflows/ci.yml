@@ -55,6 +55,11 @@ jobs:
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
+    # Bounded because `testTimeout` is 30s: a pathological run of 265 tests is
+    # six times longer to fail than it was on jest's 5s default, and without
+    # this the job would sit against GitHub's 6-hour ceiling. Comfortably above
+    # the ~1 minute a real run takes, including a cold-cache one.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
