@@ -15,7 +15,10 @@
   },
   "jest": {
     "preset": "jest-expo",
-    "testTimeout": 30000
+    "testTimeout": 30000,
+    "setupFilesAfterEnv": [
+      "<rootDir>/jest.setup.js"
+    ]
   },
   "dependencies": {
     "expo": "~57.0.14",

@@ -27,8 +27,9 @@ CI runs the last three on Node 22.
 ### `testTimeout` is 30s, and that is about the cache, not slow tests
 
 `package.json` sets `testTimeout: 30000`, well above jest's 5s default. Nothing
-here is slow: on a warm cache the whole suite finishes in about two seconds and
-the longest single test is around 550ms.
+here is slow: on a developer machine a warm cache runs the whole suite in about
+two seconds with the longest single test around 550ms. A 4-core CI runner
+measures 4s and 388ms — same order, different box, which is the point.
 
 The setting exists for the **first** run after `jest --clearCache`, or on any
 fresh checkout, where each test file's first test absorbs the babel transform
@@ -46,6 +47,24 @@ and so only ever runs cold.
 Raise it further rather than adding per-test timeouts if this reappears: a
 per-test override fixes the one test that happened to lose the race and leaves
 the next one to find it.
+
+### There are two timeout budgets, and `testTimeout` is only one
+
+`waitFor` and every `findBy*` arm their **own** timer rather than deferring to
+jest's. It reads `asyncUtilTimeout` from
+`@testing-library/react-native`, which defaults to **1,000ms** — so raising
+`testTimeout` alone left async waits on a budget thirty times tighter, in the
+suites that were flaking hardest. There are 27 such waits across `useReports`,
+`expensesFailure`, `signIn` and `overview`.
+
+`jest.setup.js` raises it to 10s, registered through `setupFilesAfterEnv`
+because the jest-expo preset provides no setup file that calls `configure()`.
+
+**It is deliberately below `testTimeout`.** A `waitFor` that runs out reports
+the assertion that never became true; jest's timer reports only
+`Exceeded timeout of Nms`, naming no wait. Keeping the async budget the smaller
+of the two means the more useful message is always the one that fires — so
+raise `testTimeout` first if you ever need this above 30s.
 
 ### A typecheck failure naming a route that exists is a stale generated file
 
