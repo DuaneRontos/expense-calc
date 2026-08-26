@@ -44,8 +44,14 @@ export function SignOutButton() {
       // exists. `replace`, not `push` — a signed-out session is not somewhere
       // to go back to.
       //
-      // No `setSubmitting(false)`: the session is cleared, so this component
-      // has already unmounted by the time that would run.
+      // **Reset before navigating, because this component does not unmount.**
+      // `AppShell` wraps the whole `Stack` and `sign-in` is a screen inside it,
+      // so `replace` navigates *within* the shell: `signedIn` goes false and
+      // this re-renders as `null`, which does not discard its `useState`.
+      // Leaving the flag set meant signing back in restored the same instance
+      // with `submitting` still true — a permanently disabled "Signing out…"
+      // that no further press could clear.
+      setSubmitting(false);
       router.replace('/sign-in');
     }
   }

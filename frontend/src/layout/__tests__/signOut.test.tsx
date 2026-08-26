@@ -70,20 +70,38 @@ const signIn = () => act(async () => {
   await api.session.adopt(TOKENS, true);
 });
 
-describe.each(BANDS)('Sign out ($size)', (band) => {
+/**
+ * Wrapped, because RNTL registers its auto-cleanup at the root level and Jest
+ * runs an inner `afterEach` *first* — so the tree is still mounted and clearing
+ * the session notifies a live subscriber outside `act`. Warnings that all pass
+ * are how a real one becomes invisible.
+ */
+const resetSession = () => act(async () => {
+  await api.session.clear();
+});
+
+/**
+ * Only the visibility rule is banded.
+ *
+ * `SignOutButton` sits in the header row, which every band renders — so all
+ * three exercise an identical subtree, and banding the behaviour below would
+ * assert the same thing three times. What banding is worth here is catching
+ * someone moving the control into a band-conditional branch, where it would
+ * quietly vanish on one or two of the three targets. That is a visibility
+ * question, so it lives here and the rest does not.
+ */
+describe.each(BANDS)('Sign out visibility ($size)', (band) => {
   beforeEach(async () => {
     mockWidth = band.width;
     mockReplace.mockClear();
     await api.session.clear();
   });
 
-  afterEach(async () => {
-    await api.session.clear();
-  });
+  afterEach(resetSession);
 
   /**
-   * The absence is asserted inside a tree known to have rendered — the header
-   * title anchors it. `queryByText(...)).toBeNull()` alone is satisfied by a
+   * The absence is asserted inside a tree known to have rendered — the nav
+   * label anchors it. `queryByRole(...)).toBeNull()` alone is satisfied by a
    * render that mounted nothing at all.
    */
   it('offers no way to sign out when there is no session', async () => {
@@ -99,6 +117,17 @@ describe.each(BANDS)('Sign out ($size)', (band) => {
 
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
   });
+});
+
+describe('Sign out behaviour', () => {
+  beforeEach(async () => {
+    // One band, since none of this is band-dependent — see the note above.
+    mockWidth = BREAKPOINTS.compact + 1;
+    mockReplace.mockClear();
+    await api.session.clear();
+  });
+
+  afterEach(resetSession);
 
   it('signs out and sends you to the sign-in screen', async () => {
     const logout = jest
@@ -132,6 +161,39 @@ describe.each(BANDS)('Sign out ($size)', (band) => {
     await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
 
     expect(mockReplace).toHaveBeenCalledWith('/sign-in');
+
+    logout.mockRestore();
+  });
+
+  /**
+   * Signing out and back in leaves a usable control.
+   *
+   * **The other tests here cannot catch this**, which is why it mocks `logout`
+   * differently: they stub it wholesale, so `session.clear()` never runs,
+   * `signedIn` stays true and the button stays mounted and visible. Only a mock
+   * that performs the real side effect reaches the state where the component
+   * re-renders as `null` — which does *not* discard its `useState`, because
+   * `AppShell` wraps the whole `Stack` including `sign-in`, so navigating there
+   * never unmounts it.
+   *
+   * Before the fix this found a permanently disabled "Signing out…" that no
+   * further press could clear.
+   */
+  it('is pressable again after signing out and back in', async () => {
+    const logout = jest.spyOn(api, 'logout').mockImplementation(async () => {
+      await api.session.clear();
+      return null;
+    });
+
+    await renderShell();
+    await signIn();
+
+    await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+    expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
+
+    await signIn();
+
+    expect(screen.getByRole('button', { name: 'Sign out' })).not.toBeDisabled();
 
     logout.mockRestore();
   });

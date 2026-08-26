@@ -139,10 +139,18 @@ export class Session {
   };
 
   /**
-   * Called only after a transition has actually happened.
+   * Called after a call that *may* have changed whether a session exists.
    *
-   * A failed `adopt()` notifies nothing: it leaves the session untouched, so
-   * there is no change to report and a subscriber would re-read the same value.
+   * Not "only after a real transition", which an earlier version of this
+   * comment claimed: `clear()` on an already-signed-out session notifies with
+   * nothing changed, and so does `adopt()` on a token rotation, where
+   * `isSignedIn()` was true before and after. Both are harmless because
+   * `useSyncExternalStore` bails out when `getSnapshot` returns an identical
+   * value — but the guarantee is React's, not this method's, and stating it
+   * here invited someone to lean on the wrong one.
+   *
+   * A *failed* `adopt()` does notify nothing, because it returns before
+   * reaching any of the call sites.
    */
   private notify(): void {
     for (const listener of this.listeners) {
@@ -185,7 +193,19 @@ export class Session {
   async clear(): Promise<void> {
     this.accessToken = null;
     this.expiresAtMs = null;
-    await this.store.clear();
-    this.notify();
+    try {
+      await this.store.clear();
+    } finally {
+      // In a `finally` because the in-memory halves are already gone above: a
+      // store that rejected would otherwise skip this and leave every subscriber
+      // reporting a session that no longer exists — precisely the lie
+      // `subscribe()` was added to prevent. `adopt()` reaches `notify()` on
+      // both paths for the same reason.
+      //
+      // Not reachable through either store today — both swallow their own
+      // failures — but `RefreshTokenStore.clear()` carries no contract
+      // forbidding a rejection, and the ordering costs nothing.
+      this.notify();
+    }
   }
 }
