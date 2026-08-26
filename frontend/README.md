@@ -24,15 +24,26 @@ npm test           # jest
 
 CI runs the last three on Node 22.
 
-**There are no component-render tests, and that is a known gap rather than a
-choice.** `@testing-library/react-native` 14 was installed and removed again:
-under the `jest-expo` preset its `render` returns an empty result and mounts
-nothing, with React, `react-test-renderer` and RNTL all on matching versions
-(19.2.3 / 19.2.3 / 14.0.1), so it is an integration problem rather than a
-version mismatch. Everything tested here is therefore pure logic — geometry,
-money formatting, query serialization, problem parsing. Whoever picks up #14
-should solve the renderer properly rather than rediscover this cold. `npm run export:web` produces the static web
-build; `npx expo export --platform all` bundles all three targets and is the
+**Component-render tests work**, and `renderHook` drives hook tests. The
+dependency pair in `package.json` is what makes that true, so that is where to
+check it — this file deliberately keeps no list of which suites mount, because
+every version of such a list has gone stale.
+
+This file used to describe empty renders as a known gap. The cause was that
+`@testing-library/react-native` 14 **requires `test-renderer` as a peer
+dependency** and it was missing; #64 installed it and the gap closed. Note
+`test-renderer` is not `react-test-renderer` — the latter is a different
+package, still present transitively, and checking *its* version against React's
+is what made the original diagnosis read as "an integration problem rather than
+a version mismatch" when it was a missing peer.
+
+Render where the behavior is about announced state or accessibility — the
+period-chip bug in #69 was invisible to a pure-logic test because the logic was
+right and the announced state was not. Keep testing pure logic where the
+behavior is pure logic: geometry, money formatting, query serialization,
+problem parsing.
+
+`npm run export:web` produces the static web build; `npx expo export --platform all` bundles all three targets and is the
 cheapest way to prove the JS compiles for iOS and Android without a simulator.
 
 **Expo SDK 57, React Native 0.86, React 19.** Expo changes fast and its docs are
