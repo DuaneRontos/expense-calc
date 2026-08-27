@@ -587,6 +587,85 @@ describe('auth', () => {
     ).toHaveLength(0);
   });
 
+  it('resumes a web session at startup, before any screen has asked for data', async () => {
+    // **The route guard's precondition (#92).** The refresh has only ever run as
+    // a side effect of the first data request. A guard that redirects before any
+    // request goes out would therefore never trigger it, and every returning
+    // user with a live cookie would be bounced to sign-in — the client having
+    // never asked the one participant that can see the cookie.
+    const fetchImpl = jest.fn().mockResolvedValue(json(WEB_TOKENS));
+    const session = new Session(webStore());
+    const client = webClient(fetchImpl, session);
+
+    await expect(client.resume()).resolves.toBe(true);
+
+    expect(session.isSignedIn()).toBe(true);
+    expect(fetchImpl.mock.calls.map((call) => String(call[0]))).toContain(
+      'http://api.test/api/v1/auth/refresh',
+    );
+  });
+
+  it('reports no session when the browser turns out to hold no cookie', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(
+      problem(400, {
+        type: 'https://expense-calc.invalid/problems/no-refresh-token',
+        title: 'No refresh token',
+      }),
+    );
+    const client = webClient(fetchImpl);
+
+    // Resolved false rather than rejected: "you are signed out" is an answer, and
+    // a guard should not have to tell a refusal apart from a transport failure
+    // by catching.
+    await expect(client.resume()).resolves.toBe(false);
+  });
+
+  it('does not ask twice once the server has said there is no cookie', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(
+      problem(400, {
+        type: 'https://expense-calc.invalid/problems/no-refresh-token',
+        title: 'No refresh token',
+      }),
+    );
+    const client = webClient(fetchImpl);
+
+    await client.resume();
+    await client.resume();
+
+    expect(
+      fetchImpl.mock.calls.filter((call) => String(call[0]).endsWith('/auth/refresh')),
+    ).toHaveLength(1);
+  });
+
+  it('answers a device with an empty store without a request', async () => {
+    // The native half of spec §9.2's table is readable, so there is nothing to
+    // ask: an empty SecureStore already is the answer.
+    const fetchImpl = jest.fn();
+    const client = clientWith(fetchImpl, memoryStore(null));
+
+    await expect(client.resume()).resolves.toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('answers from memory when a session is already live', async () => {
+    const fetchImpl = jest.fn();
+    const client = clientWith(fetchImpl, memoryStore('refresh-0'));
+    await client.session.adopt(TOKENS);
+
+    await expect(client.resume()).resolves.toBe(true);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('reports no session when the refresh fails for a reason that is not an answer', async () => {
+    // A 503 says nothing about whether a credential exists. The guard still has
+    // to decide something, and "not signed in" is the safe side — but the
+    // session must not be reported as live on the strength of a failed ask.
+    const fetchImpl = jest.fn().mockResolvedValue(problem(503));
+    const client = webClient(fetchImpl);
+
+    await expect(client.resume()).resolves.toBe(false);
+  });
+
   it('drops a refresh that lands after a sign-out', async () => {
     // The race the flag alone does not close: a request 401s and passes the
     // resume check, the user signs out and the logout fails, then the refresh

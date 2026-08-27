@@ -1,11 +1,12 @@
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { ExpenseQueryProvider } from '../src/expenses/ExpenseQueryProvider';
-import { AppShell } from '../src/layout/AppShell';
-import { labelFor } from '../src/layout/navigation';
-import { palette } from '../src/theme/tokens';
+import { ExpenseQueryProvider } from "../src/expenses/ExpenseQueryProvider";
+import { AppShell } from "../src/layout/AppShell";
+import { AuthGuard } from "../src/layout/AuthGuard";
+import { labelFor } from "../src/layout/navigation";
+import { palette } from "../src/theme/tokens";
 
 /**
  * Seeds Overview beneath any deep-linked child.
@@ -18,7 +19,7 @@ import { palette } from '../src/theme/tokens';
  *
  * Spelled `initialRouteName` before SDK 54.
  */
-export const unstable_settings = { anchor: 'index' };
+export const unstable_settings = { anchor: "index" };
 
 export default function RootLayout() {
   return (
@@ -34,20 +35,26 @@ export default function RootLayout() {
         screen — they are not in the same subtree, so a shared query needs a
         provider that contains both.
       */}
-      <ExpenseQueryProvider>
-        <AppShell>
-          <Stack
-            screenOptions={{
-              // `AppShell` renders the app's own header, so the navigator's would
-              // be a second one — and it labels screens with the route file name,
-              // so it read "index" and "expenses" in lower case above the real
-              // title. It also drew a back chevron between two peer destinations
-              // that have no parent/child relationship.
-              headerShown: false,
-              contentStyle: { backgroundColor: palette.background },
-            }}
-          >
-            {/*
+      {/*
+        Inside the providers and outside the shell: the guard decides whether
+        there is an app to draw at all, so the chrome should not render — and
+        offer a sign-out button — around a redirect.
+      */}
+      <AuthGuard>
+        <ExpenseQueryProvider>
+          <AppShell>
+            <Stack
+              screenOptions={{
+                // `AppShell` renders the app's own header, so the navigator's would
+                // be a second one — and it labels screens with the route file name,
+                // so it read "index" and "expenses" in lower case above the real
+                // title. It also drew a back chevron between two peer destinations
+                // that have no parent/child relationship.
+                headerShown: false,
+                contentStyle: { backgroundColor: palette.background },
+              }}
+            >
+              {/*
               Titles are still declared with the header hidden: this is the string
               screen-change announcements read on iOS and Android.
 
@@ -65,19 +72,26 @@ export default function RootLayout() {
               context. Called out because it is a behaviour change on the two
               platforms this branch cannot test.
             */}
-            <Stack.Screen name="index" options={{ title: labelFor('overview') }} />
-            <Stack.Screen name="expenses" options={{ title: labelFor('expenses') }} />
-            {/*
+              <Stack.Screen
+                name="index"
+                options={{ title: labelFor("overview") }}
+              />
+              <Stack.Screen
+                name="expenses"
+                options={{ title: labelFor("expenses") }}
+              />
+              {/*
               A literal rather than `labelFor`, because sign-in is deliberately
               not a nav destination — a permanent "Sign in" tab beside Overview
               and Expenses would be chrome for something you do once. Declared
               all the same: undeclared, the native screen-change announcement
               reads the route file name, so this one announced as "sign-in".
             */}
-            <Stack.Screen name="sign-in" options={{ title: 'Sign in' }} />
-          </Stack>
-        </AppShell>
-      </ExpenseQueryProvider>
+              <Stack.Screen name="sign-in" options={{ title: "Sign in" }} />
+            </Stack>
+          </AppShell>
+        </ExpenseQueryProvider>
+      </AuthGuard>
     </SafeAreaProvider>
   );
 }

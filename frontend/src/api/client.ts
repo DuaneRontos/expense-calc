@@ -421,6 +421,42 @@ export class ExpenseCalcClient {
   }
 
   /**
+   * Settles whether this client has a session, without a screen asking for data.
+   *
+   * **The route guard's precondition (#92).** Every refresh so far has run as a
+   * side effect of the first request in {@link request}. A guard that redirects
+   * an unauthenticated visitor runs *before* any such request, so nothing would
+   * trigger the exchange — and on web, where the credential is a cookie no
+   * script can read, "no access token in memory" is the state every returning
+   * user starts in. The guard would bounce all of them, having never asked the
+   * one participant that can see the cookie.
+   *
+   * Resolves rather than rejects, because a refusal is an answer. A caller
+   * deciding which screen to show should not have to tell "you are signed out"
+   * apart from "the server is down" by catching — and both land on the same side
+   * here, since neither produces a session.
+   */
+  async resume(): Promise<boolean> {
+    if (this.session.isSignedIn()) {
+      return true;
+    }
+
+    if (!(await this.canResume())) {
+      return false;
+    }
+
+    try {
+      await this.refresh();
+    } catch {
+      // Swallowed on purpose. `refresh()` has already cleared the session and
+      // latched `noSessionToResume` where the failure proved anything, so the
+      // only thing left to report is the boolean below.
+    }
+
+    return this.session.isSignedIn();
+  }
+
+  /**
    * `POST /auth/refresh` — exchanges the stored refresh token for a new pair,
    * collapsing concurrent callers into one exchange.
    *
