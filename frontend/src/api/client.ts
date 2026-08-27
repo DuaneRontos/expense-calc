@@ -179,6 +179,20 @@ const MISSING_REFRESH_TOKEN_PROBLEM = 'https://expense-calc.invalid/problems/no-
  * with it proves the credential is dead. A 401 from a middlebox never reached
  * the server, so nothing was revoked and the cookie is untouched.
  */
+/**
+ * How long {@link ExpenseCalcClient.resume} waits before answering "no session".
+ *
+ * A connection that is refused fails immediately; one that is *accepted and
+ * never answered* does not, and the browser will hold it for minutes. Since the
+ * route guard renders a spinner over the whole app until `resume()` settles,
+ * without a budget a stalled proxy is an app that never draws anything at all.
+ *
+ * Generous rather than snappy: this is the ceiling on a pathological case, not
+ * a latency target, and cutting off a slow-but-working refresh would sign
+ * someone out for being on a bad connection.
+ */
+const RESUME_BUDGET_MS = 10_000;
+
 const UNAUTHENTICATED_PROBLEM = 'https://expense-calc.invalid/problems/unauthenticated';
 
 export class ExpenseCalcClient {
@@ -418,6 +432,48 @@ export class ExpenseCalcClient {
     // can see the cookie, so when it reports there is none, that is the answer
     // this method went looking for.
     return Promise.resolve(!this.signedOut && !this.noSessionToResume);
+  }
+
+  /**
+   * Settles whether this client has a session, without a screen asking for data.
+   *
+   * **The route guard's precondition (#92).** Every refresh so far has run as a
+   * side effect of the first request in {@link request}. A guard that redirects
+   * an unauthenticated visitor runs *before* any such request, so nothing would
+   * trigger the exchange — and on web, where the credential is a cookie no
+   * script can read, "no access token in memory" is the state every returning
+   * user starts in. The guard would bounce all of them, having never asked the
+   * one participant that can see the cookie.
+   *
+   * Resolves rather than rejects, because a refusal is an answer. A caller
+   * deciding which screen to show should not have to tell "you are signed out"
+   * apart from "the server is down" by catching — and both land on the same side
+   * here, since neither produces a session.
+   */
+  async resume(): Promise<boolean> {
+    if (this.session.isSignedIn()) {
+      return true;
+    }
+
+    try {
+      if (!(await this.canResume())) {
+        return false;
+      }
+
+      // Raced rather than aborted. `refresh()` is single-flight and shared, so
+      // cancelling it here would cancel it for every other caller too — and the
+      // exchange itself is harmless if it lands late. What must not happen is
+      // this method never returning.
+      await Promise.race([this.refresh(), timeout(RESUME_BUDGET_MS)]);
+    } catch {
+      // Swallowed on purpose, and this now covers `canResume()` as well as the
+      // exchange. `refresh()` has already cleared the session and latched
+      // `noSessionToResume` where the failure proved anything; the only thing
+      // left to report is the boolean below. A rejection escaping here would
+      // leave the guard's spinner over the whole app for good.
+    }
+
+    return this.session.isSignedIn();
   }
 
   /**
@@ -750,6 +806,13 @@ export class ExpenseCalcClient {
   compare(period?: { from: string; to: string }): Promise<PeriodComparison> {
     return this.request<PeriodComparison>(`/reports/compare${periodQuery(period)}`);
   }
+}
+
+/** Resolves after `ms`, so a caller can put a ceiling on something that may never settle. */
+function timeout(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 function periodQuery(period?: { from: string; to: string }): string {

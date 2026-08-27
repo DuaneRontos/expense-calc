@@ -41,16 +41,20 @@ export function SignOutButton() {
       // In a `finally`, because `logout()` clears local state in one of its own:
       // the session is gone whether or not the server was reached, so staying
       // put would leave someone on chrome claiming a session that no longer
-      // exists. `replace`, not `push` — a signed-out session is not somewhere
-      // to go back to.
+      // exists.
       //
-      // **Reset before navigating, because this component does not unmount.**
-      // `AppShell` wraps the whole `Stack` and `sign-in` is a screen inside it,
-      // so `replace` navigates *within* the shell: `signedIn` goes false and
-      // this re-renders as `null`, which does not discard its `useState`.
-      // Leaving the flag set meant signing back in restored the same instance
-      // with `submitting` still true — a permanently disabled "Signing out…"
-      // that no further press could clear.
+      // **`AuthGuard` is what moves you now (#92), and this is belt to its
+      // braces.** The guard sits above `AppShell`, so clearing the session
+      // swaps this whole subtree for a redirect and the button does unmount —
+      // which it did not before the guard, when the comment here explained at
+      // length why `submitting` had to be reset first. Both run; the `finally`
+      // completes before React commits, so they agree on the destination rather
+      // than racing to different ones.
+      //
+      // Kept rather than deleted because the guard is a route-level decision and
+      // this is the one place that knows a sign-out *just happened*. The reset
+      // stays for the same reason: cheap, and correct whichever tree this ends
+      // up in.
       setSubmitting(false);
       router.replace('/sign-in');
     }
