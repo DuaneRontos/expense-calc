@@ -49,7 +49,14 @@ describe('AuthGuard', () => {
 
     // Anchored on something known to be on screen, so the two absences below
     // are absences within a tree that exists.
-    expect(screen.getByLabelText('Checking your session')).toBeOnTheScreen();
+    const spinner = screen.getByLabelText('Checking your session');
+    expect(spinner).toBeOnTheScreen();
+    // **Which element carries the label is the assertion, not merely that one
+    // does.** `getByLabelText` reads the prop, so it is satisfied by a label on
+    // the wrapping `View` — where react-native-web renders a role-less `div`,
+    // ARIA forbids naming it, and the name is dropped. The indicator is the
+    // element that already has `role="progressbar"` to hang a name on.
+    expect(spinner.type).toBe('ActivityIndicator');
     expect(screen.queryByText('the app')).toBeNull();
     expect(mockRedirects).toHaveLength(0);
   });

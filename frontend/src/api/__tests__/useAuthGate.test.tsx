@@ -71,6 +71,18 @@ describe('useAuthGate', () => {
     await waitFor(() => expect(second.result.current).toBe('signed-in'));
   });
 
+  it('settles even when the client rejects, rather than holding the app on a spinner', async () => {
+    // The guard renders a spinner over the whole app until this settles, so a
+    // rejection here is not one broken screen — it is an app that never draws.
+    // "We could not tell" has to land on the signed-out side rather than on no
+    // side at all.
+    jest.spyOn(api, 'resume').mockRejectedValue(new Error('Keychain unavailable'));
+
+    const { result } = await renderHook(() => useAuthGate());
+
+    await waitFor(() => expect(result.current).toBe('signed-out'));
+  });
+
   it('follows the session out when it ends', async () => {
     // Signing out clears the session from outside React. A gate that read
     // `resume()` once and stopped would keep reporting a session that no longer

@@ -666,6 +666,50 @@ describe('auth', () => {
     await expect(client.resume()).resolves.toBe(false);
   });
 
+  it('gives up on a refresh that never answers, rather than waiting forever', async () => {
+    // **The guard changed the blast radius of a hang.** Before it, a stalled
+    // `/auth/refresh` cost one screen, which had #87's failure card and a retry.
+    // Now the guard holds a spinner over the whole app until this settles — so a
+    // proxy that accepts the connection and never replies is an app that never
+    // renders. Connection-refused was already covered; a hang was not.
+    let hung = false;
+    const fetchImpl = jest.fn().mockImplementation(() => {
+      hung = true;
+      return new Promise<Response>(() => {});
+    });
+    const client = webClient(fetchImpl);
+
+    // Fake timers, or this test waits out the real budget — ten seconds for one
+    // assertion, on a suite that has already been bitten by a timeout flake.
+    jest.useFakeTimers();
+    try {
+      const resumed = client.resume();
+      await jest.advanceTimersByTimeAsync(30_000);
+      await expect(resumed).resolves.toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+
+    // The request did go out: this is a budget on the answer, not a refusal to ask.
+    expect(hung).toBe(true);
+  });
+
+  it('reports no session when the store itself throws', async () => {
+    // `resume()` promises to resolve rather than reject, but `canResume()` sat
+    // outside the try — and on a device that reaches the injectable store. The
+    // shipped stores swallow their own errors, so this is a contract gap rather
+    // than a live bug; it is worth closing because the cost of a rejection here
+    // is now the whole app rather than one screen.
+    const exploding: RefreshTokenStore = {
+      read: () => Promise.reject(new Error('Keychain unavailable')),
+      write: () => Promise.resolve(),
+      clear: () => Promise.resolve(),
+    };
+    const client = clientWith(jest.fn(), exploding);
+
+    await expect(client.resume()).resolves.toBe(false);
+  });
+
   it('drops a refresh that lands after a sign-out', async () => {
     // The race the flag alone does not close: a request 401s and passes the
     // resume check, the user signs out and the logout fails, then the refresh

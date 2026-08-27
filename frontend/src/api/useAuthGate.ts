@@ -32,11 +32,23 @@ export function useAuthGate(): AuthGate {
 
   useEffect(() => {
     let live = true;
-    void api.resume().then(() => {
-      if (live) {
-        setResolved(true);
-      }
-    });
+    void api
+      .resume()
+      // **Caught as well as settled.** A rejection would otherwise leave
+      // `resolved` false for good, and the guard holds a spinner over the whole
+      // app for as long as that lasts — so "we could not tell" has to land on
+      // the signed-out side rather than on no side at all.
+      //
+      // `finally` alone is not enough: it settles the gate but passes the
+      // rejection through, leaving it unhandled. `resume()` is contracted not
+      // to reject; this is the belt to that braces, because the cost of being
+      // wrong changed when the guard went in.
+      .catch(() => false)
+      .finally(() => {
+        if (live) {
+          setResolved(true);
+        }
+      });
     return () => {
       live = false;
     };

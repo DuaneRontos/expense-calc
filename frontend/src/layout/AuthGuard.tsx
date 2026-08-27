@@ -36,14 +36,16 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 
   if (gate === 'resolving') {
     return (
-      <View
-        // Labelled rather than a bare spinner: this is the whole screen for as
-        // long as it shows, and an unlabelled `ActivityIndicator` announces
-        // nothing at all.
-        accessibilityLabel="Checking your session"
-        style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl }}
-      >
-        <ActivityIndicator color={palette.accent} />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl }}>
+        {/*
+          **On the indicator, not the wrapper.** react-native-web renders a bare
+          `View` as a `div` with no role, and ARIA prohibits naming a generic
+          element — so a label there is dropped and the spinner announces as an
+          unnamed progressbar, on a screen that is the whole app while it shows.
+          `ActivityIndicator` already carries `role="progressbar"`; what it
+          lacked was a name, not a role.
+        */}
+        <ActivityIndicator accessibilityLabel="Checking your session" color={palette.accent} />
       </View>
     );
   }
