@@ -58,7 +58,8 @@ jobs:
     # Bounded because `testTimeout` is 30s: a pathological run of 265 tests is
     # six times longer to fail than it was on jest's 5s default, and without
     # this the job would sit against GitHub's 6-hour ceiling. Comfortably above
-    # the ~1 minute a real run takes, including a cold-cache one.
+    # the ~2 minutes a real run takes: roughly a minute of that is the
+    # three-platform bundle below, and the rest a cold-cache test run.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
