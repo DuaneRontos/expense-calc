@@ -13,6 +13,7 @@ scaffolding around it.
 | --- | --- |
 | [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md) | **Read this before implementing anything.** Domain model, API surface, resolved decisions |
 | `backend/` | Java Spring Boot API — expense model, classification, query, reporting |
+| [`backend/expensecalc.postman_collection.json`](backend/expensecalc.postman_collection.json) | Postman collection for the API — 19 requests with assertions, runs top to bottom |
 | `frontend/` | Expo / React Native Web — iOS, Android, and desktop web from one codebase |
 | `.claude/skills/` | Skills the agents load on demand |
 | `.claude/agents/` | Subagent definitions |

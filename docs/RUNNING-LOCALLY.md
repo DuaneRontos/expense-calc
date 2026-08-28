@@ -266,6 +266,14 @@ docker rm -f expensecalc-db
 These assume **Option A** above (the `insecure-local` profile). If you are
 running secured, add `-H "Authorization: Bearer $ACCESS_TOKEN"` to every one.
 
+**Or import the Postman collection**, which is the same walkthrough with
+assertions attached: [`backend/expensecalc.postman_collection.json`](../backend/expensecalc.postman_collection.json).
+Nineteen requests across six folders, run top to bottom — ids chain between
+them, so nothing needs pasting, and `05 Cleanup` deletes what it created.
+Under `insecure-local` skip the `00 Auth` folder entirely; under a secured
+backend run it first, having set the `username` and `password` variables to
+whatever `APP_AUTH_USERNAME` was.
+
 Create an expense — note the amount is a **string**, not a number:
 
 ```bash

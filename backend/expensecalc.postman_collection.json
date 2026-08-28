@@ -1,0 +1,932 @@
+{
+  "info": {
+    "_postman_id": "b2f7a1c4-9d3e-4a61-8f2b-5c7e1a9d4e08",
+    "name": "expense-calc — local API",
+    "description": "Local API collection for the expense-calc Spring Boot backend.\n\nBase URL defaults to http://localhost:8080/api/v1.\n\nTwo ways to run the backend:\n\n1. insecure-local profile (recommended for poking): auth is off. Ignore the Auth folder entirely.\n2. Secured: run Auth > Login first. It stores the access token in the `accessToken` collection variable, and every other request sends it automatically.\n\nRun the folders top to bottom, including in the Collection Runner. `01 Reference`, then `02 Expenses` (which chains an id through create -> read -> list -> update -> reclassify), then `03 Reports`, then `04 Error contract`, then `05 Cleanup` — which deletes what `02` created. The deletes come last on purpose: run them before `03` and the reports have nothing to report on, and only one assertion fails, which reads like a flake rather than an ordering bug.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "expenseId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refundId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "username",
+      "value": "dev",
+      "type": "string"
+    },
+    {
+      "key": "password",
+      "value": "dev",
+      "type": "string"
+    },
+    {
+      "key": "periodFrom",
+      "value": "2026-01-01",
+      "type": "string"
+    },
+    {
+      "key": "periodTo",
+      "value": "2026-02-01",
+      "type": "string"
+    },
+    {
+      "key": "baselineTotal",
+      "value": "0.00",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "00 Auth (secured mode only)",
+      "description": "Skip this whole folder under the `insecure-local` profile.\n\n**Set `username` and `password` first.** They default to `dev`/`dev`, which exist only in `application-insecure-local.yml` — the one mode where this folder is skipped. A secured run has no defaults at all (`SecurityStartupGuard` refuses to start without them), so the defaults are guaranteed wrong for every run that actually uses this folder. Use whatever `APP_AUTH_USERNAME` and its password were set to.",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('returns an access token', () => pm.expect(body.accessToken).to.be.a('string').and.not.empty);",
+                  "pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "if (body.refreshToken) { pm.collectionVariables.set('refreshToken', body.refreshToken); }",
+                  "pm.test('access token expires in 15 minutes', () => pm.expect(body.expiresInSeconds).to.eql(900));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\",\n  \"client\": \"device\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "`client` is required and has no default. Use `device` from Postman: the refresh token comes back in the response body. `web` puts it in an httpOnly cookie instead and omits it from the body, which is not what you want from an API client."
+          }
+        },
+        {
+          "name": "Refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "if (body.refreshToken) { pm.collectionVariables.set('refreshToken', body.refreshToken); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "Exchanging a refresh token invalidates it. The response carries the replacement, which this request stores automatically."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Reference",
+      "item": [
+        {
+          "name": "List categories",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('returns the 11-category taxonomy', () => pm.expect(body).to.have.lengthOf(11));",
+                  "pm.test('includes GROCERIES', () => pm.expect(body.map(c => c.key)).to.include('GROCERIES'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "categories"
+              ]
+            },
+            "description": "The category taxonomy, which a client is meant to read rather than hardcode.\n\nNOTE: this endpoint reads no database. A 200 here proves the app is up; it does NOT prove the database is reachable. Use `02 Expenses` for that."
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Expenses",
+      "description": "Run these in order. Create stores the new id in `expenseId`; the rest use it. The deletes live in `05 Cleanup`.",
+      "item": [
+        {
+          "name": "Create expense (auto-classified)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Baseline, so `03 Reports` can assert what *this* collection added rather",
+                  "// than what the database happens to total. /reports/by-category cannot be",
+                  "// scoped to a merchant, so an absolute assertion silently depends on nobody",
+                  "// having poked at January 2026 — and fails with no hint why when they have.",
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const from = pm.collectionVariables.get('periodFrom');",
+                  "const to = pm.collectionVariables.get('periodTo');",
+                  "",
+                  "pm.sendRequest({",
+                  "  url: `${base}/reports/by-category?from=${from}&to=${to}`,",
+                  "  method: 'GET',",
+                  "  header: { Accept: 'application/json' }",
+                  "}, (err, res) => {",
+                  "  // A failure here is not this request's problem to report: the run is about",
+                  "  // to fail on the create anyway, and a thrown pre-request script hides that.",
+                  "  pm.collectionVariables.set('baselineTotal', (!err && res.code === 200) ? res.json().total : '0.00');",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "",
+                  "// Guarded: an unguarded assignment on a failed create stores the string",
+                  "// 'undefined', and the next four requests hit /expenses/undefined — four red",
+                  "// tests describing a problem that does not exist.",
+                  "if (body.id) { pm.collectionVariables.set('expenseId', body.id); }",
+                  "",
+                  "pm.test('amount round-trips exactly', () => pm.expect(body.amount).to.eql('1234.56'));",
+                  "pm.test('rule engine filed it under GROCERIES', () => pm.expect(body.category).to.eql('GROCERIES'));",
+                  "pm.test('classification came from the rule engine', () => pm.expect(body.classifications[0].source).to.eql('RULE_ENGINE'));",
+                  "pm.test('Location header points at the new expense', () => pm.expect(pm.response.headers.get('Location')).to.include(body.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"1234.56\",\n  \"currency\": \"PHP\",\n  \"occurredOn\": \"2026-01-15\",\n  \"merchant\": \"Puregold\",\n  \"description\": \"weekly shop\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/expenses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "expenses"
+              ]
+            },
+            "description": "`amount` is a STRING, not a JSON number. Sending 1234.56 unquoted routes it through a double and defeats the point of BigDecimal.\n\nNobody tells the API the category. The rule engine matches the merchant and files it under Groceries on its own."
+          }
+        },
+        {
+          "name": "Create refund (negative amount)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "",
+                  "// Guarded, for the reason the create above gives.",
+                  "if (body.id) { pm.collectionVariables.set('refundId', body.id); }",
+                  "",
+                  "pm.test('amount stays negative', () => pm.expect(body.amount).to.eql('-500.00'));",
+                  "pm.test('refund keeps the category of what it refunds', () => pm.expect(body.category).to.eql('GROCERIES'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"-500.00\",\n  \"currency\": \"PHP\",\n  \"occurredOn\": \"2026-01-20\",\n  \"merchant\": \"Puregold\",\n  \"description\": \"returned items\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/expenses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "expenses"
+              ]
+            },
+            "description": "A refund is a negative amount that keeps the category of what it refunds. Totals are net, so this subtracts from the Groceries total rather than forming a category of its own."
+          }
+        },
+        {
+          "name": "Get expense by id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('reads back the id we created', () => pm.expect(body.id).to.eql(pm.collectionVariables.get('expenseId')));",
+                  "pm.test('amount survived the round trip through Postgres', () => pm.expect(body.amount).to.eql('1234.56'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/expenses/{{expenseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "expenses",
+                "{{expenseId}}"
+              ]
+            },
+            "description": "This is the request that proves the database works. The value came back out of Postgres, not out of memory."
+          }
+        },
+        {
+          "name": "List with filters, sort and paging",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('both the expense and the refund are listed', () => pm.expect(body.totalItems).to.be.at.least(2));",
+                  "pm.test('sorted by amount descending', () => {",
+                  "  const amounts = body.items.map(i => parseFloat(i.amount));",
+                  "  pm.expect(amounts).to.eql([...amounts].sort((a, b) => b - a));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/expenses?category=GROCERIES&from={{periodFrom}}&to={{periodTo}}&sort=amount,desc&page=0&size=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "expenses"
+              ],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "GROCERIES",
+                  "description": "Repeatable. Any key from GET /categories."
+                },
+                {
+                  "key": "from",
+                  "value": "{{periodFrom}}",
+                  "description": "Inclusive, ISO date."
+                },
+                {
+                  "key": "to",
+                  "value": "{{periodTo}}",
+                  "description": "EXCLUSIVE. Half-open, so this means up to but not including 1 February."
+                },
+                {
+                  "key": "sort",
+                  "value": "amount,desc",
+                  "description": "field,dir. Fields: occurredOn, amount (or amountMinor), merchant, category. Direction must be exactly asc or desc."
+                },
+                {
+                  "key": "page",
+                  "value": "0",
+                  "description": "Zero-based."
+                },
+                {
+                  "key": "size",
+                  "value": "10",
+                  "description": "Clamped to 200. The response reports what was applied."
+                },
+                {
+                  "key": "merchant",
+                  "value": "Puregold",
+                  "disabled": true,
+                  "description": "Case-insensitive substring."
+                },
+                {
+                  "key": "q",
+                  "value": "shop",
+                  "disabled": true,
+                  "description": "Case-insensitive substring over the description."
+                },
+                {
+                  "key": "minAmount",
+                  "value": "0",
+                  "disabled": true,
+                  "description": "Compared against the SIGNED amount, so minAmount=0 excludes refunds."
+                },
+                {
+                  "key": "maxAmount",
+                  "value": "5000",
+                  "disabled": true,
+                  "description": "Signed."
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update expense (PATCH)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('description changed', () => pm.expect(body.description).to.eql('weekly shop, amended'));",
+                  "pm.test('untouched fields kept their values', () => pm.expect(body.amount).to.eql('1234.56'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"weekly shop, amended\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/expenses/{{expenseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "expenses",
+                "{{expenseId}}"
+              ]
+            },
+            "description": "Every field is optional. Omitted fields are left alone."
+          }
+        },
+        {
+          "name": "Reclassify (user overrides the rule engine)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('category is now DINING', () => pm.expect(body.category).to.eql('DINING'));",
+                  "pm.test('the USER decision is recorded first', () => pm.expect(body.classifications[0].source).to.eql('USER'));",
+                  "pm.test('the rule engine decision is kept as history', () => pm.expect(body.classifications.length).to.be.at.least(2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"DINING\",\n  \"reason\": \"this was the food court, not the supermarket\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/expenses/{{expenseId}}/classification",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "expenses",
+                "{{expenseId}}",
+                "classification"
+              ]
+            },
+            "description": "`reason` is required and non-blank. Classification history is append-only: the old decision stays, a new one is layered on top, and a database trigger rejects any UPDATE to a past record."
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Reports",
+      "description": "Reads what `02 Expenses` created. `05 Cleanup` removes it afterwards, so a straight top-to-bottom run works unattended.",
+      "item": [
+        {
+          "name": "By category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Integer centavos, parsed from the digit groups rather than via parseFloat:",
+                  "// money never becomes a float in this repo, and a test that breaks the rule it",
+                  "// is checking is not much of a test.",
+                  "function centavos(decimal) {",
+                  "  const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(decimal);",
+                  "  if (!m) { throw new Error('not a 2dp decimal string: ' + decimal); }",
+                  "  const n = Number(m[2]) * 100 + Number(m[3]);",
+                  "  return m[1] === '-' ? -n : n;",
+                  "}",
+                  "",
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "",
+                  "// 1234.56 spent minus 500.00 refunded. Asserted as a delta against the",
+                  "// baseline captured before the create, so a database with other January rows",
+                  "// in it still gives a meaningful pass or a meaningful failure.",
+                  "const added = centavos(body.total) - centavos(pm.collectionVariables.get('baselineTotal'));",
+                  "pm.test('the refund is netted against the spending', () => pm.expect(added).to.eql(73456));",
+                  "pm.test('currency is PHP', () => pm.expect(body.currency).to.eql('PHP'));",
+                  "pm.test('totals cross the wire as strings, not numbers', () => pm.expect(body.total).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reports/by-category?from={{periodFrom}}&to={{periodTo}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reports",
+                "by-category"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "{{periodFrom}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{periodTo}}"
+                }
+              ]
+            },
+            "description": "1234.56 spent minus 500.00 refunded is 734.56, not 1734.56. Totals are net, and a category total may legitimately be zero or negative."
+          }
+        },
+        {
+          "name": "Over time",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Integer centavos, parsed from the digit groups rather than via parseFloat:",
+                  "// money never becomes a float in this repo, and a test that breaks the rule it",
+                  "// is checking is not much of a test.",
+                  "function centavos(decimal) {",
+                  "  const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(decimal);",
+                  "  if (!m) { throw new Error('not a 2dp decimal string: ' + decimal); }",
+                  "  const n = Number(m[2]) * 100 + Number(m[3]);",
+                  "  return m[1] === '-' ? -n : n;",
+                  "}",
+                  "",
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('one bucket per month, in order, with no gaps', () => {",
+                  "  pm.expect(body.buckets.map((b) => b.key)).to.eql(['2026-01-01', '2026-02-01', '2026-03-01']);",
+                  "});",
+                  "",
+                  "// The point of the endpoint, and what `lengthOf(3)` alone could not catch:",
+                  "// February is empty and still present, carrying a string zero rather than",
+                  "// null, 0, or nothing at all.",
+                  "pm.test('an empty month is zero-filled, not absent', () => pm.expect(body.buckets[1].total).to.eql('0.00'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reports/over-time?from=2026-01-01&to=2026-04-01&bucket=month",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reports",
+                "over-time"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-04-01"
+                },
+                {
+                  "key": "bucket",
+                  "value": "month",
+                  "description": "day, week or month. Case-insensitive. Defaults to month."
+                }
+              ]
+            },
+            "description": "One bucket per slice with no gaps: a month with no spending comes back as \"0.00\" rather than being missing, so a line chart cannot draw two points three months apart as if they were adjacent."
+          }
+        },
+        {
+          "name": "Compare with prior period",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reports/compare?from={{periodFrom}}&to={{periodTo}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reports",
+                "compare"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "{{periodFrom}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{periodTo}}"
+                }
+              ]
+            },
+            "description": "Takes one period and derives what to compare it against. A whole calendar month is compared against the calendar month before it; any other window against the equally long window before it."
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Error contract",
+      "description": "These are supposed to fail. Each asserts the RFC 7807 problem+json shape.",
+      "item": [
+        {
+          "name": "Unsupported currency -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('names the offending field', () => pm.expect(body.violations[0].field).to.eql('currency'));",
+                  "pm.test('explains the v1 limitation', () => pm.expect(body.detail).to.include('PHP only'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"100.00\",\n  \"currency\": \"USD\",\n  \"occurredOn\": \"2026-01-15\",\n  \"merchant\": \"Test\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/expenses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "expenses"
+              ]
+            },
+            "description": "v1 is Philippine Peso only, enforced at the API boundary before anything reaches the database."
+          }
+        },
+        {
+          "name": "Unknown expense id -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test('problem type is expense-not-found', () => pm.expect(body.type).to.include('expense-not-found'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/expenses/00000000-0000-0000-0000-000000000000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "expenses",
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Unknown category filter -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('problem type is invalid-query', () => pm.expect(body.type).to.include('invalid-query'));",
+                  "pm.test('names the offending parameter', () => pm.expect(body.violations[0].field).to.eql('category'));",
+                  "pm.test('points at GET /categories', () => pm.expect(body.detail).to.include('/api/v1/categories'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/expenses?category=NOPE",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "expenses"
+              ],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "NOPE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Bad sort direction -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "",
+                  "// Status alone would pass on a 400 with an empty body — which is the exact",
+                  "// failure `ExpenseQueryProblemHandler.handleUnbindableParameter` exists for.",
+                  "pm.test('problem type is invalid-query', () => pm.expect(body.type).to.include('invalid-query'));",
+                  "pm.test('names the offending parameter', () => pm.expect(body.violations[0].field).to.eql('sort'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/expenses?sort=occurredOn,ascending",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "expenses"
+              ],
+              "query": [
+                {
+                  "key": "sort",
+                  "value": "occurredOn,ascending"
+                }
+              ]
+            },
+            "description": "Only `asc` and `desc` are accepted. Treating \"not asc\" as descending used to return 200 with the results silently reversed."
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Cleanup",
+      "description": "Runs last so the reports folder still has rows to report on. Leaves the database as it found it, which is what makes the collection re-runnable.",
+      "item": [
+        {
+          "name": "Delete expense",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/expenses/{{expenseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "expenses",
+                "{{expenseId}}"
+              ]
+            },
+            "description": "Cascades to the classification history rows via the foreign key."
+          }
+        },
+        {
+          "name": "Delete refund (cleanup)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/expenses/{{refundId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "expenses",
+                "{{refundId}}"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
