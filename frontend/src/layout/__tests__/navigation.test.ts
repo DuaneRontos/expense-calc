@@ -4,6 +4,7 @@ import {
   isExactly,
   labelFor,
   matchDestination,
+  safeReturnPath,
   webTitleFor,
 } from '../navigation';
 
@@ -90,5 +91,56 @@ describe('isExactly', () => {
     // Same path, different answers: within the section, not at its top.
     expect(matchDestination('/expenses/new')?.href).toBe('/expenses');
     expect(isExactly('/expenses/new', '/expenses')).toBe(false);
+  });
+});
+
+describe('safeReturnPath', () => {
+  /**
+   * Where a signed-out visitor was headed before the guard sent them to sign in
+   * (issue #93). The value arrives from the URL, so it is attacker-supplied in
+   * the only sense that matters: a link is a thing you can send someone.
+   */
+  it('returns a route the app actually has', () => {
+    expect(safeReturnPath('/expenses')).toBe('/expenses');
+    expect(safeReturnPath('/')).toBe('/');
+  });
+
+  it('keeps a nested route, which is the case worth carrying', () => {
+    // The whole point: a link to one expense should survive signing in.
+    expect(safeReturnPath('/expenses/8a7d-4f21')).toBe('/expenses/8a7d-4f21');
+    expect(safeReturnPath('/expenses/new')).toBe('/expenses/new');
+  });
+
+  it('refuses an absolute URL rather than following it off-site', () => {
+    // An open redirect: sign in on the real site, land on someone else's.
+    expect(safeReturnPath('https://evil.example/phish')).toBe('/');
+    expect(safeReturnPath('http://evil.example')).toBe('/');
+  });
+
+  it('refuses a protocol-relative URL, which is an absolute one in disguise', () => {
+    // `//evil.example` is off-site to a browser and looks like a path to a
+    // check that only tests the leading slash.
+    expect(safeReturnPath('//evil.example')).toBe('/');
+    expect(safeReturnPath('/\\evil.example')).toBe('/');
+  });
+
+  it('refuses traversal rather than handing it to the router', () => {
+    expect(safeReturnPath('/expenses/../../evil')).toBe('/');
+  });
+
+  it('refuses a route the app does not have', () => {
+    expect(safeReturnPath('/nope')).toBe('/');
+  });
+
+  it('refuses to send anyone back to the sign-in screen', () => {
+    // Signing in only to arrive at the form again reads as a failed sign-in.
+    expect(safeReturnPath('/sign-in')).toBe('/');
+  });
+
+  it('falls back when there is no destination at all', () => {
+    // `useLocalSearchParams` hands back a string, an array, or nothing.
+    expect(safeReturnPath(undefined)).toBe('/');
+    expect(safeReturnPath('')).toBe('/');
+    expect(safeReturnPath(['/expenses', '/'])).toBe('/');
   });
 });

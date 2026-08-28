@@ -106,6 +106,45 @@ export function isExactly(pathname: string, href: string): boolean {
   return normalize(pathname) === href;
 }
 
+/**
+ * The route to return to after signing in, or `/` when it cannot be trusted
+ * (issue #93).
+ *
+ * **Attacker-supplied, in the only sense that matters.** The value rides in the
+ * URL the guard built, and a URL is a thing you can send someone — so
+ * `?next=https://evil.example` navigated blind is an open redirect: the victim
+ * signs in on the real site and lands on someone else's. Every rejection below
+ * is a case that reaches the router unchecked otherwise.
+ *
+ * Takes `unknown` because that is what the caller has: `useLocalSearchParams`
+ * hands back a string, an array of them for a repeated key, or nothing.
+ */
+export function safeReturnPath(raw: unknown): string {
+  if (typeof raw !== 'string' || raw === '') {
+    return '/';
+  }
+
+  // **Both slashes, and the backslash.** A single leading `/` is the only shape
+  // a same-site path takes; `//host` and `/\host` are absolute URLs a browser
+  // resolves off-site, and both look like paths to a check that tests `raw[0]`
+  // alone.
+  if (!raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\')) {
+    return '/';
+  }
+
+  // Traversal is refused rather than resolved: a normalising step would have to
+  // agree with whatever the router does with `..`, and disagreeing is how this
+  // becomes a bypass.
+  if (raw.includes('..')) {
+    return '/';
+  }
+
+  // Nothing outside the app's own routes, so a typo or a stale link is an
+  // Overview rather than a blank screen. `/sign-in` is excluded by not being a
+  // destination — arriving back at the form after signing in reads as failure.
+  return matchDestination(raw) ? raw : '/';
+}
+
 export function useActiveDestination(): Destination | undefined {
   return matchDestination(usePathname());
 }
