@@ -110,14 +110,22 @@ cheapest way to prove the JS compiles for iOS and Android without a simulator.
 versioned — read <https://docs.expo.dev/versions/v57.0.0/> rather than the
 latest-version pages, which describe a different SDK.
 
+### `app.json` carries no `newArchEnabled` key, on purpose
+
+The new architecture is the default in SDK 57 and the option went with it. The
+key is absent from `@expo/config-types`, and nothing in `@expo/config`,
+`@expo/config-plugins` or `@expo/prebuild-config` reads it — so it set nothing
+either way. Re-adding it from an older snippet only fails the schema check
+below.
+
 ### `expo-doctor` has one known failure, and it is deliberate
 
-`npx expo-doctor` reports 20 of 21 checks passing. The one that fails is the
-SDK-patch drift — eight packages sit a patch or two below what the installed
-SDK expects, `react-native` among them. **It is left that way on purpose.**
+The failing check is the SDK-patch drift: several packages sit a patch or two
+below what the installed SDK expects, `react-native` among them. **It is left
+that way on purpose.**
 
-`npx expo install --fix` cannot complete it. The bump wants
-`react-native@0.86.3`, which declares `@react-native/jest-preset@0.86.3` as a
+`npx expo install --fix` cannot complete it. The bump wants a newer
+`react-native`, which declares a matching `@react-native/jest-preset` as a
 peer, and npm cannot resolve that against the rest of the tree:
 
 ```
@@ -125,22 +133,22 @@ npm error Conflicting peer dependency: @react-native/jest-preset@0.86.3
 npm error Could not resolve dependency: react-native@"0.86.3" from the root project
 ```
 
-Both packages are published, and installing all eight together in one
-`npm install` hits the same wall — so this is a genuine conflict in the
-current SDK 57 patch set, not an ordering artefact. The only ways past are
-`--force` or `--legacy-peer-deps`, which npm itself describes as accepting "an
-incorrect (and potentially broken) dependency resolution."
+Both packages are published, and installing every drifted package together in
+one `npm install` hits the same wall — so this is a genuine conflict in the
+SDK 57 patch set, not an ordering artefact. The only ways past are `--force` or
+`--legacy-peer-deps`, which npm itself describes as accepting "an incorrect
+(and potentially broken) dependency resolution."
 
 Everything is within one SDK major, so nothing is broken by waiting. **Retry
 `npx expo install --fix` after the next SDK 57 patch** rather than forcing it.
 If a partial run leaves `package.json` ahead of `node_modules`, `git checkout
 -- package.json package-lock.json && npm ci` puts it back.
 
-### `npm audit` reports 15 advisories, none of them shipped
+### `npm audit` advisories are build tooling, not shipped code
 
-Ten moderate and five high, all reaching `@expo/cli`, `@expo/metro`,
-`@expo/config-plugins` and `xcode`. Every one is build tooling: Metro and the
-CLI do not go into the app bundle, so this is not "the app is vulnerable".
+They reach `@expo/cli`, `@expo/metro`, `@expo/config-plugins` and `xcode`.
+Metro and the CLI do not go into the app bundle, so this is not "the app is
+vulnerable".
 
 Do **not** run `npm audit fix --force` — it fights the SDK's pins and lands you
 in the resolution conflict above. They move when the SDK moves.
