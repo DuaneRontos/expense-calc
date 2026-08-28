@@ -6,6 +6,9 @@ node_modules/
 # Expo
 .expo/
 dist/
+# `export:check`'s output. Kept out of `dist/` so a local run of the check
+# cannot leave iOS and Android bytecode inside the deployable web build.
+dist-check/
 web-build/
 expo-env.d.ts
 

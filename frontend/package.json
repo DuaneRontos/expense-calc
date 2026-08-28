@@ -9,6 +9,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "export:web": "expo export --platform web",
+    "export:check": "expo export --platform all --output-dir dist-check",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "jest --ci"

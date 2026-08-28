@@ -86,7 +86,7 @@ starting an issue; most issue bodies name the section that governs them.
   earlier rounds' fixes — were taking quota from whoever was at a terminal.
   Whether a push deserves another round is a judgement only the author has.
 
-  It can run `cd backend && ./mvnw -B -q verify` and the three frontend checks,
+  It can run `cd backend && ./mvnw -B -q verify` and the four frontend checks,
   and is asked to reproduce a bug before reporting it and to run a fix before
   suggesting one — a reviewer that could only read the code got its diagnoses
   right but its remedies wrong. The workflow installs `frontend/node_modules`
@@ -141,10 +141,10 @@ cd backend && ./mvnw spring-boot:run     # needs a Postgres on localhost:5432
 
 ```bash
 cd frontend && npm run web               # desktop web target
-cd frontend && npm run lint              # the three checks CI runs, on Node 22
+cd frontend && npm run lint              # the four checks CI runs, on Node 22
 cd frontend && npm run typecheck
 cd frontend && npm test
-cd frontend && npx expo export --platform all   # bundles iOS, Android, and web
+cd frontend && npm run export:check      # bundles iOS, Android, and web
 ```
 
 `expo export --platform all` is the cheapest proof the JS compiles for iOS and

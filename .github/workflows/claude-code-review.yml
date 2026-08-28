@@ -136,11 +136,19 @@ jobs:
             INFO you would read back into context for nothing. Failures still
             print. Drop it if you need the full log to diagnose something.
 
-            And the frontend checks, which are the three ci.yml runs:
+            And the frontend checks, which are the four ci.yml runs:
 
                 cd frontend && npm run lint
                 cd frontend && npm run typecheck
                 cd frontend && npm test
+                cd frontend && npm run export:check
+
+            The last one bundles for iOS, Android and web — the only check
+            that compiles the JS for the native targets, and the one whose
+            result you cannot get by reading. It takes about a minute. Run it
+            when a change could plausibly affect what Metro resolves or what
+            executes during static rendering; the other three pass on code
+            that never bundles for a device.
 
             `npm test -- <path>` runs one suite. `node_modules` is already
             installed, so you can also read the installed sources — when a

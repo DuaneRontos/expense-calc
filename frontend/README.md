@@ -103,7 +103,7 @@ right and the announced state was not. Keep testing pure logic where the
 behavior is pure logic: geometry, money formatting, query serialization,
 problem parsing.
 
-`npm run export:web` produces the static web build; `npx expo export --platform all` bundles all three targets and is the
+`npm run export:web` produces the static web build; `npm run export:check` bundles all three targets and is the
 cheapest way to prove the JS compiles for iOS and Android without a simulator.
 
 **Expo SDK 57, React Native 0.86, React 19.** Expo changes fast and its docs are
