@@ -1,3 +1,8 @@
+// NativeWind's compiled styles, injected at the root (spike #108).
+// Web needs this to emit the stylesheet; native needs it to register the
+// StyleSheet objects the Metro transformer produced.
+import '../global.css';
+
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
