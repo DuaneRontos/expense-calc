@@ -8,6 +8,7 @@ import type { AuthGate } from '../../api/useAuthGate';
 const mockGate = { current: 'resolving' as AuthGate };
 const mockPath = { current: '/' };
 const mockRedirects: string[] = [];
+const mockReplace = jest.fn();
 
 jest.mock('../../api/useAuthGate', () => ({
   useAuthGate: () => mockGate.current,
@@ -15,6 +16,10 @@ jest.mock('../../api/useAuthGate', () => ({
 
 jest.mock('expo-router', () => ({
   usePathname: () => mockPath.current,
+  // The guard reaches for this on the post-mount exit. Absent from the mock it
+  // is `undefined`, and the first test to touch that path fails with
+  // `Cannot read properties of undefined` rather than saying what broke.
+  router: { replace: (...args: unknown[]) => mockReplace(...args) },
   // A marker rather than a navigation: what matters is that the guard asked to
   // go somewhere, and where.
   Redirect: ({ href }: { href: string }) => {
@@ -35,6 +40,7 @@ beforeEach(() => {
   mockGate.current = 'resolving';
   mockPath.current = '/';
   mockRedirects.length = 0;
+  mockReplace.mockClear();
 });
 
 describe('AuthGuard', () => {
@@ -89,6 +95,43 @@ describe('AuthGuard', () => {
 
     await renderGuard();
 
+    expect(screen.getByText('the app')).toBeOnTheScreen();
+    expect(mockRedirects).toHaveLength(0);
+  });
+
+  /**
+   * A session ending while the app is up takes the *other* exit, and the
+   * children stay rendered while it does.
+   *
+   * **This is the regression guard.** Returning a `Redirect` here instead
+   * unmounts the navigator, and every form of navigation expo-router offers
+   * needs it — which in a browser left a blank page on `/` with the URL
+   * unchanged, and, while `SignOutButton` was also navigating, a
+   * `Maximum update depth exceeded` loop in `ContextNavigator`.
+   *
+   * It works here and not through `renderRouter` because this suite mocks
+   * `expo-router` wholesale and can therefore assert on *mechanism* — which
+   * navigation primitive the guard reached for — rather than on the outcome
+   * both implementations eventually reach. Checked against the previous guard:
+   * `replace` is never called there and `mockRedirects` holds `/sign-in`
+   * instead.
+   */
+  it('moves an ended session imperatively, keeping the navigator rendered', async () => {
+    mockGate.current = 'signed-in';
+    mockPath.current = '/expenses';
+
+    const view = await renderGuard();
+    expect(screen.getByText('the app')).toBeOnTheScreen();
+
+    mockGate.current = 'signed-out';
+    await view.rerender(
+      <AuthGuard>
+        <Text>the app</Text>
+      </AuthGuard>,
+    );
+
+    expect(mockReplace).toHaveBeenCalledWith('/sign-in');
+    // The navigator is what performs the move, so it has to outlive the asking.
     expect(screen.getByText('the app')).toBeOnTheScreen();
     expect(mockRedirects).toHaveLength(0);
   });
