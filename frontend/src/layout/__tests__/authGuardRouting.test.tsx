@@ -64,6 +64,15 @@ function routes() {
 }
 
 describe('the guard, driven through the real router', () => {
+  // `spyOn` hands back the *existing* mock when the property is already
+  // spied, and nothing in the jest config restores between tests — so without
+  // this, every `not.toHaveBeenCalled()` below is asserted against a spy
+  // carrying the previous tests' history. It only ever makes them stricter,
+  // but one failure would then fail all of them and point at the wrong test.
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('lands a signed-out cold load on the sign-in screen', async () => {
     // `Redirect` swallows a failed `replace` into `console.error`, so without
     // watching it a silent failure to navigate is indistinguishable from a slow
@@ -101,8 +110,11 @@ describe('the guard, driven through the real router', () => {
    * real web navigator does not.
    *
    * It is kept because the transition is worth asserting on its own terms, not
-   * because it guards that regression. The browser is what distinguishes the
-   * two implementations, and the reproduction lives in the PR rather than here.
+   * because it guards that regression. **The guard for that lives in
+   * `authGuard.test.tsx`**, which mocks `expo-router` wholesale and can assert
+   * on which navigation primitive was reached for — the axis the two
+   * implementations actually differ on, and one this file cannot see because
+   * it drives the real router and both eventually arrive.
    */
   it('lands on the sign-in screen when the session ends after mount', async () => {
     const errors = jest.spyOn(console, 'error').mockImplementation(() => {});

@@ -77,6 +77,13 @@ export function AuthGuard({ children }: { children: ReactNode }) {
    * `ContextNavigator` resolved the collision by looping:
    * `Maximum update depth exceeded`, then a blank screen. One owner, one
    * mechanism per case.
+   *
+   * **It fires once and does not retry, which is the far end of a trade.** The
+   * deps only change when the gate or the pathname does, so a `replace` that
+   * fails to move the pathname leaves the visitor on a protected route with no
+   * session. The `Redirect` this replaced had the opposite failure — it re-ran
+   * on every render, which is the loop being removed here. Given one of the
+   * two, a move that does not happen beats a move that never stops happening.
    */
   useEffect(() => {
     if (lockedOut && navigatorMounted) {

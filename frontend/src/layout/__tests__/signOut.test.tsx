@@ -130,7 +130,11 @@ describe('Sign out behaviour', () => {
   afterEach(resetSession);
 
   /**
-   * **Ends the session and navigates nowhere.**
+   * **Calls `logout()` and navigates nowhere.**
+   *
+   * Deliberately not "ends the session": `logout` is stubbed here, so nothing
+   * clears anything. The test below is the one that observes the session
+   * actually ending.
    *
    * `AuthGuard` owns where a signed-out visitor goes — it sits above the
    * navigator and swaps the whole subtree for a `Redirect` the moment the
@@ -145,7 +149,7 @@ describe('Sign out behaviour', () => {
    * backend; the two navigations land in either order and only one of those
    * orders survives, which is why it presents as intermittent.
    */
-  it('ends the session without navigating, leaving that to the guard', async () => {
+  it('calls logout without navigating, leaving that to the guard', async () => {
     const logout = jest
       .spyOn(api, 'logout')
       .mockResolvedValue({ revokedSessions: 1, note: 'Signed out everywhere.' });
