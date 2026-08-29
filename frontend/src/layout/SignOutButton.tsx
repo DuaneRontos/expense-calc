@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, Text } from 'react-native';
 
@@ -38,25 +37,25 @@ export function SignOutButton() {
     try {
       await api.logout();
     } finally {
-      // In a `finally`, because `logout()` clears local state in one of its own:
-      // the session is gone whether or not the server was reached, so staying
-      // put would leave someone on chrome claiming a session that no longer
-      // exists.
+      // **This navigates nowhere, and that is the fix.** `AuthGuard` owns where
+      // a signed-out visitor goes: it sits above the navigator and swaps the
+      // whole subtree for a `Redirect` the moment the session clears. Doing it
+      // here as well meant two navigations to the same route racing, and
+      // expo-router's `ContextNavigator` resolved that collision by looping —
       //
-      // **`AuthGuard` is what moves you now (#92), and this is belt to its
-      // braces.** The guard sits above `AppShell`, so clearing the session
-      // swaps this whole subtree for a redirect and the button does unmount —
-      // which it did not before the guard, when the comment here explained at
-      // length why `submitting` had to be reset first. Both run; the `finally`
-      // completes before React commits, so they agree on the destination rather
-      // than racing to different ones.
+      //     Uncaught  Maximum update depth exceeded
+      //       at ContextNavigator
       //
-      // Kept rather than deleted because the guard is a route-level decision and
-      // this is the one place that knows a sign-out *just happened*. The reset
-      // stays for the same reason: cheap, and correct whichever tree this ends
-      // up in.
+      // — leaving a blank screen. The previous comment here called the second
+      // navigation "belt to its braces" and argued the `finally` completes
+      // before React commits, so the two could not disagree. They do not
+      // disagree about the *destination*; they collide over who is driving, and
+      // the ordering that claim rests on is not guaranteed. It held often
+      // enough to look deliberate and failed often enough to be reported.
+      //
+      // The reset stays: it is cheap, and it is correct whether or not the
+      // guard unmounts this component first.
       setSubmitting(false);
-      router.replace('/sign-in');
     }
   }
 
