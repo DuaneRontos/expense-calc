@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 
 import { AppShell } from '../AppShell';
 import { BREAKPOINTS, type LayoutSize } from '../breakpoints';
+import { api } from '../../api/client';
 import { ExpenseQueryProvider } from '../../expenses/ExpenseQueryProvider';
 
 /**
@@ -63,19 +64,37 @@ const renderShell = () =>
     </ExpenseQueryProvider>,
   );
 
+/**
+ * A session, because the nav is only offered with one (`navGating.test.tsx`).
+ * Web-shaped tokens so the refresh-token store is never touched: `viaCookie`
+ * sets the access token and returns.
+ */
+const signIn = () => act(async () => {
+  await api.session.adopt({ accessToken: 'access-1', expiresInSeconds: 900 }, true);
+});
+
 describe.each(BANDS)('AppShell navigation ($size)', (band) => {
-  beforeEach(() => {
+  beforeEach(async () => {
     mockWidth = band.width;
+    await api.session.clear();
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      await api.session.clear();
+    });
   });
 
   it('names the current screen in its label, not just its colour', async () => {
     await renderShell();
+    await signIn();
 
     expect(screen.getByLabelText('Expenses, current screen')).toBeOnTheScreen();
   });
 
   it('leaves the other destinations unqualified', async () => {
     await renderShell();
+    await signIn();
 
     expect(screen.getByLabelText('Overview')).toBeOnTheScreen();
     expect(screen.queryByLabelText('Overview, current screen')).toBeNull();
@@ -89,6 +108,7 @@ describe.each(BANDS)('AppShell navigation ($size)', (band) => {
    */
   it('keeps the iOS selected trait on the active destination', async () => {
     await renderShell();
+    await signIn();
 
     expect(screen.getByLabelText('Expenses, current screen')).toBeSelected();
     expect(screen.getByLabelText('Overview')).not.toBeSelected();

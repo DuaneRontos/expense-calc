@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MIN_TOUCH_TARGET } from './breakpoints';
 import { SignOutButton } from './SignOutButton';
+import { useSignedIn } from '../api/useSignedIn';
 import { APP_NAME, useActiveDestination, useNavItems, useShowsFilters, type NavItem } from './navigation';
 import { useLayout } from './useLayout';
 import { ExpenseFilters } from '../expenses/ExpenseFilters';
@@ -36,6 +37,27 @@ export function AppShell({ children }: { children: ReactNode }) {
   const layout = useLayout();
   const insets = useSafeAreaInsets();
   const nav = useNavItems();
+
+  /**
+   * The nav is not offered without a session.
+   *
+   * `AuthGuard` keeps a signed-out visitor on `/sign-in`, but this shell still
+   * renders around that screen — and `useNavItems` navigates unconditionally,
+   * with no session check of its own. So the controls were a way into a
+   * protected route from the one route the guard has to leave reachable: the
+   * screen mounted and ran its effects, and the guard's redirect chased it.
+   *
+   * Withdrawing them is upstream of that race rather than another participant
+   * in it. `useSignedIn` rather than a mount-time read, so the controls appear
+   * on sign-in and leave on sign-out without the shell remounting.
+   *
+   * **Gated at the three render sites, not by emptying `nav`.** Both work, and
+   * doing both is what a first attempt here did — but two redundant gates mean
+   * removing either one leaves the tests green, so neither is pinned. Gating
+   * where the chrome is drawn is the one that also avoids leaving an empty
+   * bordered strip behind in the compact band.
+   */
+  const signedIn = useSignedIn();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // One `usePathname` subscription for the whole shell. The title, the active
@@ -93,7 +115,18 @@ export function AppShell({ children }: { children: ReactNode }) {
           borderBottomColor: palette.border,
         }}
       >
-        <Text style={{ fontSize: 18, fontWeight: '700', color: palette.text }}>{title}</Text>
+        {/*
+          A real heading, not just large bold text. react-native-web maps
+          `header` onto `role="heading"`, and native onto the iOS header trait,
+          so this is the landmark a screen reader jumps between screens by —
+          the one thing on the page that says which screen this is.
+        */}
+        <Text
+          accessibilityRole="header"
+          style={{ fontSize: 18, fontWeight: '700', color: palette.text }}
+        >
+          {title}
+        </Text>
         <Text style={{ color: palette.textMuted, fontSize: 12 }}>
           {/* Surfaced on purpose: this scaffold's job is to prove one codebase
               drives all three targets, and the band is the thing to verify. */}
@@ -102,7 +135,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
           {/* The medium band's navigation: no bottom tabs, no sidebar to put it in. */}
-          {layout.isMedium ? (
+          {layout.isMedium && signedIn ? (
             <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm, flex: 1 }}>
               {nav.map((item) => (
                 <NavButton key={item.key} item={item} />
@@ -183,8 +216,17 @@ export function AppShell({ children }: { children: ReactNode }) {
       ) : null}
 
       <View style={{ flex: 1, flexDirection: layout.isExpanded ? 'row' : 'column' }}>
-        {layout.isExpanded ? (
+        {/*
+          Gated on having something to put in it. Both children are conditional
+          — the nav on the session, the filters on the destination — and signed
+          out on `/sign-in` neither holds, which left a 280px bordered column
+          with nothing in it beside the form. `filterable` stays in the
+          condition because a signed-out visitor on `/expenses` during the
+          redirect window still has filters worth showing.
+        */}
+        {layout.isExpanded && (signedIn || filterable) ? (
           <View
+            testID="nav-sidebar"
             style={{
               width: 280,
               borderRightWidth: 1,
@@ -193,11 +235,15 @@ export function AppShell({ children }: { children: ReactNode }) {
               backgroundColor: palette.surface,
             }}
           >
-            <View style={{ gap: spacing.xs, marginBottom: spacing.lg }}>
-              {nav.map((item) => (
-                <NavButton key={item.key} item={item} align="left" />
-              ))}
-            </View>
+            {/* The inner gate stays: the container may be here for the filters
+                alone, and the destinations should not come with them. */}
+            {signedIn ? (
+              <View style={{ gap: spacing.xs, marginBottom: spacing.lg }}>
+                {nav.map((item) => (
+                  <NavButton key={item.key} item={item} align="left" />
+                ))}
+              </View>
+            ) : null}
             {filterable ? <ExpenseFilters /> : null}
           </View>
         ) : null}
@@ -211,8 +257,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         <View style={{ flex: 1 }}>{children}</View>
       </View>
 
-      {layout.isCompact ? (
+      {/* Signed out, this would be a bordered strip with nothing in it. */}
+      {layout.isCompact && signedIn ? (
         <View
+          testID="nav-tab-bar"
           style={{
             flexDirection: 'row',
             borderTopWidth: 1,
