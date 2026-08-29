@@ -100,14 +100,15 @@ describe.each(BANDS)('Sign out visibility ($size)', (band) => {
   afterEach(resetSession);
 
   /**
-   * The absence is asserted inside a tree known to have rendered — the nav
-   * label anchors it. `queryByRole(...)).toBeNull()` alone is satisfied by a
-   * render that mounted nothing at all.
+   * The absence is asserted inside a tree known to have rendered. Anchored on
+   * the header title rather than a nav label, because the nav is itself gated
+   * on the session now (`navGating.test.tsx`) — the old anchor would be a
+   * second absence dressed as a presence.
    */
   it('offers no way to sign out when there is no session', async () => {
     await renderShell();
 
-    expect(screen.getByLabelText('Expenses, current screen')).toBeOnTheScreen();
+    expect(screen.getByText('Expenses')).toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
   });
 
