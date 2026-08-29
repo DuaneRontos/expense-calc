@@ -129,7 +129,27 @@ describe('Sign out behaviour', () => {
 
   afterEach(resetSession);
 
-  it('signs out and sends you to the sign-in screen', async () => {
+  /**
+   * **Calls `logout()` and navigates nowhere.**
+   *
+   * Deliberately not "ends the session": `logout` is stubbed here, so nothing
+   * clears anything. The test below is the one that observes the session
+   * actually ending.
+   *
+   * `AuthGuard` owns where a signed-out visitor goes — it sits above the
+   * navigator and swaps the whole subtree for a `Redirect` the moment the
+   * session clears. This button navigating as well raced that redirect, and
+   * expo-router's `ContextNavigator` resolved the collision by looping:
+   *
+   *     Uncaught  Maximum update depth exceeded
+   *       at ContextNavigator
+   *     An error occurred in the <Content> component.
+   *
+   * which leaves a blank screen. Reproduced in a browser against a real
+   * backend; the two navigations land in either order and only one of those
+   * orders survives, which is why it presents as intermittent.
+   */
+  it('calls logout without navigating, leaving that to the guard', async () => {
     const logout = jest
       .spyOn(api, 'logout')
       .mockResolvedValue({ revokedSessions: 1, note: 'Signed out everywhere.' });
@@ -140,27 +160,33 @@ describe('Sign out behaviour', () => {
     await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
 
     expect(logout).toHaveBeenCalledTimes(1);
-    expect(mockReplace).toHaveBeenCalledWith('/sign-in');
+    expect(mockReplace).not.toHaveBeenCalled();
 
     logout.mockRestore();
   });
 
   /**
    * `logout()` clears local state in a `finally`, so the session is gone even
-   * when the network call failed — and the control has to follow that rather
-   * than stranding someone on a screen that says they are still signed in.
-   * A `null` return is exactly that case: the request failed for a reason the
-   * client could not narrow.
+   * when the network call failed — and the guard follows the session rather
+   * than the call's outcome. A `null` return is exactly that case: the request
+   * failed for a reason the client could not narrow, and the visitor is still
+   * signed out locally.
    */
-  it('leaves for the sign-in screen even when the server call fails', async () => {
-    const logout = jest.spyOn(api, 'logout').mockResolvedValue(null);
+  it('still ends the session when the server call fails', async () => {
+    const logout = jest.spyOn(api, 'logout').mockImplementation(async () => {
+      await api.session.clear();
+      return null;
+    });
 
     await renderShell();
     await signIn();
 
     await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
 
-    expect(mockReplace).toHaveBeenCalledWith('/sign-in');
+    // Positive first, so the absence below is asserted against a real outcome
+    // rather than against a render that did nothing.
+    expect(api.session.isSignedIn()).toBe(false);
+    expect(mockReplace).not.toHaveBeenCalled();
 
     logout.mockRestore();
   });

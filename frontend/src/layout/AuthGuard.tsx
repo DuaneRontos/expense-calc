@@ -1,5 +1,5 @@
-import { Redirect, usePathname } from 'expo-router';
-import { type ReactNode } from 'react';
+import { Redirect, router, usePathname } from 'expo-router';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
 import { useAuthGate } from '../api/useAuthGate';
@@ -34,6 +34,63 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   const gate = useAuthGate();
   const pathname = usePathname();
 
+  const lockedOut = gate === 'signed-out' && !isExactly(pathname, SIGN_IN);
+
+  /**
+   * Whether the navigator below has ever been on screen.
+   *
+   * The two ways out of here need different mechanisms, and this is what tells
+   * them apart. State set from an effect rather than a ref read during render —
+   * `react-hooks/refs` rejects the latter, and is right to: a value the render
+   * branches on is state, whatever it is stored in.
+   *
+   * Keyed off the children actually rendering, not off `!lockedOut`. During the
+   * `resolving` pass the gate is not yet `signed-out`, so `lockedOut` is false
+   * while the spinner shows — and treating that as "the navigator was up" would
+   * send a cold, signed-out load down the imperative path, where there is no
+   * navigator yet to receive it.
+   */
+  const showingChildren = gate !== 'resolving' && !lockedOut;
+  const [navigatorMounted, setNavigatorMounted] = useState(false);
+
+  // Adjusted during render rather than from an effect. React documents this for
+  // state derived from what the previous render did, and it is the only shape
+  // the hooks lint accepts here: a ref read during render is rejected, and so
+  // is a `setState` in an effect body. It settles in one extra render, before
+  // anything is painted.
+  if (showingChildren && !navigatorMounted) {
+    setNavigatorMounted(true);
+  }
+
+  /**
+   * The exit for a session that ends while the app is up — signing out, or a
+   * refresh that comes back rejected.
+   *
+   * **Imperative, and the children stay rendered underneath it.** Returning a
+   * `Redirect` here instead unmounts the navigator, and every form of
+   * navigation expo-router offers — declarative or imperative — needs that
+   * navigator to still be there. Doing it anyway left a blank screen on `/`
+   * with the URL unchanged, because nothing was left to perform the move.
+   *
+   * This is also why `SignOutButton` no longer navigates. When it did, its
+   * `router.replace` raced the `Redirect` this component used to return, and
+   * `ContextNavigator` resolved the collision by looping:
+   * `Maximum update depth exceeded`, then a blank screen. One owner, one
+   * mechanism per case.
+   *
+   * **It fires once and does not retry, which is the far end of a trade.** The
+   * deps only change when the gate or the pathname does, so a `replace` that
+   * fails to move the pathname leaves the visitor on a protected route with no
+   * session. The `Redirect` this replaced had the opposite failure — it re-ran
+   * on every render, which is the loop being removed here. Given one of the
+   * two, a move that does not happen beats a move that never stops happening.
+   */
+  useEffect(() => {
+    if (lockedOut && navigatorMounted) {
+      router.replace(SIGN_IN);
+    }
+  }, [lockedOut, navigatorMounted]);
+
   if (gate === 'resolving') {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl }}>
@@ -50,10 +107,11 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     );
   }
 
-  // Rendered rather than pushed from an effect: `Redirect` is declarative, so
-  // there is no window in which the children mount and fire their requests
-  // before the navigation lands.
-  if (gate === 'signed-out' && !isExactly(pathname, SIGN_IN)) {
+  // The cold-load exit, where the navigator has never mounted and expo-router
+  // resolves this before anything below it runs. Declarative on purpose: there
+  // is no window in which the children mount and fire their requests first,
+  // which is the regression #92 exists to prevent.
+  if (lockedOut && !navigatorMounted) {
     return <Redirect href={SIGN_IN} />;
   }
 
