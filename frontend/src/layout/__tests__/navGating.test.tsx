@@ -20,8 +20,11 @@ import { ExpenseQueryProvider } from '../../expenses/ExpenseQueryProvider';
  * applied to two of the three leaves the third offering a way in, and nothing
  * else in the suite would notice.
  */
+// `mock`-prefixed so the hoisted factory may read it.
+const mockPath = { current: '/sign-in' };
+
 jest.mock('expo-router', () => ({
-  usePathname: () => '/sign-in',
+  usePathname: () => mockPath.current,
   router: { navigate: () => {}, replace: () => {} },
 }));
 
@@ -70,6 +73,7 @@ const resetSession = () => act(async () => {
 describe.each(BANDS)('Navigation without a session ($size)', (band) => {
   beforeEach(async () => {
     mockWidth = band.width;
+    mockPath.current = '/sign-in';
     await api.session.clear();
   });
 
@@ -83,7 +87,7 @@ describe.each(BANDS)('Navigation without a session ($size)', (band) => {
   it('offers no way into a protected route', async () => {
     await renderShell();
 
-    expect(screen.getByText('Expense Calc')).toBeOnTheScreen();
+    expect(screen.getByRole('header', { name: 'Expense Calc' })).toBeOnTheScreen();
     expect(screen.queryByLabelText('Overview')).toBeNull();
     expect(screen.queryByLabelText('Expenses')).toBeNull();
   });
@@ -94,6 +98,51 @@ describe.each(BANDS)('Navigation without a session ($size)', (band) => {
 
     expect(screen.getByLabelText('Overview')).toBeOnTheScreen();
     expect(screen.getByLabelText('Expenses')).toBeOnTheScreen();
+  });
+
+  /**
+   * **The chrome itself, not only its contents.**
+   *
+   * The stated reason for gating at the render sites rather than emptying
+   * `nav` was that it also avoids drawing empty chrome — and label assertions
+   * cannot see that. Signed out on `/sign-in` the expanded sidebar had both
+   * children removed (the nav by session, the filters because sign-in is not a
+   * destination) and still rendered: a 280px bordered column with nothing in
+   * it, beside the sign-in form on any desktop window.
+   *
+   * The compact half of the same claim was already true; this pins both, so
+   * the rationale stops being the part nothing checks.
+   */
+  it('draws no empty chrome where the destinations used to be', async () => {
+    await renderShell();
+
+    expect(screen.getByRole('header', { name: 'Expense Calc' })).toBeOnTheScreen();
+    expect(screen.queryByTestId('nav-tab-bar')).toBeNull();
+    expect(screen.queryByTestId('nav-sidebar')).toBeNull();
+  });
+
+  /**
+   * **The sidebar can be present without the destinations.**
+   *
+   * Signed out on `/expenses` — the window between the session ending and the
+   * guard's redirect landing — `filterable` is true, so the expanded sidebar
+   * still has content worth showing. The container comes back; the nav must
+   * not come with it.
+   *
+   * Without this the inner gate is unpinned: on `/sign-in` the container is
+   * removed outright, so nothing ever reaches the branch that decides whether
+   * the destinations belong inside it.
+   */
+  it('keeps the filters sidebar without the destinations', async () => {
+    mockPath.current = '/expenses';
+
+    await renderShell();
+
+    if (band.size === 'expanded') {
+      expect(screen.getByTestId('nav-sidebar')).toBeOnTheScreen();
+    }
+    expect(screen.queryByLabelText('Overview')).toBeNull();
+    expect(screen.queryByLabelText('Expenses')).toBeNull();
   });
 
   /**
@@ -108,7 +157,7 @@ describe.each(BANDS)('Navigation without a session ($size)', (band) => {
 
     await resetSession();
 
-    expect(screen.getByText('Expense Calc')).toBeOnTheScreen();
+    expect(screen.getByRole('header', { name: 'Expense Calc' })).toBeOnTheScreen();
     expect(screen.queryByLabelText('Expenses')).toBeNull();
   });
 });
