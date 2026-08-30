@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { api } from '../../src/api/client';
+import { NEW_EXPENSE_DRAFT, clearDraft, readDraft, saveDraft } from '../../src/expenses/draftStore';
 import { ExpenseFormFields } from '../../src/expenses/ExpenseFormFields';
 import {
   hasErrors,
@@ -66,14 +67,27 @@ export default function NewExpense() {
   // the date at whenever the bundle first loaded, so a tab left open across
   // midnight in Manila — or a native app resumed the next day — prefills
   // yesterday, in a field that looks filled and valid.
-  const [values, setValues] = useState<ExpenseFormValues>(emptyForm);
+  //
+  // A draft only exists if a previous mount of this screen was taken away with
+  // something typed into it — see `draftStore.ts` (#96). It carries its own
+  // `occurredOn`, so a draft written yesterday keeps the date the person chose
+  // rather than being quietly moved to today.
+  const [values, setValues] = useState<ExpenseFormValues>(
+    () => readDraft(NEW_EXPENSE_DRAFT) ?? emptyForm(),
+  );
   const [local, setLocal] = useState<ReturnType<typeof validateExpenseForm>>({});
   const { submit, submitting, errors, clearError } = useExpenseSubmit<ExpenseDetail>();
 
   const merged = { ...errors, ...local };
 
   function change(patch: Partial<ExpenseFormValues>) {
-    setValues((current) => ({ ...current, ...patch }));
+    // Set from `values` rather than through an updater so the same object can
+    // be held as the draft. Safe here because `ExpenseFormFields` sends one
+    // field per event and these inputs are controlled, so every keystroke
+    // re-renders before the next one is read.
+    const next = { ...values, ...patch };
+    setValues(next);
+    saveDraft(NEW_EXPENSE_DRAFT, next);
     // Clear the message for the field being edited, so a server complaint does
     // not sit under a value the user has since corrected.
     for (const field of Object.keys(patch)) {
@@ -95,6 +109,9 @@ export default function NewExpense() {
 
     const created = await submit(() => api.createExpense(toCreateRequest(values)));
     if (created) {
+      // The expense exists now; keeping what made it would offer to create it
+      // a second time the next time this form is opened.
+      clearDraft(NEW_EXPENSE_DRAFT);
       // Replace rather than push: going "back" to a form that has already been
       // submitted invites a second identical expense.
       router.replace({ pathname: '/expenses/[id]', params: { id: created.id } });
@@ -136,7 +153,11 @@ export default function NewExpense() {
 
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={() => {
+            // Leaving on purpose is not what the draft is for.
+            clearDraft(NEW_EXPENSE_DRAFT);
+            router.back();
+          }}
           style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
         >
           <Text style={{ color: palette.textMuted }}>Cancel</Text>

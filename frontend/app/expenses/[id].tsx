@@ -6,6 +6,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 import { api } from '../../src/api/client';
 import { ApiError } from '../../src/api/problem';
 import { RequestFailure } from '../../src/api/RequestFailure';
+import { clearDraft, readDraft, saveDraft } from '../../src/expenses/draftStore';
 import { ExpenseFormFields } from '../../src/expenses/ExpenseFormFields';
 import { ReclassifyControl } from '../../src/expenses/ReclassifyControl';
 import {
@@ -57,8 +58,12 @@ export default function ExpenseDetailScreen() {
 
   useEffect(() => {
     if (expense) {
+      // An edit held from a mount this screen was taken away from wins over the
+      // stored value (#96) — that is the whole point of holding it. Keyed on
+      // the expense's own id, so one expense's draft cannot surface while
+      // looking at another.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setValues(toValues(expense));
+      setValues(readDraft(expense.id) ?? toValues(expense));
     }
   }, [expense]);
 
@@ -128,7 +133,18 @@ export default function ExpenseDetailScreen() {
   const sendable = !isEmptyUpdate(request);
 
   function change(patch: Partial<ExpenseFormValues>) {
-    setValues((current) => (current ? { ...current, ...patch } : current));
+    // Unreachable past the guard above, and stated for the same reason `save`
+    // states it: a closure does not carry the narrowing its enclosing scope has.
+    if (!values || !expense) {
+      return;
+    }
+
+    // Set from `values` rather than through an updater so the same object can
+    // be held as the draft. Safe here for the reason `new.tsx` gives: one field
+    // per event, and controlled inputs re-render between keystrokes.
+    const next = { ...values, ...patch };
+    setValues(next);
+    saveDraft(expense.id, next);
     for (const field of Object.keys(patch)) {
       setLocal((current) => {
         const next = { ...current };
@@ -164,6 +180,10 @@ export default function ExpenseDetailScreen() {
     // the history untouched.
     const updated = await edit.submit(() => api.updateExpense(expense.id, request));
     if (updated) {
+      // Saved, so the held copy has served its purpose. Cleared before
+      // `replace`, whose refreshed expense re-runs the effect above and would
+      // otherwise restore the draft over the values just written.
+      clearDraft(expense.id);
       replace(updated);
     }
   }
@@ -189,6 +209,8 @@ export default function ExpenseDetailScreen() {
       return null as unknown as Detail;
     });
     if (!removal.errors.form && done !== undefined) {
+      // There is nothing left to edit.
+      clearDraft(expense.id);
       router.replace('/expenses');
     }
   }
