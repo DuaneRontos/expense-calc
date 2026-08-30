@@ -53,10 +53,15 @@ describe('the Tailwind theme and the app tokens', () => {
     expect(resolved.theme.screens).not.toHaveProperty('lg');
   });
 
-  it('names the touch-target floor rather than relying on a class that happens to match', () => {
+  it('names the touch-target floor on both axes', () => {
     // `min-h-11` is 44 only while `inlineRem` is 16. `min-h-touch` is 44
     // because `MIN_TOUCH_TARGET` is.
+    //
+    // Width as well as height: an unknown Tailwind class compiles to nothing
+    // rather than failing, so `min-w-touch` used without being defined leaves a
+    // square button's hit area unconstrained horizontally and says nothing.
     expect(resolved.theme.minHeight.touch).toBe(`${MIN_TOUCH_TARGET}px`);
+    expect(resolved.theme.minWidth.touch).toBe(`${MIN_TOUCH_TARGET}px`);
   });
 
   it('already expresses the spacing steps, so no second set of names was invented', () => {

@@ -14,16 +14,6 @@
     "typecheck": "tsc --noEmit",
     "test": "jest --ci"
   },
-  "jest": {
-    "preset": "jest-expo",
-    "moduleNameMapper": {
-      "\\.css$": "<rootDir>/jest.cssStub.js"
-    },
-    "testTimeout": 30000,
-    "setupFilesAfterEnv": [
-      "<rootDir>/jest.setup.js"
-    ]
-  },
   "dependencies": {
     "@rn-primitives/slot": "^1.5.2",
     "class-variance-authority": "^0.7.1",

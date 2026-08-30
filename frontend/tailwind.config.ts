@@ -54,16 +54,25 @@ export default {
         ...palette,
         category: categoryColors,
       },
+      /**
+       * `min-h-touch` and `min-w-touch`, tied to the constant rather than to a
+       * number that happens to match it.
+       *
+       * `min-h-11` is 44 only because `metro.config.js` sets `inlineRem: 16`;
+       * at NativeWind's default of 14 the same class is 38.5. Naming the
+       * constant means the touch-target floor cannot be broken by a change to
+       * the rem basis, which is exactly how it broke during #108.
+       *
+       * **Both axes, because a floor on one is not a target.** An icon button
+       * is square and constrains its width too; `Button` used `min-w-touch`
+       * before it existed here, and an unknown Tailwind class compiles to
+       * nothing at all rather than failing — so the hit area was silently
+       * unconstrained horizontally.
+       */
       minHeight: {
-        /**
-         * `min-h-touch`, tied to the constant rather than to a number that
-         * happens to match it.
-         *
-         * `min-h-11` is 44 only because `metro.config.js` sets `inlineRem: 16`;
-         * at NativeWind's default of 14 the same class is 38.5. Naming the
-         * constant means the touch-target floor cannot be broken by a change to
-         * the rem basis, which is exactly how it broke during #108.
-         */
+        touch: `${MIN_TOUCH_TARGET}px`,
+      },
+      minWidth: {
         touch: `${MIN_TOUCH_TARGET}px`,
       },
     },
