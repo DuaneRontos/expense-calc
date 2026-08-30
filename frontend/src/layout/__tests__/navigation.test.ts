@@ -144,3 +144,35 @@ describe('safeReturnPath', () => {
     expect(safeReturnPath(['/expenses', '/'])).toBe('/');
   });
 });
+
+describe('safeReturnPath, depth', () => {
+  /**
+   * The prefix match is right for the nav highlight and wrong for a
+   * destination: `matchDestination` lights Expenses for everything beneath it,
+   * so `/expenses/a/b/c` passed validation and put the visitor on `+not-found`
+   * after signing in — a worse landing than the Overview every other
+   * unrecognised shape gets.
+   *
+   * Same origin throughout, so this was never an open redirect. It is the
+   * difference between refusing a hostile path and returning someone to a real
+   * one.
+   */
+  it('accepts one segment under a destination', () => {
+    expect(safeReturnPath('/expenses/abc-123')).toBe('/expenses/abc-123');
+    expect(safeReturnPath('/expenses/new')).toBe('/expenses/new');
+  });
+
+  it('refuses anything deeper', () => {
+    expect(safeReturnPath('/expenses/a/b')).toBe('/');
+    expect(safeReturnPath('/expenses/a/b/c')).toBe('/');
+  });
+
+  it('refuses a trailing empty segment', () => {
+    expect(safeReturnPath('/expenses/')).toBe('/');
+  });
+
+  it('still accepts the destinations themselves', () => {
+    expect(safeReturnPath('/')).toBe('/');
+    expect(safeReturnPath('/expenses')).toBe('/expenses');
+  });
+});
