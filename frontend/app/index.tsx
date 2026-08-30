@@ -7,6 +7,7 @@ import { BarChart } from '../src/charts/BarChart';
 import { ComparisonChart } from '../src/charts/ComparisonChart';
 import { DonutChart } from '../src/charts/DonutChart';
 import { useLayout } from '../src/layout/useLayout';
+import { useSignedIn } from '../src/api/useSignedIn';
 import { webTitleFor } from '../src/layout/navigation';
 import { formatMoney } from '../src/money/format';
 import { PeriodPicker } from '../src/reports/PeriodPicker';
@@ -47,6 +48,19 @@ export default function Overview() {
   // inside 80ms reads as a glitch, not as progress.
   const showSpinner = useDelayedFlag(loading);
 
+  /**
+   * Without a session the reports are not fetched at all (#102), so `loading`
+   * stays true and `error` stays null — which lands on the spinner branch below
+   * and never leaves it. Said plainly instead.
+   *
+   * `AuthGuard` normally redirects before this is seen. The gap is the one its
+   * own comment admits: a `replace` that fails to move the pathname leaves the
+   * visitor on a protected route with no session. That was survivable while the
+   * screen degraded into the 401 failure card; a spinner with no escape is
+   * worse than what the gate replaced, so it degrades into a prompt instead.
+   */
+  const signedIn = useSignedIn();
+
   const stale = loading && breakdown !== null;
 
   return (
@@ -59,6 +73,10 @@ export default function Overview() {
 
       {error ? (
         <RequestFailure error={error} onRetry={retry} retrying={loading} />
+      ) : !signedIn && !breakdown ? (
+        <View style={{ paddingVertical: spacing.xl * 2, alignItems: 'center' }}>
+          <Text style={{ color: palette.textMuted }}>Sign in to see your reports.</Text>
+        </View>
       ) : showSpinner && !breakdown ? (
         <View style={{ paddingVertical: spacing.xl * 2, alignItems: 'center' }}>
           <ActivityIndicator color={palette.accent} />
