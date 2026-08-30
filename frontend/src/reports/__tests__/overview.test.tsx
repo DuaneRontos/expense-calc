@@ -81,6 +81,33 @@ afterEach(async () => {
 });
 
 describe('Overview', () => {
+  /**
+   * A signed-out Overview says so, rather than spinning forever.
+   *
+   * Gating the reports on the session (#102) made `loading` permanently true
+   * with no session, and `error` permanently null — so this screen settled on a
+   * spinner that never resolves. Before the gate the same state produced the
+   * 401 failure card, which at least offered a way out.
+   *
+   * `AuthGuard` normally redirects out of this before it is seen. The case it
+   * does not cover is the one its own comment admits: a `replace` that fails to
+   * move the pathname leaves the visitor on a protected route with no session.
+   * That was survivable while the screen degraded into a prompt; a spinner with
+   * no escape is worse than what it replaced.
+   */
+  it('asks a signed-out visitor to sign in rather than spinning', async () => {
+    // Nothing to stub: with no session the hook fetches nothing at all, which
+    // is the state under test.
+    await act(async () => {
+      await api.session.clear();
+    });
+
+    await render(<Overview />);
+
+    expect(await screen.findByText('Sign in to see your reports.')).toBeOnTheScreen();
+    expect(screen.queryByRole('progressbar')).toBeNull();
+  });
+
   it('states the prior period as the half-open window it is', async () => {
     // "1 July to 1 August" reads as including 1 August — precisely the day the
     // window excludes and the total printed beside it leaves out.
@@ -103,11 +130,16 @@ describe('Overview', () => {
   });
 
   it('offers sign-in rather than a retry when the reports refuse the credential', async () => {
-    // The other half of the cold-start fix. The client now lets a browser with
-    // no cookie through unauthenticated, which against a deployed API means the
-    // reports come back 401 — and "Try again" is the wrong control for that,
-    // because trying again without signing in produces the identical 401 for
-    // as long as the user is willing to tap.
+    // **Not the no-cookie case any more.** This comment used to say the client
+    // lets a browser with no cookie through unauthenticated; since #102 it sends
+    // nothing at all without a session, so that path is gone and the screen
+    // above says so in words.
+    //
+    // What is left is the case the gate cannot see: a session held in memory
+    // that the *server* rejects — expired, revoked from another device, or
+    // signed out elsewhere. "Try again" is the wrong control for it, because
+    // retrying without signing in produces the identical 401 for as long as the
+    // user is willing to tap.
     const failure = new ApiError({
       status: 401,
       type: 'https://expense-calc.invalid/problems/unauthenticated',

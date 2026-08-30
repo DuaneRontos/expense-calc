@@ -113,6 +113,37 @@ describe('useReports', () => {
     expect(result.current.breakdown).toBeNull();
   });
 
+  /**
+   * `retry()` is gated too, not only the mount effect.
+   *
+   * The gate went on the effect first and left this open: `retry` calls `load()`
+   * directly, so the invariant held for the mount path and nothing else. The
+   * reachable case is a session ending while the failure card is on screen — a
+   * refresh rejected with 401 clears the session — and then a press of **Try
+   * again** firing three unauthenticated requests, which is the class this whole
+   * change exists to stop.
+   */
+  it('retries nothing once the session has gone', async () => {
+    stubFailure(new Error('down'));
+
+    const { result } = await renderHook(({ period }: { period: Period }) => useReports(period), {
+      initialProps: forPeriod(AUGUST),
+    });
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+
+    const before = (api.byCategory as jest.Mock).mock.calls.length;
+    expect(before).toBeGreaterThan(0);
+
+    await act(async () => {
+      await api.session.clear();
+    });
+    await act(async () => {
+      result.current.retry();
+    });
+
+    expect((api.byCategory as jest.Mock).mock.calls.length).toBe(before);
+  });
+
   it('fetches as soon as a session arrives', async () => {
     stubSuccess('100.00');
     await act(async () => {
@@ -129,6 +160,7 @@ describe('useReports', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.breakdown?.total).toBe('100.00');
   });
+
   it('stops loading once the window it was asked for has arrived', async () => {
     stubSuccess('100.00');
     const { result } = await renderHook(({ period }: { period: Period }) => useReports(period), {

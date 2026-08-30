@@ -142,10 +142,22 @@ export function useReports(period: Period, bucket: TimeBucket = 'MONTH'): Report
    * failure itself stays up until this one settles — replacing it with a blank
    * panel would answer a tap with less on screen than before it.
    */
+  /**
+   * Gated for the same reason the effect above is, and it was not at first.
+   *
+   * Putting the guard only on the mount path left this open: a session can end
+   * while the failure card is on screen — a refresh rejected with 401 clears it
+   * — and **Try again** then fired three unauthenticated requests, which is the
+   * class this hook now exists to prevent. The invariant is "this hook does not
+   * fetch without a session", not "it does not fetch on mount without one".
+   */
   const retry = useCallback(() => {
+    if (!signedIn) {
+      return;
+    }
     setLoadedKey(null);
     void load();
-  }, [load]);
+  }, [load, signedIn]);
 
   // Memoized so the object handed to the screen — and through it the bucket
   // arrays handed to the charts — keeps one identity between fetches.
