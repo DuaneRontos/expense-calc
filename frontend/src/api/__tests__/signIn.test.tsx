@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, userEvent, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, userEvent, waitFor } from '@testing-library/react-native';
 
 // Imported from outside `app/` on purpose: expo-router turns *every* `.tsx`
 // under that directory into a route, so a test file beside the screen would be
@@ -16,16 +16,35 @@ jest.mock('expo-router/head', () => ({
 // names spelled that way are allowed through the guard against reading a
 // variable that is still uninitialised when the factory runs.
 const mockReplace = jest.fn();
+// The intended route, as the guard would have put it in the URL.
+const mockParams: { current: Record<string, unknown> } = { current: {} };
+// A marker rather than a navigation: what matters is that the screen asked to
+// leave, and where to — the same shape `authGuard.test.tsx` uses.
+const mockRedirects: string[] = [];
 jest.mock('expo-router', () => ({
   router: {
     replace: (...args: unknown[]) => mockReplace(...args),
     back: () => {},
   },
+  useLocalSearchParams: () => mockParams.current,
+  Redirect: ({ href }: { href: string }) => {
+    mockRedirects.push(href);
+    return null;
+  },
 }));
 
-afterEach(() => {
+beforeEach(async () => {
+  mockParams.current = {};
+  mockRedirects.length = 0;
+  await api.session.clear();
+});
+
+afterEach(async () => {
   jest.restoreAllMocks();
   mockReplace.mockClear();
+  await act(async () => {
+    await api.session.clear();
+  });
 });
 
 /*
@@ -96,6 +115,79 @@ describe('sign-in screen', () => {
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/'));
   });
 
+  /**
+   * #93 — signing in returns to the route the guard interrupted.
+   *
+   * Someone who opened a link to an expense, or whose session lapsed deep in
+   * the list, was put back at the Overview and had to navigate again.
+   */
+  it('returns to the route the guard came from', async () => {
+    mockParams.current = { next: '/expenses' };
+    jest.spyOn(api, 'login').mockResolvedValue({ persisted: true });
+    await render(<SignIn />);
+    await fillIn();
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/expenses'));
+  });
+
+  it('returns to a nested route, not just the section', async () => {
+    mockParams.current = { next: '/expenses/abc-123' };
+    jest.spyOn(api, 'login').mockResolvedValue({ persisted: true });
+    await render(<SignIn />);
+    await fillIn();
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/expenses/abc-123'));
+  });
+
+  /**
+   * The destination rides in a URL, and a URL is a thing you can send someone.
+   * `safeReturnPath` is what refuses the off-site and traversal shapes; this
+   * pins that the screen actually routes through it rather than trusting the
+   * parameter.
+   */
+  it.each([
+    ['an off-site absolute URL', 'https://evil.example/pwned'],
+    ['a protocol-relative host', '//evil.example'],
+    ['a backslash host', '/\\evil.example'],
+    ['traversal', '/expenses/../../etc'],
+    ['an unknown route', '/not-a-destination'],
+    ['the sign-in screen itself', '/sign-in'],
+  ])('falls back to the Overview for %s', async (_label, next) => {
+    mockParams.current = { next };
+    jest.spyOn(api, 'login').mockResolvedValue({ persisted: true });
+    await render(<SignIn />);
+    await fillIn();
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/'));
+  });
+
+  /**
+   * #94 — the mirror case. With a live session the form still rendered, and
+   * submitting it spent a rate-limit slot and rotated a good session for
+   * nothing, with the sign-out button sitting oddly above the form.
+   */
+  it('sends a visitor who already has a session away from the form', async () => {
+    await act(async () => {
+      await api.session.adopt({ accessToken: 'access-1', expiresInSeconds: 900 }, true);
+    });
+
+    await render(<SignIn />);
+
+    expect(mockRedirects).toEqual(['/']);
+    expect(screen.queryByLabelText('Username')).toBeNull();
+  });
+
+  it('sends them to the intended route when the guard supplied one', async () => {
+    mockParams.current = { next: '/expenses' };
+    await act(async () => {
+      await api.session.adopt({ accessToken: 'access-1', expiresInSeconds: 900 }, true);
+    });
+
+    await render(<SignIn />);
+
+    expect(mockRedirects).toEqual(['/expenses']);
+  });
+
   it('shows the server’s reason when the credentials are rejected', async () => {
     jest.spyOn(api, 'login').mockRejectedValue(
       new ApiError({
@@ -124,6 +216,38 @@ describe('sign-in screen', () => {
     await fillIn();
 
     expect(await screen.findByText(/sign in again/i)).toBeOnTheScreen();
+    // **Stays put on purpose.** The warning is the whole reason this branch
+    // exists, and navigating away would take it off screen before it is read.
+    // Stated in the screen's comment since #86 and unasserted until now.
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockRedirects).toHaveLength(0);
+  });
+
+  /**
+   * The warning survives a login that really adopts a session.
+   *
+   * **The other tests here cannot catch this**, which is why this one mocks
+   * `login` differently: they stub it wholesale, so no session is ever adopted,
+   * `useSignedIn()` stays false and the redirect above cannot fire whatever
+   * `submitted` says. Only a mock that performs the real side effect reaches
+   * the state the flag exists for — session live, warning showing, and the
+   * screen required to stay put so it can be read.
+   *
+   * Found by mutation: removing `!submitted` from the redirect left all 23
+   * other tests green.
+   */
+  it('stays on the form when a real session is adopted but not persisted', async () => {
+    jest.spyOn(api, 'login').mockImplementation(async () => {
+      await api.session.adopt({ accessToken: 'access-1', expiresInSeconds: 900 }, true);
+      return { persisted: false };
+    });
+
+    await render(<SignIn />);
+    await fillIn();
+
+    expect(await screen.findByText(/sign in again/i)).toBeOnTheScreen();
+    expect(mockRedirects).toHaveLength(0);
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it('announces both outcomes, which appear with no other cue that anything happened', async () => {

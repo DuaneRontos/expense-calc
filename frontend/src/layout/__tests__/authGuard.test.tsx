@@ -73,7 +73,7 @@ describe('AuthGuard', () => {
 
     await renderGuard();
 
-    expect(mockRedirects).toEqual(['/sign-in']);
+    expect(mockRedirects).toEqual(['/sign-in?next=%2Fexpenses']);
     expect(screen.queryByText('the app')).toBeNull();
   });
 
@@ -87,6 +87,38 @@ describe('AuthGuard', () => {
 
     expect(screen.getByText('the app')).toBeOnTheScreen();
     expect(mockRedirects).toHaveLength(0);
+  });
+
+  /**
+   * The redirect carries the route it interrupted (#93).
+   *
+   * Without it every sign-in lands on the Overview, and someone who followed a
+   * link to an expense has to navigate back by hand. Encoded here and validated
+   * again by `sign-in.tsx`, which is what actually decides whether the value is
+   * somewhere it will go.
+   */
+  it('names the interrupted route in the redirect', async () => {
+    mockGate.current = 'signed-out';
+    mockPath.current = '/expenses/abc-123';
+
+    await renderGuard();
+
+    expect(mockRedirects).toEqual(['/sign-in?next=%2Fexpenses%2Fabc-123']);
+  });
+
+  it('carries it on the post-mount exit too', async () => {
+    mockGate.current = 'signed-in';
+    mockPath.current = '/expenses';
+
+    const view = await renderGuard();
+    mockGate.current = 'signed-out';
+    await view.rerender(
+      <AuthGuard>
+        <Text>the app</Text>
+      </AuthGuard>,
+    );
+
+    expect(mockReplace).toHaveBeenCalledWith('/sign-in?next=%2Fexpenses');
   });
 
   it('gets out of the way once there is a session', async () => {
@@ -130,7 +162,7 @@ describe('AuthGuard', () => {
       </AuthGuard>,
     );
 
-    expect(mockReplace).toHaveBeenCalledWith('/sign-in');
+    expect(mockReplace).toHaveBeenCalledWith('/sign-in?next=%2Fexpenses');
     // The navigator is what performs the move, so it has to outlive the asking.
     expect(screen.getByText('the app')).toBeOnTheScreen();
     expect(mockRedirects).toHaveLength(0);
