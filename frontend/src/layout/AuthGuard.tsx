@@ -46,8 +46,14 @@ export function AuthGuard({ children }: { children: ReactNode }) {
    * Encoded, and validated again on the other side. This end only states where
    * the visitor was; `sign-in.tsx` decides whether that is somewhere it will
    * go, because the value reaches it through a URL that anyone can compose.
+   *
+   * Omitted for the Overview, which is the fallback anyway — otherwise every
+   * visitor who was not deep-linked, which is most of them, carries a parameter
+   * naming the route they would have reached without it.
    */
-  const signInHref = `${SIGN_IN}?next=${encodeURIComponent(pathname)}`;
+  const signInHref: typeof SIGN_IN | `${typeof SIGN_IN}?next=${string}` = isExactly(pathname, '/')
+    ? SIGN_IN
+    : `${SIGN_IN}?next=${encodeURIComponent(pathname)}`;
 
   /**
    * Whether the navigator below has ever been on screen.

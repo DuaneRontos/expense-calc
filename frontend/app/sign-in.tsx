@@ -113,6 +113,13 @@ export default function SignIn() {
           ? (caught.problem.detail ?? caught.problem.title ?? 'Sign-in failed.')
           : 'Could not reach the server. Check that the API is running and try again.',
       );
+      // **Re-armed, because nothing was adopted on this path.** `Session.adopt`
+      // assigns the access token only after the store write succeeds and
+      // rethrows anything that is not `RefreshTokenUnavailableError`, so a
+      // rejected sign-in leaves no session behind. Left set, the flag would
+      // disarm the declarative exit for the life of this mount — wider than the
+      // "the session this screen just created" it is documented to exclude.
+      setSubmitted(false);
     } finally {
       setSubmitting(false);
     }

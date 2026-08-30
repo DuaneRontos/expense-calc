@@ -106,6 +106,22 @@ describe('AuthGuard', () => {
     expect(mockRedirects).toEqual(['/sign-in?next=%2Fexpenses%2Fabc-123']);
   });
 
+  /**
+   * The Overview is the fallback, so naming it in the URL says nothing.
+   *
+   * Left in, every visitor who was not deep-linked — which is most of them —
+   * arrives carrying a parameter for the route they would have reached without
+   * it.
+   */
+  it('omits the parameter when the interrupted route is the Overview', async () => {
+    mockGate.current = 'signed-out';
+    mockPath.current = '/';
+
+    await renderGuard();
+
+    expect(mockRedirects).toEqual(['/sign-in']);
+  });
+
   it('carries it on the post-mount exit too', async () => {
     mockGate.current = 'signed-in';
     mockPath.current = '/expenses';

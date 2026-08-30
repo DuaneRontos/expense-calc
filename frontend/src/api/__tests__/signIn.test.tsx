@@ -188,6 +188,31 @@ describe('sign-in screen', () => {
     expect(mockRedirects).toEqual(['/expenses']);
   });
 
+  /**
+   * The rejecting shapes, through the *other* exit.
+   *
+   * The table above pins them against `mockReplace`, which is the post-submit
+   * path only. Both branches read the same `target`, so today that coverage is
+   * real — but a shared binding is exactly where a hole hides, which is the
+   * lesson the `!submitted` mutation taught on this same file. This walks the
+   * declarative branch instead.
+   */
+  it.each([
+    ['an off-site absolute URL', 'https://evil.example/pwned'],
+    ['a protocol-relative host', '//evil.example'],
+    ['traversal', '/expenses/../../etc'],
+    ['the sign-in screen itself', '/sign-in'],
+  ])('turns a signed-in visitor away to the Overview for %s', async (_label, next) => {
+    mockParams.current = { next };
+    await act(async () => {
+      await api.session.adopt({ accessToken: 'access-1', expiresInSeconds: 900 }, true);
+    });
+
+    await render(<SignIn />);
+
+    expect(mockRedirects).toEqual(['/']);
+  });
+
   it('shows the server’s reason when the credentials are rejected', async () => {
     jest.spyOn(api, 'login').mockRejectedValue(
       new ApiError({

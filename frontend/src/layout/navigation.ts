@@ -119,7 +119,19 @@ export function isExactly(pathname: string, href: string): boolean {
  * Takes `unknown` because that is what the caller has: `useLocalSearchParams`
  * hands back a string, an array of them for a repeated key, or nothing.
  */
-export function safeReturnPath(raw: unknown): string {
+/**
+ * The shapes a return path may take: a destination, or one segment under one.
+ *
+ * Narrower than `string` on purpose. Expo's generated route union admits
+ * `/expenses/${SingleRoutePart}` — one segment, no slashes — so a `string`
+ * return cannot be handed to `router.replace` without a cast, and the cast
+ * would paper over the very case that makes it unassignable: a deeper path
+ * like `/expenses/a/b/c`, which `matchDestination` accepts on its prefix and
+ * which lands on `+not-found` rather than anywhere useful.
+ */
+export type ReturnPath = Destination['href'] | `/expenses/${string}`;
+
+export function safeReturnPath(raw: unknown): ReturnPath {
   if (typeof raw !== 'string' || raw === '') {
     return '/';
   }
@@ -142,7 +154,23 @@ export function safeReturnPath(raw: unknown): string {
   // Nothing outside the app's own routes, so a typo or a stale link is an
   // Overview rather than a blank screen. `/sign-in` is excluded by not being a
   // destination — arriving back at the form after signing in reads as failure.
-  return matchDestination(raw) ? raw : '/';
+  const destination = matchDestination(raw);
+  if (!destination) {
+    return '/';
+  }
+
+  if (raw === destination.href) {
+    return destination.href;
+  }
+
+  // **One segment under a destination, and no more.** The prefix match above is
+  // deliberately loose because the nav highlights Expenses for every route
+  // beneath it — right for highlighting, wrong for a destination. Left alone,
+  // `/expenses/a/b/c` passes validation and puts the visitor on `+not-found`
+  // after a successful sign-in, which is a worse landing than the Overview
+  // every other unrecognised shape gets.
+  const rest = raw.slice(`${destination.href}/`.length);
+  return rest !== '' && !rest.includes('/') ? (raw as ReturnPath) : '/';
 }
 
 export function useActiveDestination(): Destination | undefined {
