@@ -1,5 +1,5 @@
 import Head from 'expo-router/head';
-import { router } from 'expo-router';
+import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 
@@ -7,7 +7,8 @@ import { api } from '../src/api/client';
 import { ApiError } from '../src/api/problem';
 import { FormField } from '../src/expenses/FormField';
 import { MIN_TOUCH_TARGET } from '../src/layout/breakpoints';
-import { APP_NAME } from '../src/layout/navigation';
+import { APP_NAME, safeReturnPath } from '../src/layout/navigation';
+import { useSignedIn } from '../src/api/useSignedIn';
 import { palette, spacing } from '../src/theme/tokens';
 
 /**
@@ -42,6 +43,35 @@ export default function SignIn() {
    */
   const [warning, setWarning] = useState<string | null>(null);
 
+  /**
+   * Where to go once there is a session (#93).
+   *
+   * The guard puts the interrupted route in the URL, so someone who opened a
+   * link to an expense — or whose session lapsed deep in the list — comes back
+   * to it rather than to the Overview.
+   *
+   * **Routed through `safeReturnPath`, never used raw.** The value rides in a
+   * URL, and a URL is a thing you can send someone: `?next=https://evil.example`
+   * navigated blind is an open redirect, where the victim signs in on the real
+   * site and lands on someone else's. That function refuses the off-site,
+   * protocol-relative, traversal and unknown-route shapes, and `/sign-in`
+   * itself, which would otherwise be a loop.
+   */
+  const target = safeReturnPath(useLocalSearchParams().next);
+
+  /**
+   * Set before the request goes out, so the redirect below cannot fire on the
+   * session this screen is in the middle of creating (#94).
+   *
+   * Without it the two would race: `login()` adopts the session, `signedIn`
+   * flips, and a redirect keyed on that alone would leave before the handler
+   * decided where to go — taking the `persisted: false` warning off screen with
+   * it. Departure after a submit belongs to the handler; this flag is what
+   * keeps the two from both claiming it.
+   */
+  const [submitted, setSubmitted] = useState(false);
+  const signedIn = useSignedIn();
+
   // Trimmed for the check but sent verbatim: a leading space in a username is
   // almost certainly a paste artefact, while one in a password may be the
   // password.
@@ -52,6 +82,7 @@ export default function SignIn() {
       return;
     }
 
+    setSubmitted(true);
     setSubmitting(true);
     setError(null);
     setWarning(null);
@@ -72,7 +103,7 @@ export default function SignIn() {
       // `replace`, not `push`: a sign-in form is not somewhere to go "back" to
       // from inside a live session, and on web it would sit in the history
       // between the user and the page they came from.
-      router.replace('/');
+      router.replace(target);
     } catch (caught) {
       // The server's own sentence where there is one (spec §8 asks for `detail`
       // to be surfaced rather than replaced), and an honest fallback where the
@@ -82,9 +113,31 @@ export default function SignIn() {
           ? (caught.problem.detail ?? caught.problem.title ?? 'Sign-in failed.')
           : 'Could not reach the server. Check that the API is running and try again.',
       );
+      // **Re-armed, because nothing was adopted on this path.** `Session.adopt`
+      // assigns the access token only after the store write succeeds and
+      // rethrows anything that is not `RefreshTokenUnavailableError`, so a
+      // rejected sign-in leaves no session behind. Left set, the flag would
+      // disarm the declarative exit for the life of this mount — wider than the
+      // "the session this screen just created" it is documented to exclude.
+      setSubmitted(false);
     } finally {
       setSubmitting(false);
     }
+  }
+
+  /**
+   * A visitor who already has a session never sees the form (#94).
+   *
+   * It rendered before, and submitting it spent a `LoginRateLimiter` slot and
+   * rotated a perfectly good session for nothing — with the sign-out button
+   * sitting above the form, which read oddly.
+   *
+   * Declarative, and after every hook so the order is stable. `submitted`
+   * excludes the session this screen just created: that departure is the
+   * handler's, which is what lets the `persisted: false` branch stay put.
+   */
+  if (signedIn && !submitted) {
+    return <Redirect href={target} />;
   }
 
   return (

@@ -37,6 +37,25 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   const lockedOut = gate === 'signed-out' && !isExactly(pathname, SIGN_IN);
 
   /**
+   * The route being interrupted, carried through the redirect (#93).
+   *
+   * Without it, signing in always lands on the Overview — so someone who opened
+   * a link to an expense, or whose session lapsed deep in the list, has to
+   * navigate back by hand.
+   *
+   * Encoded, and validated again on the other side. This end only states where
+   * the visitor was; `sign-in.tsx` decides whether that is somewhere it will
+   * go, because the value reaches it through a URL that anyone can compose.
+   *
+   * Omitted for the Overview, which is the fallback anyway — otherwise every
+   * visitor who was not deep-linked, which is most of them, carries a parameter
+   * naming the route they would have reached without it.
+   */
+  const signInHref: typeof SIGN_IN | `${typeof SIGN_IN}?next=${string}` = isExactly(pathname, '/')
+    ? SIGN_IN
+    : `${SIGN_IN}?next=${encodeURIComponent(pathname)}`;
+
+  /**
    * Whether the navigator below has ever been on screen.
    *
    * The two ways out of here need different mechanisms, and this is what tells
@@ -87,9 +106,9 @@ export function AuthGuard({ children }: { children: ReactNode }) {
    */
   useEffect(() => {
     if (lockedOut && navigatorMounted) {
-      router.replace(SIGN_IN);
+      router.replace(signInHref);
     }
-  }, [lockedOut, navigatorMounted]);
+  }, [lockedOut, navigatorMounted, signInHref]);
 
   if (gate === 'resolving') {
     return (
@@ -112,7 +131,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   // is no window in which the children mount and fire their requests first,
   // which is the regression #92 exists to prevent.
   if (lockedOut && !navigatorMounted) {
-    return <Redirect href={SIGN_IN} />;
+    return <Redirect href={signInHref} />;
   }
 
   return <>{children}</>;
