@@ -28,16 +28,36 @@ afterEach(() => {
   mockReplace.mockClear();
 });
 
-/**
- * The default 5s is too close for this suite on a shared runner.
+/*
+ * There was a `jest.setTimeout(20_000)` here. It is gone deliberately.
  *
- * Nothing here asserts on speed: the first test pays this file's cold-start cost
- * — the first `render` initialises a good deal of React Native — and it timed
- * out in CI while taking well under a second locally. Raised rather than chased,
- * because a timeout that only fails on a loaded machine reports a defect nobody
- * has.
+ * It was written in #86 to raise this file off jest's 5s default, for the
+ * reason that still applies: the first test pays this file's cold-start cost,
+ * because the first `render` initialises a good deal of React Native. It timed
+ * out in CI while taking well under a second locally.
+ *
+ * The next day, `testTimeout: 30000` landed in `package.json` for the same
+ * class of failure across the whole suite — which turned this line from a
+ * raise off 5s into a **lowering** off 30s, silently, in the one file least
+ * able to afford it. Nothing failed at the time, so nothing noticed.
+ *
+ * Exposed on `claude/shadcn-ui-integration-467462`, which adds NativeWind's
+ * babel transform while measuring #108: that extra cold-start cost was enough
+ * to trip this line, and cold runs there failed roughly half the time, always
+ * with `Exceeded timeout of 20000 ms` — a number appearing nowhere in the
+ * project config, so it reads as a mystery rather than as this override.
+ *
+ * **That branch, not this tree.** There is no `nativewind` dependency and no
+ * `babel.config.js` here, so the measurement is named where it can be checked
+ * rather than implied of `main`. The bug it found is `main`'s all the same:
+ * this file is the suite's slowest on a cold cache, and it was the only one
+ * capped below the global.
+ *
+ * `frontend/README.md` states the rule this follows: raise `testTimeout`, do
+ * not add per-test overrides, because an override rescues the one test that
+ * lost the race and leaves the next one to find it. A per-file override that
+ * undercuts the global is the same trap wearing a larger scope.
  */
-jest.setTimeout(20_000);
 
 /**
  * Fills both fields and submits.
