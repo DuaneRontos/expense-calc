@@ -136,7 +136,18 @@ jobs:
       # Unconditional, including on issue mentions: an agent asked to implement
       # something in `frontend/` needs the tree installed before it can check
       # its own work, and that is most of what this workflow is asked to do.
+      #
+      # `continue-on-error` because this step runs *before* the action, and the
+      # action's first act is to create its tracking comment. Without it a
+      # failed install kills the job before any comment exists — someone types
+      # `@claude` and nothing happens at all, which reads as a broken agent
+      # rather than a broken lockfile. The failure case is adversarially well
+      # chosen: a dependency bump with `package.json` and the lockfile out of
+      # step, or a hand-resolved lockfile conflict, is exactly the PR where
+      # someone asks for help. The agent starts either way and can report the
+      # install failure itself.
       - working-directory: frontend
+        continue-on-error: true
         run: npm ci
 
       - uses: anthropics/claude-code-action@v1
@@ -175,27 +186,35 @@ jobs:
           # claude-code-review.yml would make the automatic review and the
           # `@claude` re-review answer as different models, which is a
           # difference nobody would think to look for.
-          # Bash is off by default, which left this agent able to read code and
-          # never run it — including its own fixes. Mirrored from
-          # `claude-code-review.yml` deliberately: the two agents should be able
-          # to verify the same claims the same way, or a re-review cannot
-          # confirm what the review found.
+          #
+          # **What was missing was the two build tools, not Bash.** Read-only
+          # commands already went through — `git log` and `git diff` run fine on
+          # a workflow without this line — while `npm` came back "This command
+          # requires approval". So the agent could read the tree and never build
+          # it, on a repo whose interesting failures are all in the build.
+          # Mirrored from `claude-code-review.yml` deliberately: the two agents
+          # should be able to verify the same claims the same way, or a
+          # re-review cannot confirm what the review found.
           #
           # `npx` is still absent, and still on purpose: it fetches and executes
           # packages from the network, which is a different thing from running
           # this repo's own scripts.
           #
-          # **The git verbs stay read-only even though this job has
-          # `contents: write`.** That permission is for the action's own
-          # branch-and-push, which does not go through Bash — so nothing here
-          # needs `add`, `commit`, `push`, `checkout`, `reset` or `rebase`, and
-          # an agent that can move refs from a shell is a different risk
-          # conversation than one whose writes all go through the action.
+          # **This list adds no ref-moving verbs — but do not read that as a
+          # boundary.** The action's tag mode appends `Bash(git add:*)`,
+          # `Bash(git commit:*)`, `Bash(git rm:*)` and its own push wrapper to
+          # whatever is here, because that is how this agent commits at all.
+          # Flags accumulate rather than overwrite, so omitting the write verbs
+          # neither removes them nor could. `claude-code-review.yml` genuinely
+          # has no ref-moving verbs — `contents: read`, no tag mode — and this
+          # workflow does not, despite sharing the string.
           #
-          # Note this workflow's events carry secrets on fork PRs where
-          # `pull_request` would not — which is exactly why the checkout step
-          # above refuses to check out a fork's head. The allowlist never runs
-          # against fork-authored code; keep it that way.
+          # Fork PRs never reach any of this: the checkout step above refuses a
+          # cross-repo head. Its stated reason is different — the action would
+          # push the resulting branch to *this* repo — but the effect is what
+          # matters here, because `npm ci` runs lifecycle scripts from the
+          # checked-out tree, and same-repo-only means anyone who could poison
+          # it already has write access.
           claude_args: >-
             --model claude-opus-5
             --allowedTools "Bash(cd:*),Bash(./mvnw:*),Bash(backend/mvnw:*),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git branch:*),Bash(git ls-files:*),Bash(git rev-parse:*),Bash(git blame:*)"

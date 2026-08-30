@@ -91,6 +91,15 @@ starting an issue; most issue bodies name the section that governs them.
 
   Keep the two allowlists identical. A re-review that cannot verify what the
   review verified is not a second opinion.
+
+  **The shared string is not a shared risk profile, and the difference is easy
+  to miss.** `claude-code-review.yml` really does move no refs — `contents:
+  read`, no tag mode. `claude.yml` runs in tag mode, where the action *appends*
+  `git add`, `git commit`, `git rm` and its own push wrapper to whatever the
+  allowlist says, because that is how this agent commits at all. Flags
+  accumulate rather than overwrite, so omitting the write verbs here neither
+  removes them nor could. Read "nothing that moves a ref" below as a statement
+  about the reviewer only.
 - **`.github/workflows/claude-code-review.yml`** — automatic, but **once per PR,
   not once per push.** It runs when a PR opens or leaves draft. **To re-review
   after pushing fixes, comment `@claude` on the PR** — that goes to
