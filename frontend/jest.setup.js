@@ -6,7 +6,8 @@ const { configure } = require('@testing-library/react-native');
  * `waitFor` and every `findBy*` arm their own timer rather than deferring to
  * jest's — `@testing-library/react-native/dist/wait-for.js` reads
  * `getConfig().asyncUtilTimeout`, which defaults to 1,000ms. So raising
- * `testTimeout` to 30s left async waits on a budget thirty times tighter, in
+ * `testTimeout` (30s at the time, 60s since #112) left async waits on a budget
+ * far tighter, in
  * exactly the suites that were flaking: 27 of them across `useReports`,
  * `expensesFailure`, `signIn` and `overview`.
  *
@@ -18,7 +19,8 @@ const { configure } = require('@testing-library/react-native');
  * the assertion that never became true; jest's timer reports only "Exceeded
  * timeout of Nms" with no clue which wait it was. Keeping this the smaller of
  * the two means the more useful message is always the one that fires. Do not
- * raise it past 30,000 without raising `testTimeout` first.
+ * raise it past `testTimeout` — 60,000 since #112, set in `jest.config.js` —
+ * which would invert the two messages below.
  *
  * Costs nothing on a passing run: `waitFor` resolves as soon as its callback
  * does, so the budget only bounds how long a genuine failure takes to report.

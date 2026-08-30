@@ -311,13 +311,47 @@ all. Assert with the matchers (`toBeDisabled`, `toBeChecked`), which read both
 forms — not the raw prop. Components should still set both spellings, because
 `accessibilityState` never reaches the DOM under react-native-web.
 
+### `cn` had to be taught the custom class names
+
+`twMerge` collapses a class group only when it recognises the *value*. `touch`
+is not one its default `min-h` validators accept, so stock `twMerge` emits both
+`min-h-touch` and a caller's `min-h-0` and lets stylesheet order decide — in
+both directions: a deliberate override might not apply, and a stray `min-h-0`
+might defeat the floor. `cn.ts` uses `extendTailwindMerge` to register the
+scale. Colours never had this problem, because twMerge's colour groups accept
+arbitrary names — which is why a colour test passes either way and cannot catch
+it.
+
+### `asChild` does not get any of that
+
+`@rn-primitives/slot` **joins** `className` strings rather than merging them, so
+a slotted child's classes and the parent's both survive. Pass one or the other,
+not competing values for the same property.
+
+A plain-string child renders **nothing** — `Slot` returns `null` for text
+children. `<Button asChild>Save</Button>` typechecks and disappears.
+
 ### The touch-target floor
 
-Every `Button` variant and size carries `min-h-touch`, which is
-`MIN_TOUCH_TARGET` by way of `tailwind.config.ts` — not `min-h-11`, which only
-measures 44 while `inlineRem` is 16. Styles do not resolve under jest, so the
-tests assert the class rather than a measured height; that the class *is* 44 is
-pinned separately in `src/theme/__tests__/tokensMatchTailwind.test.ts`.
+Every `Button` variant and size carries `min-h-touch` — and the square `icon`
+size carries `min-w-touch` too, because a floor on one axis is not a target.
+Both come from `MIN_TOUCH_TARGET` by way of `tailwind.config.ts`, not from
+`min-h-11`, which only measures 44 while `inlineRem` is 16.
+
+**An unknown Tailwind class compiles to nothing rather than failing.** `Button`
+used `min-w-touch` before the config defined it, and the result was a button 44
+tall and a few points wide, silently. Nothing catches that except reading the
+generated output.
+
+Styles do not resolve under jest, so the tests assert the class rather than a
+measured height; that the class *is* 44 is pinned in
+`src/theme/__tests__/tokensMatchTailwind.test.ts`.
+
+`inlineRem` itself lives in `src/theme/rem.js` — CommonJS so `metro.config.js`
+can require it — and that same file has a source-scan test asserting the metro
+config actually uses it. Sharing the constant was not enough on its own:
+deleting `inlineRem` from the metro config still left every assertion green,
+because the test was reading a module the build had stopped consulting.
 
 ## Charting: `react-native-svg`
 

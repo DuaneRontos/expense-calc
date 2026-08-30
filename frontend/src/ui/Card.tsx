@@ -55,10 +55,16 @@ export function CardDescription({ className, ...props }: TextProps) {
  * Publishes muted body text through `TextClassContext` so ordinary prose inside
  * a card does not have to restate it, in the same way `Button` styles its
  * label. `pt-0` because `CardHeader` already spaced the top.
+ *
+ * **It has to publish something `Text` does not already carry.** This said
+ * `text-text` at first, which is `Text`'s own base class — so the provider was
+ * a no-op, and the test named for it passed with the provider deleted
+ * entirely. A figure inside a card is the emphasis; the prose around it is
+ * secondary, which is what `text-textMuted` says.
  */
 export function CardContent({ className, ...props }: ViewProps & { className?: string }) {
   return (
-    <TextClassContext.Provider value="text-text">
+    <TextClassContext.Provider value="text-textMuted">
       <View className={cn('p-4 pt-0', className)} {...props} />
     </TextClassContext.Provider>
   );

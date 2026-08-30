@@ -73,7 +73,24 @@ const buttonTextVariants = cva('font-semibold', {
 export type ButtonProps = PressableProps &
   VariantProps<typeof buttonVariants> & {
     className?: string;
-    /** Renders the child element instead of a `Pressable`, handing it these props. */
+    /**
+     * Renders the child element instead of a `Pressable`, handing it these
+     * props.
+     *
+     * **Two behaviours of `@rn-primitives/slot` that this does not paper
+     * over**, because both are worth knowing before reaching for it:
+     *
+     * `className` is **joined, not merged**. The slot concatenates the two
+     * strings, so `cn`'s "later one wins" does not apply — a child's
+     * `bg-surface` and this button's `bg-accent` are both emitted and
+     * stylesheet order decides. Pass one or the other, never competing values
+     * for the same property.
+     *
+     * A plain-string child renders **nothing**: `Slot` returns `null` for text
+     * children after a bare `console.log`. `<Button asChild>Save</Button>`
+     * typechecks — `PressableProps['children']` is `ReactNode` — and
+     * disappears. Wrap it in an element.
+     */
     asChild?: boolean;
   };
 

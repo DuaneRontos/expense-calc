@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react-native';
+import { Text as RNText } from 'react-native';
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../Card';
 import { Text } from '../Text';
@@ -44,13 +45,17 @@ describe('Card', () => {
 
 describe('Text', () => {
   it('takes the class its container publishes', async () => {
+    // `text-textMuted`, which `Text` does **not** carry on its own. The first
+    // version asserted `text-text` — `Text`'s own base class — so it passed
+    // with the provider deleted outright and proved nothing. An assertion about
+    // inheritance has to name something only the container supplies.
     await render(
       <CardContent>
         <Text>body</Text>
       </CardContent>,
     );
 
-    expect(screen.getByText('body').props.className).toContain('text-text');
+    expect(screen.getByText('body').props.className).toContain('text-textMuted');
   });
 
   it('lets the caller win over the inherited class', async () => {
@@ -63,5 +68,37 @@ describe('Text', () => {
     );
 
     expect(screen.getByText('refund').props.className).toContain('text-negative');
+  });
+});
+
+describe('Text asChild', () => {
+  it('hands its props to the child instead of wrapping it', async () => {
+    // The case this exists for is `CardTitle`: without it,
+    // `<CardTitle asChild><Pressable/></CardTitle>` puts `role="header"` on a
+    // wrapper and leaves the control beside it, so heading navigation lands
+    // next to the thing rather than on it.
+    await render(
+      <CardTitle asChild>
+        <RNText testID="slotted">October</RNText>
+      </CardTitle>,
+    );
+
+    const node = screen.getByTestId('slotted');
+
+    expect(node.props.accessibilityRole).toBe('header');
+    expect(node.props.className).toContain('font-semibold');
+  });
+
+  it('renders one node, not a wrapper around one', async () => {
+    await render(
+      <CardTitle asChild>
+        <RNText testID="slotted">October</RNText>
+      </CardTitle>,
+    );
+
+    // Guards the guard: if `asChild` were ignored, the assertions above would
+    // still pass on a wrapped child that inherited nothing — there would just
+    // be two header nodes instead of one.
+    expect(screen.getAllByRole('header')).toHaveLength(1);
   });
 });

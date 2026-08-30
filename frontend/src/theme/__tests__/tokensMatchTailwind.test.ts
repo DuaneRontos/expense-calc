@@ -1,7 +1,11 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
 import resolveConfig from 'tailwindcss/resolveConfig';
 
 import tailwindConfig from '../../../tailwind.config';
 import { BREAKPOINTS, MIN_TOUCH_TARGET } from '../../layout/breakpoints';
+import { INLINE_REM } from '../rem';
 import { categoryColors, palette, spacing } from '../tokens';
 
 /**
@@ -17,6 +21,35 @@ import { categoryColors, palette, spacing } from '../tokens';
  * This suite is what keeps that true if someone reintroduces a literal.
  */
 const resolved = resolveConfig(tailwindConfig);
+
+/**
+ * The rem basis has to be the one the device actually uses.
+ *
+ * Sharing `INLINE_REM` between `metro.config.js` and the spacing assertion
+ * below is necessary but **not sufficient**: with the constant shared and
+ * nothing else, deleting `inlineRem` from the metro config still left every
+ * assertion green, because the test was reading a module the build had stopped
+ * consulting. So this scans the config's source, in the spirit of
+ * `src/__tests__/timeoutOverrides.test.ts` and the storage scan in
+ * `api/__tests__/refreshTokenStore.web.test.ts`.
+ *
+ * Without it, css-interop's default of 14 comes back and every rem-based class
+ * renders 12.5% smaller on iOS and Android — silently, because the browser
+ * still looks right.
+ */
+describe('the metro config', () => {
+  const source = readFileSync(join(__dirname, '..', '..', '..', 'metro.config.js'), 'utf8');
+
+  it('sets inlineRem from the shared constant', () => {
+    expect(source).toMatch(/inlineRem:\s*INLINE_REM\b/);
+  });
+
+  it('gets that constant from theme/rem', () => {
+    // Guards the guard: `inlineRem: INLINE_REM` proves nothing if `INLINE_REM`
+    // is a local literal declared in the config itself.
+    expect(source).toMatch(/require\(['"]\.\/src\/theme\/rem(\.js)?['"]\)/);
+  });
+});
 
 describe('the Tailwind theme and the app tokens', () => {
   it('gives every taxonomy category a colour, from the same object the charts read', () => {
@@ -70,7 +103,14 @@ describe('the Tailwind theme and the app tokens', () => {
     // Pinned because the temptation is to add `p-md` and end up with two ways
     // to say one thing.
     const scale = resolved.theme.spacing as Record<string, string>;
-    const px = (step: string) => Number.parseFloat(scale[step]!) * 16;
+
+    // `INLINE_REM`, not a literal 16. This assertion converts Tailwind's rem
+    // scale into device pixels, so it has to use the same basis the device
+    // will. When it hardcoded the number, deleting `inlineRem` from
+    // `metro.config.js` restored css-interop's default of 14 — every spacing
+    // class shrank 12.5% on iOS and Android — and this test stayed green,
+    // because it was comparing a constant against itself.
+    const px = (step: string) => Number.parseFloat(scale[step]!) * INLINE_REM;
 
     expect(px('1')).toBe(spacing.xs);
     expect(px('2')).toBe(spacing.sm);

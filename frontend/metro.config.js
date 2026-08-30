@@ -7,6 +7,8 @@
 const { getDefaultConfig } = require('expo/metro-config');
 const { withNativeWind } = require('nativewind/metro');
 
+const { INLINE_REM } = require('./src/theme/rem.js');
+
 const config = getDefaultConfig(__dirname);
 
 module.exports = withNativeWind(config, {
@@ -27,8 +29,11 @@ module.exports = withNativeWind(config, {
    * `MIN_TOUCH_TARGET` in `src/layout/breakpoints.ts`, which spec §2 requires
    * at every breakpoint.
    *
-   * Set to 16 so a Tailwind spacing class means the same thing on all three
-   * targets and `min-h-11` can be trusted to satisfy `MIN_TOUCH_TARGET`.
+   * Set from `src/theme/rem.js` so a Tailwind spacing class means the same
+   * thing on all three targets. **Shared rather than written here** because
+   * `tokensMatchTailwind.test.ts` needs the same number to convert Tailwind's
+   * rem scale back to device pixels — when it had its own copy, removing this
+   * line left that test green while the app shrank.
    */
-  inlineRem: 16,
+  inlineRem: INLINE_REM,
 });

@@ -1,3 +1,4 @@
+import { Slot } from '@rn-primitives/slot';
 import { createContext, useContext } from 'react';
 import { Text as RNText, type TextProps as RNTextProps } from 'react-native';
 
@@ -29,17 +30,31 @@ export type TextProps = RNTextProps & {
   /**
    * Renders the child element instead of a `Text`, handing it these props.
    *
-   * Present for parity with the other primitives; `Text` rarely needs it, but a
-   * caller wrapping text in a link or a pressable does.
+   * The case this exists for is `CardTitle`, which carries
+   * `accessibilityRole="header"`: without it,
+   * `<CardTitle asChild><Link>October</Link></CardTitle>` puts the heading role
+   * on a wrapper and leaves the link as an unlabelled child, so heading
+   * navigation lands next to the control rather than on it.
+   *
+   * **`asChild` does not get `cn`'s conflict resolution.**
+   * `@rn-primitives/slot` joins `className` strings rather than merging them,
+   * so the child's classes and these are both emitted and stylesheet order
+   * decides. Pass one or the other, not competing values for the same property.
+   *
+   * A plain-string child renders **nothing**: `Slot` returns `null` for text
+   * children. `<Text asChild>Save</Text>` typechecks and disappears.
    */
   asChild?: boolean;
 };
 
-export function Text({ className, ...props }: TextProps) {
+export function Text({ className, asChild = false, ...props }: TextProps) {
   const inherited = useContext(TextClassContext);
+  // Generic `Slot`; the per-element exports were deprecated in
+  // @rn-primitives/slot 1.5.
+  const Component = asChild ? Slot<typeof RNText> : RNText;
 
   return (
-    <RNText
+    <Component
       // Inherited first, caller's last: `cn` resolves a conflict in favour of
       // whatever arrives later, so a caller's `text-negative` beats a Button's
       // `text-background` rather than depending on class order.
