@@ -47,11 +47,10 @@ afterEach(() => {
  * with `Exceeded timeout of 20000 ms` — a number appearing nowhere in the
  * project config, so it reads as a mystery rather than as this override.
  *
- * **That branch, not this tree.** There is no `nativewind` dependency and no
- * `babel.config.js` here, so the measurement is named where it can be checked
- * rather than implied of `main`. The bug it found is `main`'s all the same:
- * this file is the suite's slowest on a cold cache, and it was the only one
- * capped below the global.
+ * **The measurement came from the NativeWind work; the bug did not.** This file
+ * is the suite's slowest on a cold cache and was the only one capped below the
+ * global, which was true of `main` before any of that landed — the transform
+ * only made an existing margin too thin to survive.
  *
  * `frontend/README.md` states the rule this follows: raise `testTimeout`, do
  * not add per-test overrides, because an override rescues the one test that
