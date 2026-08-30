@@ -75,7 +75,22 @@ starting an issue; most issue bodies name the section that governs them.
 
   `claude.yml` itself is exempt from the byte-identical rule below: its events
   always run the default branch's copy of the workflow, so it cannot differ
-  from itself.
+  from itself. **That also means a change to it does nothing until it is on
+  `main`** — a fix on a feature branch is not in effect for an `@claude`
+  mention on that same branch's PR.
+
+  **It has the same toolchain and Bash allowlist as the reviewer, since #131.**
+  Before that it had neither, so it could read code and never run it. Nobody
+  noticed because the automatic reviewer is the one that usually executes — but
+  this file names `@claude` as *the* re-review path after pushing fixes, which
+  meant every re-review was reasoning-only while the first review of the same PR
+  was fully executed. The #130 re-review opened by saying so: `npm`, `node` and
+  `npx` all refused, `node_modules` absent, unable to re-run the mutation checks
+  it was asked to confirm. It still found a real tautological test by reading,
+  and was right — but had to publish it as a guess for the author to settle.
+
+  Keep the two allowlists identical. A re-review that cannot verify what the
+  review verified is not a second opinion.
 - **`.github/workflows/claude-code-review.yml`** — automatic, but **once per PR,
   not once per push.** It runs when a PR opens or leaves draft. **To re-review
   after pushing fixes, comment `@claude` on the PR** — that goes to
@@ -97,7 +112,8 @@ starting an issue; most issue bodies name the section that governs them.
   correct symptom, unusable fix, each one settled in seconds by opening the
   package.
 
-  Bash is otherwise off; the allowlist covers the two build tools, `npm ci`,
+  Bash is otherwise off; the allowlist — shared verbatim with `claude.yml`,
+  see above — covers the two build tools, `npm ci`,
   `npm run`, `npm test`, and git's read-only verbs (`status`, `log`, `diff`,
   `show`, `branch`, `ls-files`, `rev-parse`, `blame`) — nothing that moves a
   ref, and **not `npx`**, which fetches and executes from the network. Note
@@ -106,7 +122,8 @@ starting an issue; most issue bodies name the section that governs them.
 
   **Node is pinned to 22 to match `ci.yml`**, for the same reason the JDK is
   pinned to 21: a reviewer testing on a different runtime than the merge gate
-  reports failures nobody else sees. The two files have to move together.
+  reports failures nobody else sees. All three files have to move together —
+  `ci.yml`, this one, and `claude.yml`.
 
 Both authenticate with the `CLAUDE_CODE_OAUTH_TOKEN` repository secret, which
 draws on a Claude Pro/Max subscription. Regenerate it with `claude setup-token`
