@@ -172,6 +172,76 @@ down.
 | `src/money/` | Decimal-string formatting |
 | `src/theme/` | Colour and spacing tokens |
 
+## Styling: NativeWind
+
+Added by the #108 spike, which resolved the "can we use shadcn/ui" question.
+**We cannot use shadcn/ui itself** — it is Radix primitives plus Tailwind class
+names, and Radix renders DOM nodes, so it runs on web only. That would mean a
+second frontend for iOS and Android, which is spec §2 Option C and rejected in
+decision 9.1.
+
+What is here instead is the same *model* on React Native: Tailwind classes
+compiled to `StyleSheet` objects at build time, with the component source
+copied into the repo rather than consumed as a dependency. **The components
+stay React Native components** — `View`, `Text`, `Pressable`. Only how they are
+styled changes.
+
+Four files carry it, and none of them is optional:
+
+| File | Why |
+| --- | --- |
+| `babel.config.js` | Routes JSX through NativeWind's runtime |
+| `metro.config.js` | The transformer that compiles classes to `StyleSheet` |
+| `tailwind.config.js` | Content globs and this app's three breakpoints |
+| `nativewind-env.d.ts` | Types for `className`, plus the `*.css` declaration |
+
+The full adoption is #110; the spec's decision record is §9.7.
+
+### The babel config is why the test suite got slower
+
+There was no `babel.config.js` before #108. Adding one puts every one of the
+suites through NativeWind's transform, because `jest-expo` picks the file up —
+so the cold-cache budget described above got more expensive, not because any
+test got slower.
+
+That extra cost is what exposed a per-file `jest.setTimeout(20_000)` in
+`signIn.test.tsx` that had been quietly undercutting the global 30s since the
+day after it was written. If cold runs start failing again, raise `testTimeout`
+— do not add per-test overrides, for the reason given above.
+
+`babel-preset-expo` is an explicit devDependency at `~57.0.7` even though
+`expo` bundles it. npm leaves the bundled copy unhoisted at
+`node_modules/expo/node_modules/`, where babel cannot resolve it by name from
+the project root. **The range has to move with the SDK**: a root copy that
+drifts outside `expo`'s own `~57.0.7` gets a second copy re-nested underneath
+it, and then babel and the SDK's tooling run different transformer versions.
+
+### Two things that differ between web and native
+
+Both are silent — the browser looks right and the device is wrong.
+
+**`rem` is a constant on native.** There is no root font size on a device, so
+css-interop substitutes `inlineRem`, and its default is **14** rather than the
+16 Tailwind is designed around. `metro.config.js` sets 16 explicitly. Left at
+the default, `min-h-11` measures 38.5dp instead of 44 — under `MIN_TOUCH_TARGET`
+and under both platforms' own floors.
+
+**Tailwind's default breakpoints are not this app's.** Stock Tailwind splits at
+640/768/1024/1280; `src/layout/breakpoints.ts` splits at 600 and 1024, with
+1024 belonging to *medium* because an iPad in landscape is exactly 1024pt.
+`tailwind.config.js` therefore **replaces** `screens` with `medium` and
+`expanded` rather than extending them, so a stray `sm:` fails instead of
+resolving to a boundary this app does not have.
+
+### Styles are stubbed under jest
+
+`app/_layout.tsx` imports `global.css`. jest has no CSS transform, so
+`moduleNameMapper` sends `.css` to `jest.cssStub.js`, an empty object. Without
+it, any test reaching the root layout dies with `SyntaxError` naming
+`global.css` rather than the missing mapper —
+`src/layout/__tests__/rootLayoutImport.test.tsx` exists to keep that from being
+rediscovered.
+
 ## Charting: `react-native-svg`
 
 Decided in #3, resolving spec §9.5. Four libraries were considered and two were

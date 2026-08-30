@@ -87,10 +87,31 @@ export default function NativeWindProbe() {
       {/* Layer 3: Slot / asChild. */}
       <ProbeButton label="asChild via Slot" asChild />
 
-      {/* Responsive, which is spec §2's three bands expressed in Tailwind. */}
-      <View className="rounded-lg bg-purple-200 p-4 sm:bg-amber-200 lg:bg-teal-200">
+      {/*
+        Layer 4 — responsive, on this app's own bands.
+
+        `medium` and `expanded` are the screens defined in `tailwind.config.js`
+        from `BREAKPOINTS`; Tailwind's stock `sm:`/`lg:` are deliberately gone,
+        so they would fail rather than silently resolve to 640/1024. Checking
+        this against `useLayout()` is the point: if the two ever disagree, the
+        chrome and the content inside it disagree about which band they are in.
+      */}
+      <View className="rounded-lg bg-purple-200 p-4 medium:bg-amber-200 expanded:bg-teal-200">
         <Text className="text-sm text-neutral-900">
-          Layer 4 — responsive: purple &lt; 640, amber ≥ 640, teal ≥ 1024
+          Layer 4 — responsive: purple &lt; 600 (compact), amber 600–1024
+          (medium), teal &gt; 1024 (expanded)
+        </Text>
+      </View>
+
+      {/*
+        Layer 5 — the touch-target floor, which is the one dimension `inlineRem`
+        can silently break. `min-h-11` is 2.75rem: 44dp with `inlineRem: 16`
+        set in `metro.config.js`, and 38.5dp at NativeWind's default of 14.
+        Every button above carries the same class.
+      */}
+      <View className="min-h-11 justify-center rounded-lg bg-neutral-200 px-4">
+        <Text className="text-sm text-neutral-900">
+          Layer 5 — min-h-11 must measure 44dp on device, not 38.5
         </Text>
       </View>
     </View>
