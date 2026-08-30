@@ -48,6 +48,14 @@ Raise it further rather than adding per-test timeouts if this reappears: a
 per-test override fixes the one test that happened to lose the race and leaves
 the next one to find it.
 
+**And an override does not stay an override.** `signIn.test.tsx` carried
+`jest.setTimeout(20_000)`, written as a raise off jest's 5s default before this
+setting existed. The day `testTimeout` landed at 30s it silently became a
+*lowering*, in the suite's slowest file, and nothing failed so nothing noticed
+for months. `src/__tests__/timeoutOverrides.test.ts` now fails the build on any
+per-file `jest.setTimeout`, because a rule this easy to break by accident should
+not depend on someone having read this paragraph.
+
 ### There are two timeout budgets, and `testTimeout` is only one
 
 `waitFor` and every `findBy*` arm their **own** timer rather than deferring to

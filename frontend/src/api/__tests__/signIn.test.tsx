@@ -41,10 +41,16 @@ afterEach(() => {
  * raise off 5s into a **lowering** off 30s, silently, in the one file least
  * able to afford it. Nothing failed at the time, so nothing noticed.
  *
- * Adding NativeWind's transform to the babel pipeline (#108) was enough extra
- * cold-start cost to expose it: cold runs failed here roughly half the time,
- * always with `Exceeded timeout of 20000 ms` — a number that appears nowhere in
- * the project config and so reads as a mystery.
+ * Exposed on `claude/shadcn-ui-integration-467462`, which adds NativeWind's
+ * babel transform while measuring #108: that extra cold-start cost was enough
+ * to trip this line, and cold runs there failed roughly half the time, always
+ * with `Exceeded timeout of 20000 ms` — a number appearing nowhere in the
+ * project config, so it reads as a mystery rather than as this override.
+ *
+ * **The measurement came from the NativeWind work; the bug did not.** This file
+ * is the suite's slowest on a cold cache and was the only one capped below the
+ * global, which was true of `main` before any of that landed — the transform
+ * only made an existing margin too thin to survive.
  *
  * `frontend/README.md` states the rule this follows: raise `testTimeout`, do
  * not add per-test overrides, because an override rescues the one test that
