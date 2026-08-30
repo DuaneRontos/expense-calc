@@ -60,9 +60,24 @@ function gate() {
   return { held, release };
 }
 
-afterEach(() => {
+/**
+ * A session, because the reports no longer fetch without one (#102) — the
+ * Overview mounts beneath `/sign-in` via the anchor, and firing there could
+ * only produce 401s. Web-shaped tokens so the refresh-token store is untouched.
+ */
+beforeEach(async () => {
+  await api.session.clear();
+  await act(async () => {
+    await api.session.adopt({ accessToken: 'access-1', expiresInSeconds: 900 }, true);
+  });
+});
+
+afterEach(async () => {
   jest.restoreAllMocks();
   mockNavigate.mockClear();
+  await act(async () => {
+    await api.session.clear();
+  });
 });
 
 describe('Overview', () => {

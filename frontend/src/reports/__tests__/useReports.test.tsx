@@ -58,11 +58,77 @@ function stubFailure(error: Error, held: Promise<void> = Promise.resolve()) {
 
 const forPeriod = (period: Period) => ({ period });
 
-afterEach(() => {
+// Web-shaped tokens, so the refresh-token store is never touched.
+const signIn = () => act(async () => {
+  await api.session.adopt({ accessToken: 'access-1', expiresInSeconds: 900 }, true);
+});
+
+beforeEach(async () => {
+  // These reports need a session now (#102), so every test starts with one
+  // except the two below that are about its absence.
+  await api.session.clear();
+  await signIn();
+});
+
+afterEach(async () => {
   jest.restoreAllMocks();
+  await act(async () => {
+    await api.session.clear();
+  });
 });
 
 describe('useReports', () => {
+  /**
+   * Landing directly on `/sign-in` mounts the Overview beneath it (#102).
+   *
+   * `unstable_settings.anchor` seeds `index` under any deep-linked child so the
+   * hardware back button does not exit the app from what reads as a peer tab.
+   * The guard cannot undo that from where it sits — it exempts `/sign-in`, and
+   * exempting means rendering the whole navigator, anchor included. So the
+   * Overview mounts invisibly and fires three requests that can only 401.
+   *
+   * Fixed here rather than by restructuring the routes, because "do not fetch
+   * without a session" is true of every caller and every future one, while
+   * moving the auth route fixes only this instance of it. It also covers
+   * signing out while the Overview is open, which would otherwise refetch into
+   * a 401 on the way to the sign-in screen.
+   */
+  it('fetches nothing without a session', async () => {
+    stubSuccess('100.00');
+    await act(async () => {
+      await api.session.clear();
+    });
+
+    const { result } = await renderHook(({ period }: { period: Period }) => useReports(period), {
+      initialProps: forPeriod(AUGUST),
+    });
+
+    expect(api.byCategory).not.toHaveBeenCalled();
+    expect(api.overTime).not.toHaveBeenCalled();
+    expect(api.compare).not.toHaveBeenCalled();
+    // Anchored on a real outcome: the hook rendered and is holding, rather than
+    // having quietly resolved to an empty state that would satisfy the three
+    // absences above just as well.
+    expect(result.current.loading).toBe(true);
+    expect(result.current.breakdown).toBeNull();
+  });
+
+  it('fetches as soon as a session arrives', async () => {
+    stubSuccess('100.00');
+    await act(async () => {
+      await api.session.clear();
+    });
+
+    const { result } = await renderHook(({ period }: { period: Period }) => useReports(period), {
+      initialProps: forPeriod(AUGUST),
+    });
+    expect(api.byCategory).not.toHaveBeenCalled();
+
+    await signIn();
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.breakdown?.total).toBe('100.00');
+  });
   it('stops loading once the window it was asked for has arrived', async () => {
     stubSuccess('100.00');
     const { result } = await renderHook(({ period }: { period: Period }) => useReports(period), {

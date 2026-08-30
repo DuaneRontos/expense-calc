@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { api } from '../api/client';
+import { useSignedIn } from '../api/useSignedIn';
 import { ApiError } from '../api/problem';
 import type { CategoryBreakdown, PeriodComparison, SpendOverTime, TimeBucket } from '../api/types';
 import type { Period } from './periods';
@@ -97,13 +98,40 @@ export function useReports(period: Period, bucket: TimeBucket = 'MONTH'): Report
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
+  /**
+   * Nothing is fetched without a session (#102).
+   *
+   * `unstable_settings.anchor` seeds the Overview beneath any deep-linked
+   * child, `/sign-in` included — so landing there mounts this hook invisibly
+   * and it fired three requests that could only 401. `AuthGuard` cannot prevent
+   * that from where it sits: it has to exempt `/sign-in` or it redirects its own
+   * escape hatch, and exempting means rendering the whole navigator, anchor and
+   * all.
+   *
+   * Gated here rather than by moving the auth route out of the anchored stack,
+   * because "do not fetch without a session" holds for every caller and every
+   * future one, while restructuring the routes fixes only this instance. It
+   * also covers signing out with the Overview open, which would otherwise
+   * refetch into a 401 on the way to the sign-in screen.
+   *
+   * `useSignedIn` rather than `useAuthGate`: this needs the answer, not the
+   * resolution, and `useAuthGate` would run a second `api.resume()` per
+   * consumer for a question the session store already answers with no side
+   * effect. `loading` stays true meanwhile, which is what the screen should
+   * show — the reports are not absent, they are not yet askable.
+   */
+  const signedIn = useSignedIn();
+
   useEffect(() => {
+    if (!signedIn) {
+      return;
+    }
     // Every state write in `load` happens after the responses arrive; the rule
     // cannot see through the await. `loading` is derived precisely so nothing
     // has to be written here.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
-  }, [load]);
+  }, [load, signedIn]);
 
   /**
    * Re-runs the current window's fetch.
