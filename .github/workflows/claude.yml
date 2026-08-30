@@ -99,6 +99,57 @@ jobs:
           fetch-depth: 0
           ref: ${{ steps.target.outputs.ref }}
 
+      # Everything below exists so this agent can *run* things. It could not.
+      #
+      # `claude-code-review.yml` has had a JDK, Node, `npm ci` and a Bash
+      # allowlist for a while; this workflow had none of them, and nobody
+      # noticed because the automatic reviewer is the one that usually
+      # executes. But CLAUDE.md points at `@claude` as the re-review path after
+      # pushing fixes — so *every re-review was reasoning-only* while the first
+      # review of the same PR was fully executed. On #130 the re-review opened
+      # by saying so: `npm`, `node` and `npx` all refused, `node_modules`
+      # absent, "I could not re-run your mutation checks". It still found a real
+      # tautological test by reading, and it was right — but it had to publish
+      # the finding as a guess and ask the author to settle it.
+      #
+      # The same JDK and Node pins as `ci.yml` and the reviewer, for the same
+      # reason: an agent testing on a different runtime than the merge gate
+      # reports failures nobody else sees.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Installed rather than left to the agent, exactly as in the reviewer.
+      # Reasoning about react-native internals instead of reading them is what
+      # produced the confidently-wrong remedies in #71 and #83; the packages
+      # sitting uninstalled a directory away is what forced it. Cached, so it
+      # costs about ten seconds.
+      #
+      # Unconditional, including on issue mentions: an agent asked to implement
+      # something in `frontend/` needs the tree installed before it can check
+      # its own work, and that is most of what this workflow is asked to do.
+      #
+      # `continue-on-error` because this step runs *before* the action, and the
+      # action's first act is to create its tracking comment. Without it a
+      # failed install kills the job before any comment exists — someone types
+      # `@claude` and nothing happens at all, which reads as a broken agent
+      # rather than a broken lockfile. The failure case is adversarially well
+      # chosen: a dependency bump with `package.json` and the lockfile out of
+      # step, or a hand-resolved lockfile conflict, is exactly the PR where
+      # someone asks for help. The agent starts either way and can report the
+      # install failure itself.
+      - working-directory: frontend
+        continue-on-error: true
+        run: npm ci
+
       - uses: anthropics/claude-code-action@v1
         with:
           # Subscription-backed OAuth, not an API key. The API key had no
@@ -135,4 +186,35 @@ jobs:
           # claude-code-review.yml would make the automatic review and the
           # `@claude` re-review answer as different models, which is a
           # difference nobody would think to look for.
-          claude_args: --model claude-opus-5
+          #
+          # **What was missing was the two build tools, not Bash.** Read-only
+          # commands already went through — `git log` and `git diff` run fine on
+          # a workflow without this line — while `npm` came back "This command
+          # requires approval". So the agent could read the tree and never build
+          # it, on a repo whose interesting failures are all in the build.
+          # Mirrored from `claude-code-review.yml` deliberately: the two agents
+          # should be able to verify the same claims the same way, or a
+          # re-review cannot confirm what the review found.
+          #
+          # `npx` is still absent, and still on purpose: it fetches and executes
+          # packages from the network, which is a different thing from running
+          # this repo's own scripts.
+          #
+          # **This list adds no ref-moving verbs — but do not read that as a
+          # boundary.** The action's tag mode appends `Bash(git add:*)`,
+          # `Bash(git commit:*)`, `Bash(git rm:*)` and its own push wrapper to
+          # whatever is here, because that is how this agent commits at all.
+          # Flags accumulate rather than overwrite, so omitting the write verbs
+          # neither removes them nor could. `claude-code-review.yml` genuinely
+          # has no ref-moving verbs — `contents: read`, no tag mode — and this
+          # workflow does not, despite sharing the string.
+          #
+          # Fork PRs never reach any of this: the checkout step above refuses a
+          # cross-repo head. Its stated reason is different — the action would
+          # push the resulting branch to *this* repo — but the effect is what
+          # matters here, because `npm ci` runs lifecycle scripts from the
+          # checked-out tree, and same-repo-only means anyone who could poison
+          # it already has write access.
+          claude_args: >-
+            --model claude-opus-5
+            --allowedTools "Bash(cd:*),Bash(./mvnw:*),Bash(backend/mvnw:*),Bash(npm ci:*),Bash(npm run:*),Bash(npm test:*),Bash(git status:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git branch:*),Bash(git ls-files:*),Bash(git rev-parse:*),Bash(git blame:*)"
