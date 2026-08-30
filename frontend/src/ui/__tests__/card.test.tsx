@@ -89,16 +89,23 @@ describe('Text asChild', () => {
     expect(node.props.className).toContain('font-semibold');
   });
 
-  it('renders one node, not a wrapper around one', async () => {
+  it('puts the heading role on the child, not on a wrapper', async () => {
     await render(
       <CardTitle asChild>
         <RNText testID="slotted">October</RNText>
       </CardTitle>,
     );
 
-    // Guards the guard: if `asChild` were ignored, the assertions above would
-    // still pass on a wrapped child that inherited nothing — there would just
-    // be two header nodes instead of one.
-    expect(screen.getAllByRole('header')).toHaveLength(1);
+    // **Names which node carries the role.** This counted
+    // `getAllByRole('header')` and expected 1 at first, on the theory that an
+    // ignored `asChild` would produce two header nodes. It does not: React
+    // Native does not propagate `accessibilityRole` to nested `Text` children,
+    // so the wrapper alone matches and the count is 1 either way — the test
+    // passed under the exact mutation its own comment named. Verified by
+    // reverting `Text`'s `asChild` and re-running.
+    //
+    // `testID` distinguishes them: reverted, `getByRole('header')` returns the
+    // wrapper, whose `testID` is undefined.
+    expect(screen.getByRole('header').props.testID).toBe('slotted');
   });
 });

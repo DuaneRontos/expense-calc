@@ -75,6 +75,13 @@ suites that were flaking hardest. There are 27 such waits across `useReports`,
 `jest.setup.js` raises it to 10s, registered through `setupFilesAfterEnv`
 because the jest-expo preset provides no setup file that calls `configure()`.
 
+**It is deliberately below `testTimeout`.** A `waitFor` that runs out reports
+the assertion that never became true; jest's timer reports only
+`Exceeded timeout of Nms`, naming no wait. Keeping the async budget the smaller
+of the two means the more useful message is always the one that fires — so
+raise `testTimeout` (60s, in `jest.config.js`) first if you ever need the async
+budget above it.
+
 ### Jest config lives in `jest.config.js`, not `package.json`
 
 It moved in #112 so `transformIgnorePatterns` could be **derived** from the
@@ -85,12 +92,6 @@ allowlist is a negative lookahead that cannot be widened additively, so the
 config rewrites the preset's own pattern — and
 `src/__tests__/jestTransform.test.ts` fails loudly if that substitution ever
 stops matching.
-
-**It is deliberately below `testTimeout`.** A `waitFor` that runs out reports
-the assertion that never became true; jest's timer reports only
-`Exceeded timeout of Nms`, naming no wait. Keeping the async budget the smaller
-of the two means the more useful message is always the one that fires — so
-raise `testTimeout` first if you ever need this above 30s.
 
 ### A typecheck failure naming a route that exists is a stale generated file
 
@@ -219,7 +220,7 @@ Four files carry it, and none of them is optional:
 | --- | --- |
 | `babel.config.js` | Routes JSX through NativeWind's runtime |
 | `metro.config.js` | The transformer that compiles classes to `StyleSheet` |
-| `tailwind.config.js` | Content globs and this app's three breakpoints |
+| `tailwind.config.ts` | Content globs, this app's three breakpoints, and the token-derived theme |
 | `nativewind-env.d.ts` | Types for `className`, plus the `*.css` declaration |
 
 The full adoption is #110; the spec's decision record is §9.7.
@@ -256,7 +257,7 @@ and under both platforms' own floors.
 **Tailwind's default breakpoints are not this app's.** Stock Tailwind splits at
 640/768/1024/1280; `src/layout/breakpoints.ts` splits at 600 and 1024, with
 1024 belonging to *medium* because an iPad in landscape is exactly 1024pt.
-`tailwind.config.js` therefore **replaces** `screens` with `medium` and
+`tailwind.config.ts` therefore **replaces** `screens` with `medium` and
 `expanded` rather than extending them, so a stray `sm:` fails instead of
 resolving to a boundary this app does not have.
 

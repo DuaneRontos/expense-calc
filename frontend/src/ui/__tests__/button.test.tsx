@@ -113,6 +113,36 @@ describe('every Button variant', () => {
     }
   });
 
+  it('keeps the floor through cn, not just in the variant string', async () => {
+    // The other assertions in this block read `buttonVariants()` directly, so
+    // none of them would notice `cn` dropping the class during composition —
+    // which became possible the moment `cn` learned this scale. This one reads
+    // the rendered node.
+    await render(
+      <Button>
+        <Text>Save</Text>
+      </Button>,
+    );
+
+    expect(screen.getByRole('button').props.className).toContain('min-h-touch');
+  });
+
+  it('lets a caller opt out of the floor, deliberately', async () => {
+    // Documented behaviour, pinned so it cannot change silently in either
+    // direction: if `cn` stopped collapsing the scale this would still contain
+    // `min-h-touch`, and if the floor were made a lock it would too.
+    await render(
+      <Button className="min-h-0">
+        <Text>Compact</Text>
+      </Button>,
+    );
+
+    const className = screen.getByRole('button').props.className;
+
+    expect(className).toContain('min-h-0');
+    expect(className).not.toContain('min-h-touch');
+  });
+
   it('constrains the square variant on both axes', () => {
     // `icon` removes the horizontal padding that gives the other sizes their
     // width, so height alone would leave a target 44 tall and a few points

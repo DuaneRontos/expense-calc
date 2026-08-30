@@ -1,3 +1,4 @@
+import tailwindConfig from '../../../tailwind.config';
 import { cn } from '../cn';
 
 /**
@@ -36,5 +37,71 @@ describe('cn', () => {
     expect(cn('bg-accent', { 'bg-negative': true }, ['px-4'], null, undefined)).toBe(
       'bg-negative px-4',
     );
+  });
+});
+
+/**
+ * Every custom theme value must be visible to `twMerge`.
+ *
+ * `min-h-touch` was invisible because the theme grew a value twMerge's
+ * validators do not accept, and the symptom was silence: both classes emitted,
+ * stylesheet order deciding. **The same is true of any future non-colour
+ * `extend` key**, with an identical and equally quiet failure — so this walks
+ * the theme rather than naming the two instances we already know about.
+ *
+ * Colours are exempt on purpose: twMerge's colour groups accept an arbitrary
+ * name, so `bg-category-dining` collapses without being registered.
+ */
+describe('every custom theme value', () => {
+  /** Theme key → the Tailwind class prefix that reads it. */
+  const PREFIXES: Record<string, string> = {
+    minHeight: 'min-h',
+    minWidth: 'min-w',
+  };
+
+  /**
+   * Read from the config's own `extend` block, not by diffing the resolved
+   * theme against stock Tailwind.
+   *
+   * The diff approach looks more thorough and is much worse: extending
+   * `colors` alone propagates into eighteen derived scales (`backgroundColor`,
+   * `textColor`, `fill`, `stroke`, …), and NativeWind's preset contributes its
+   * own (`trackColor`, `thumbColor`), so the walk returns ~180 entries that are
+   * all colours or all someone else's. `extend` is exactly what this repo
+   * added.
+   */
+  const extend = (tailwindConfig.theme?.extend ?? {}) as Record<string, Record<string, unknown>>;
+
+  // Colours are exempt: twMerge's colour groups accept an arbitrary name, so
+  // `bg-category-dining` collapses without being registered. Everything else
+  // has to be taught.
+  const custom = Object.entries(extend).flatMap(([key, values]) =>
+    key === 'colors' || typeof values !== 'object' || values === null
+      ? []
+      : Object.keys(values).map((name) => ({ key, name })),
+  );
+
+  it('is covered by this test, so a new one cannot slip through unnoticed', () => {
+    // Guards the guard twice: the walk must find what we know about, and a key
+    // without a prefix mapping fails here rather than being skipped silently.
+    expect(custom).toEqual(
+      expect.arrayContaining([
+        { key: 'minHeight', name: 'touch' },
+        { key: 'minWidth', name: 'touch' },
+      ]),
+    );
+
+    for (const { key } of custom) {
+      expect(PREFIXES[key]).toBeDefined();
+    }
+  });
+
+  it('collapses against a stock class in its own group', () => {
+    for (const { key, name } of custom) {
+      const prefix = PREFIXES[key]!;
+
+      expect(cn(`${prefix}-${name}`, `${prefix}-0`)).toBe(`${prefix}-0`);
+      expect(cn(`${prefix}-0`, `${prefix}-${name}`)).toBe(`${prefix}-${name}`);
+    }
   });
 });

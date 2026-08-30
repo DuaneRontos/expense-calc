@@ -38,7 +38,18 @@ const resolved = resolveConfig(tailwindConfig);
  * still looks right.
  */
 describe('the metro config', () => {
-  const source = readFileSync(join(__dirname, '..', '..', '..', 'metro.config.js'), 'utf8');
+  /**
+   * Comments stripped first, for the reason `timeoutOverrides.test.ts` gives:
+   * prose about a rule would otherwise satisfy a scan for the rule.
+   *
+   * `metro.config.js` is unusually exposed to that — the setting is one line
+   * under a doc block that already names both identifiers. Delete the line,
+   * leave the paragraph, and a raw scan stays green over a config that sets
+   * nothing.
+   */
+  const source = readFileSync(join(__dirname, '..', '..', '..', 'metro.config.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
 
   it('sets inlineRem from the shared constant', () => {
     expect(source).toMatch(/inlineRem:\s*INLINE_REM\b/);

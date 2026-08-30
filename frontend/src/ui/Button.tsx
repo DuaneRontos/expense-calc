@@ -17,6 +17,18 @@ import { TextClassContext } from './Text';
  * not the visually similar `min-h-11`, which is only 44 while `inlineRem` is
  * 16 — see `metro.config.js`. Size variants may grow it and must never shrink
  * it below that floor, including `icon`.
+ *
+ * **A caller's `className` can override it, and that is deliberate.** Since
+ * `cn` learned this scale, `<Button className="min-h-0">` really does drop the
+ * floor — where before it survived by accident, because `twMerge` could not see
+ * the class. The accident was not worth keeping: the same blindness meant a
+ * legitimate `min-h-[60px]` did not reliably apply either, and a floor that
+ * cannot be raised is as wrong as one that cannot be trusted.
+ *
+ * So the floor is the default, not a lock. `button.test.tsx` asserts it on the
+ * *composed* `className`, so the default composition is pinned; a call site
+ * that shrinks it is opting out in writing, and spec §2 makes that a review
+ * question for whoever writes it.
  */
 const buttonVariants = cva(
   'flex-row items-center justify-center rounded-md min-h-touch active:opacity-80 disabled:opacity-50',
