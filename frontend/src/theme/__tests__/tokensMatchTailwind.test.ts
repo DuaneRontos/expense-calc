@@ -55,10 +55,19 @@ describe('the metro config', () => {
     expect(source).toMatch(/inlineRem:\s*INLINE_REM\b/);
   });
 
-  it('gets that constant from theme/rem', () => {
+  it('binds that constant to the require, not merely near it', () => {
     // Guards the guard: `inlineRem: INLINE_REM` proves nothing if `INLINE_REM`
     // is a local literal declared in the config itself.
-    expect(source).toMatch(/require\(['"]\.\/src\/theme\/rem(\.js)?['"]\)/);
+    //
+    // **The binding has to be in the pattern.** Matching the `require` alone
+    // was not enough — a detached `require('./src/theme/rem.js');` beside a
+    // local `const INLINE_REM = 14` satisfied it, left all seven assertions
+    // green, and shrank every rem-based class 12.5% on device. That is the
+    // exact failure this scan exists for, so the destructuring and the call
+    // are matched as one thing.
+    expect(source).toMatch(
+      /const\s*\{\s*INLINE_REM\s*\}\s*=\s*require\(['"]\.\/src\/theme\/rem(\.js)?['"]\)/,
+    );
   });
 });
 

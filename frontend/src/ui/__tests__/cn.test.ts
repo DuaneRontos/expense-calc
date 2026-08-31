@@ -53,10 +53,20 @@ describe('cn', () => {
  * name, so `bg-category-dining` collapses without being registered.
  */
 describe('every custom theme value', () => {
-  /** Theme key → the Tailwind class prefix that reads it. */
-  const PREFIXES: Record<string, string> = {
-    minHeight: 'min-h',
-    minWidth: 'min-w',
+  /**
+   * Theme key → **every** Tailwind class prefix that reads it.
+   *
+   * A list, not a string: one theme key can back several twMerge groups.
+   * `spacing` alone backs `p-`, `px-`, `m-`, `gap-`, `w-`, `h-`, `inset-` and
+   * more, each collapsed independently — so registering one prefix and
+   * declaring victory leaves the rest silently broken with this test green.
+   * Demonstrated: with only `p` registered, `p-gutter` collapsed while
+   * `gap-gutter` and `m-gutter` both survived alongside their stock
+   * counterparts.
+   */
+  const PREFIXES: Record<string, string[]> = {
+    minHeight: ['min-h'],
+    minWidth: ['min-w'],
   };
 
   /**
@@ -67,23 +77,45 @@ describe('every custom theme value', () => {
    * `colors` alone propagates into eighteen derived scales (`backgroundColor`,
    * `textColor`, `fill`, `stroke`, …), and NativeWind's preset contributes its
    * own (`trackColor`, `thumbColor`), so the walk returns ~180 entries that are
-   * all colours or all someone else's. `extend` is exactly what this repo
-   * added.
+   * all colours or all someone else's.
+   *
+   * **The trade is that this covers `theme.extend` only.** `screens` is set at
+   * the top level of `theme` — it replaces Tailwind's rather than extending
+   * them — and is therefore invisible here. Harmless for `screens` in
+   * particular, since twMerge compares modifier sets structurally and needs no
+   * knowledge of the names; but a future top-level override would get no
+   * coverage, so add it by hand if one appears.
    */
-  const extend = (tailwindConfig.theme?.extend ?? {}) as Record<string, Record<string, unknown>>;
+  const extend = (tailwindConfig.theme?.extend ?? {}) as Record<string, unknown>;
 
   // Colours are exempt: twMerge's colour groups accept an arbitrary name, so
   // `bg-category-dining` collapses without being registered. Everything else
   // has to be taught.
-  const custom = Object.entries(extend).flatMap(([key, values]) =>
-    key === 'colors' || typeof values !== 'object' || values === null
-      ? []
-      : Object.keys(values).map((name) => ({ key, name })),
+  const walkable = Object.entries(extend).filter(([key]) => key !== 'colors');
+
+  const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+    typeof v === 'object' && v !== null;
+
+  /**
+   * Keys this test cannot inspect.
+   *
+   * Tailwind allows any `extend` value to be a function of `({ theme })`, and a
+   * `typeof values !== 'object'` guard skips those **silently** — which
+   * defeated the point: `spacing: () => ({ gutter: '18px' })` left every
+   * assertion here green while `cn('p-gutter', 'p-0')` returned both classes.
+   * Collected and failed rather than skipped.
+   */
+  const unwalkable = walkable.filter(([, values]) => !isPlainObject(values)).map(([key]) => key);
+
+  const custom = walkable.flatMap(([key, values]) =>
+    isPlainObject(values) ? Object.keys(values).map((name) => ({ key, name })) : [],
   );
 
+  it('is inspectable, so nothing is skipped without saying so', () => {
+    expect(unwalkable).toEqual([]);
+  });
+
   it('is covered by this test, so a new one cannot slip through unnoticed', () => {
-    // Guards the guard twice: the walk must find what we know about, and a key
-    // without a prefix mapping fails here rather than being skipped silently.
     expect(custom).toEqual(
       expect.arrayContaining([
         { key: 'minHeight', name: 'touch' },
@@ -96,12 +128,12 @@ describe('every custom theme value', () => {
     }
   });
 
-  it('collapses against a stock class in its own group', () => {
+  it('collapses against a stock class in every group its key backs', () => {
     for (const { key, name } of custom) {
-      const prefix = PREFIXES[key]!;
-
-      expect(cn(`${prefix}-${name}`, `${prefix}-0`)).toBe(`${prefix}-0`);
-      expect(cn(`${prefix}-0`, `${prefix}-${name}`)).toBe(`${prefix}-${name}`);
+      for (const prefix of PREFIXES[key]!) {
+        expect(cn(`${prefix}-${name}`, `${prefix}-0`)).toBe(`${prefix}-0`);
+        expect(cn(`${prefix}-0`, `${prefix}-${name}`)).toBe(`${prefix}-${name}`);
+      }
     }
   });
 });
