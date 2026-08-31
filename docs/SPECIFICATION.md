@@ -374,9 +374,22 @@ mutation queue, and conflict resolution for edits made on two devices while
 partitioned — comparable in size to the entire query layer. Stated in the
 README so it reads as a decision rather than an oversight.
 
-**9.5 — Charting library. FOLDED INTO #3.** Now that 9.1 is Option A, React
-Native Web support is a hard requirement rather than a preference. Evaluate two,
-verify on the web target, decide in issue #3's PR, record the reasoning.
+**9.5 — Charting library. RESOLVED — `react-native-svg`.**
+
+Folded into #3 and settled there. Once 9.1 was Option A, React Native Web
+support became a hard requirement rather than a preference: two candidates were
+built and rendered on the web target, and `react-native-svg` was the one that
+worked on all three. The charts draw their own geometry on it — see
+`frontend/src/charts/` and that directory's note in `frontend/README.md` for the
+comparison.
+
+**This is why a DOM-only charting library is not an option later either.**
+Recharts, and every charting library that renders SVG through the DOM, fails the
+same requirement §9.1 imposes — which is the reason §9.7 does not inherit
+shadcn's charts along with its component model.
+
+Reporting periods, bucket shapes and the accessible-table pairing §10 requires
+are reporting concerns rather than library ones; they are in §7 and §10.
 
 **9.6 — Currency. RESOLVED — `PHP` only, enforced at the API boundary.**
 
@@ -406,7 +419,7 @@ duplicated API client — already rejected in 9.1.
 
 **Adopted instead: the same model on React Native.** Tailwind classes compiled
 to `StyleSheet` objects at build time by NativeWind, unstyled composable
-primitives from `@rn-primitives`, and component source **copied into the repo
+primitives from `@rn-primitives/slot`, and component source **copied into the repo
 and owned there** rather than consumed as a dependency. Same `cva` variant
 pattern, same component names.
 
@@ -425,8 +438,11 @@ render, where a class compiled 12.5% smaller on device than in a browser.
 declares `tailwindcss: '~3'` — tighter than the `>3.3.0` NativeWind advertises —
 so Tailwind 4 is unavailable without moving to a preview line, and a preview
 build under the merge gate is a second moving target. Revisit when 5 is stable;
-it also drops the `react-native-reanimated` dependency that accounts for most of
-the bundle growth this decision cost (iOS +33%, Android +27%).
+it also drops `react-native-reanimated`, which accounts for most of the bundle
+growth this decision cost (iOS +33%, Android +27%). Reanimated is not a direct
+dependency here — it arrives as a `react-native-css-interop` peer that npm
+installs automatically — so that is a statement about a transitive peer rather
+than about `package.json`.
 
 **What this decision does not touch:**
 

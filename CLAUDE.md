@@ -267,10 +267,17 @@ prompt text, so the same expense always lands in the same category. See
 `.claude/skills/expense-classification/` for the category taxonomy the rules
 must implement.
 
-**Components are styled with Tailwind classes, not `style` objects** (spec
-§9.7). `src/ui/` holds shadcn-model primitives — `Button`, `Card`, `Text` — and
-`className` compiles to a React Native `StyleSheet` at build time, so the same
-component works on iOS, Android and web.
+**New components are styled with Tailwind classes, not `style` objects** (spec
+§9.7). `className` compiles to a React Native `StyleSheet` at build time, so the
+same component works on iOS, Android and web.
+
+**This is the direction of travel, not a description of the tree.** Only
+`src/ui/` is converted — `Button`, `Card`, `Text`. Every screen under `app/`,
+plus `src/reports/`, `src/expenses/` and `src/charts/`, still uses `style={{…}}`
+or `StyleSheet.create`; twenty files at the time of writing. So mixed styling
+inside one file is a **migration boundary rather than a mistake**, and #113
+onward is what moves it. Do not "tidy" a screen into `className` outside its own
+migration issue.
 
 **shadcn/ui itself does not run here**, and that is the decision rather than an
 oversight: Radix is DOM-bound and `className` is inert on React Native, so the
@@ -283,11 +290,17 @@ meet this repo's accessibility rules and comment the edit. A file nobody may
 touch is a dependency wearing a copy's clothes, and it will be touched the first
 time a screen reader needs something upstream did not provide.
 
-**`src/theme/tokens.ts` is the only place a colour is written.**
-`tailwind.config.ts` imports it, so a Tailwind class and a chart's SVG `fill`
-prop cannot disagree — SVG takes literal colour strings and cannot read a class.
-A hex literal anywhere else is a bug; `tokensMatchTailwind.test.ts` fails the
-build on the ones it can see.
+**`src/theme/tokens.ts` is where a colour belongs.** `tailwind.config.ts`
+imports it, so a Tailwind class and a chart's SVG `fill` prop cannot disagree —
+SVG takes literal colour strings and cannot read a class, so derivation is the
+only thing keeping them equal.
+
+`tokensMatchTailwind.test.ts` pins exactly that: **the Tailwind theme cannot
+diverge from `tokens.ts`.** It does not read component files, so **nothing fails
+the build on a stray hex literal** — that one is on review, and there are ten of
+them today across eight files (`#FFFFFF`, which duplicates `palette.background`,
+and `#EAF1FE`, a selected-state tint with no token at all — see #135). Adding a
+colour to a component is a bug the tooling will not catch for you.
 
 **Touch targets use `min-h-touch` / `min-w-touch`, never `min-h-11`.** They
 resolve to `MIN_TOUCH_TARGET`. `min-h-11` is 44 only while `inlineRem` is 16 —
