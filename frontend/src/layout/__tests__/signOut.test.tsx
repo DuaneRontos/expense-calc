@@ -534,6 +534,19 @@ describe('Sign out behaviour', () => {
     // double revoke (`signOut`'s own guard covers that); the cost is that
     // "Stay signed in" appears to have worked and has not.
     expect(screen.getByRole('button', { name: 'Stay signed in' })).toBeDisabled();
+
+    // **The visible label, which the two assertions above cannot see.** They
+    // resolve the accessible name off the `accessibilityLabel` ternary; the
+    // `Text` child is a second, independent expression, and flattening it to a
+    // constant passed all 405 tests.
+    //
+    // It is the only in-flight signal a sighted visitor gets here. `Button`
+    // makes `destructive` dim rather than grey while disabled — deliberately,
+    // so an irreversible action does not look like a different button
+    // mid-commit — so without this the whole visible change on pressing the
+    // confirm is `opacity-50`, and a slow `logout()` reads as a press that
+    // never registered.
+    expect(screen.getByText('Signing out…')).toBeOnTheScreen();
     // **`aria-busy`, and asserted rather than assumed.** `accessibilityState`
     // is absent from react-native-web's forwarded-prop list, so the busy state
     // used to be dropped on web entirely — silently, because the label change
