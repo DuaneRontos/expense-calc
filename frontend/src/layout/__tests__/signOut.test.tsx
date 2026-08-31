@@ -388,6 +388,46 @@ describe('Sign out behaviour', () => {
   });
 
   /**
+   * Navigating away does not dismiss the question mid-request either.
+   *
+   * The third exit from the confirm row, and the one that used to opt out of a
+   * rule the other two carry: both controls are `disabled` while the request is
+   * in flight, and the route reset was unconditional. So a nav tap replaced the
+   * row with a plain, enabled "Sign out" while `logout()` ran on and ended the
+   * session — offering to start something already happening.
+   */
+  it('does not dismiss the question by navigating mid-request', async () => {
+    let release: (value: null) => void = () => {};
+    jest.spyOn(api, 'logout').mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    const shell = await renderShell();
+    await signIn();
+    await confirmSignOut();
+
+    expect(screen.getByText('Signing out…')).toBeOnTheScreen();
+
+    mockPathname = '/';
+    await shell.rerender(
+      <ExpenseQueryProvider>
+        <AppShell>
+          <></>
+        </AppShell>
+      </ExpenseQueryProvider>,
+    );
+
+    expect(screen.getByText('Signing out…')).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
+
+    await act(async () => {
+      release(null);
+    });
+  });
+
+  /**
    * The case that decides *where* the reset lives.
    *
    * A session can end while the question is on screen without anyone answering

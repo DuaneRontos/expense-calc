@@ -48,7 +48,19 @@ export function SignOutButton() {
   // of this, and it passed the away-leg test because that test never went back.
   const [askedOn, setAskedOn] = useState<string | null>(null);
 
-  if (askedOn !== null && askedOn !== pathname) {
+  // **Held while the request is in flight**, which is the same rule
+  // `disabled={submitting}` enforces on the two controls. This is the third way
+  // out of the question, and without the guard it was the one that opted out
+  // silently: navigating mid-request swapped the row for a plain, enabled "Sign
+  // out" — dropping `busy` and the "Signing out…" label — while `logout()` ran
+  // to completion and ended the session anyway. Nothing was lost but the
+  // telling, and the telling is what this component is careful about.
+  //
+  // It cannot strand the question: `submitting` goes false in `signOut`'s
+  // `finally`, and the signed-out reset below collects it when the session
+  // clears. The away and back legs both run with `submitting` false, so neither
+  // is affected.
+  if (!submitting && askedOn !== null && askedOn !== pathname) {
     setAskedOn(null);
   }
 
