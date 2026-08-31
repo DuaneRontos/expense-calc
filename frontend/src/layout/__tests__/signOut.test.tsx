@@ -180,7 +180,18 @@ describe('Sign out behaviour', () => {
 
     expect(logout).not.toHaveBeenCalled();
     expect(api.session.isSignedIn()).toBe(true);
-    expect(screen.getByRole('button', { name: 'Confirm signing out' })).toBeOnTheScreen();
+
+    const confirm = screen.getByRole('button', { name: 'Confirm signing out' });
+    expect(confirm).toBeOnTheScreen();
+
+    // **The filled shape, which is the half of the double-tap protection that
+    // works in every band.** The ordering only helps where this control is not
+    // pinned to the row's right edge — in the medium band it is, and the fill
+    // is what stops the confirm reading as the button just pressed. It was the
+    // unpinned half: swapping `destructive` for `link` passed all eighteen
+    // tests, and did so quietly, since the label then renders in accent on the
+    // page background rather than disappearing.
+    expect(confirm.props.className).toContain('bg-negative');
 
     logout.mockRestore();
   });

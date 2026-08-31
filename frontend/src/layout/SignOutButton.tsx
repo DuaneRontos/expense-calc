@@ -132,7 +132,7 @@ export function SignOutButton() {
           the shape helps in all three.
         */}
         <Button variant="ghost" disabled={submitting} onPress={() => setAskedOn(null)}>
-          <Text className="text-textMuted">Stay signed in</Text>
+          <Text>Stay signed in</Text>
         </Button>
 
         {/*
@@ -158,10 +158,7 @@ export function SignOutButton() {
           disabled={submitting}
           onPress={signOut}
         >
-          {/* Filled, so the label is on the fill rather than in accent. */}
-          <Text className="font-semibold text-white">
-            {submitting ? 'Signing out…' : 'Sign out?'}
-          </Text>
+          <Text>{submitting ? 'Signing out…' : 'Sign out?'}</Text>
         </Button>
       </View>
     );
