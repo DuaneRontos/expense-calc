@@ -1,8 +1,9 @@
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { describePeriod, PERIOD_CHOICES } from './periods';
-import { MIN_TOUCH_TARGET } from '../layout/breakpoints';
 import { palette, spacing } from '../theme/tokens';
+import { Chip } from '../ui/Chip';
+import { Text as UIText } from '../ui/Text';
 
 /**
  * Which window the three reports describe.
@@ -44,8 +45,11 @@ export function PeriodPicker({
         {PERIOD_CHOICES.map((choice) => {
           const active = choice.key === selected;
           return (
-            <Pressable
+            <Chip
               key={choice.key}
+              shape="block"
+              selected={active}
+              className="px-4"
               accessibilityRole="radio"
               // `aria-checked`, not `accessibilityState.checked`, because it is
               // the only form that reaches all three targets: RNW's forwarded
@@ -64,20 +68,11 @@ export function PeriodPicker({
               accessibilityState={{ selected: active }}
               accessibilityLabel={choice.label}
               onPress={() => onSelect(choice.key)}
-              style={{
-                minHeight: MIN_TOUCH_TARGET,
-                justifyContent: 'center',
-                paddingHorizontal: spacing.md,
-                borderRadius: 6,
-                borderWidth: 1,
-                borderColor: active ? palette.accent : palette.border,
-                backgroundColor: active ? '#EAF1FE' : palette.background,
-              }}
             >
-              <Text style={{ color: active ? palette.accent : palette.text, fontSize: 13 }}>
-                {choice.label}
-              </Text>
-            </Pressable>
+              {/* `px-4` above: this chip used `spacing.md`, where the sort
+                  chips use `spacing.sm`. Kept rather than averaged. */}
+              <UIText>{choice.label}</UIText>
+            </Chip>
           );
         })}
       </View>

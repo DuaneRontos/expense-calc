@@ -20,6 +20,7 @@ export {
   CardHeader,
   CardTitle,
 } from './Card';
+export { Chip, chipTextVariants, chipVariants, type ChipProps } from './Chip';
 export { cn } from './cn';
 export { FormMessage } from './FormMessage';
 export { Input, type InputProps } from './Input';

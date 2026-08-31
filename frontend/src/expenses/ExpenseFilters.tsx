@@ -8,6 +8,8 @@ import { assertSendableAmount } from '../money/format';
 import { MIN_TOUCH_TARGET } from '../layout/breakpoints';
 import { colorForCategory, palette, spacing } from '../theme/tokens';
 import { needsSignIn } from '../api/problem';
+import { Chip } from '../ui/Chip';
+import { Text as UIText } from '../ui/Text';
 
 /**
  * The filter controls of spec §2 and issue #14.
@@ -96,8 +98,10 @@ export function ExpenseFilters() {
           {categories.map((category) => {
             const selected = query.category?.includes(category.key) ?? false;
             return (
-              <Pressable
+              <Chip
                 key={category.key}
+                shape="pill"
+                selected={selected}
                 accessibilityRole="checkbox"
                 // `aria-checked` for the reason given on the radios in
                 // PeriodPicker: `accessibilityState` never reaches the DOM
@@ -107,18 +111,7 @@ export function ExpenseFilters() {
                 aria-checked={selected}
                 accessibilityLabel={category.label}
                 onPress={() => toggleCategory(category.key)}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: spacing.xs,
-                  minHeight: MIN_TOUCH_TARGET,
-                  paddingHorizontal: spacing.sm,
-                  paddingVertical: spacing.xs,
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: selected ? palette.accent : palette.border,
-                  backgroundColor: selected ? '#EAF1FE' : palette.background,
-                }}
+                className="py-1"
               >
                 {/* Colour repeats the chart legend's, but the label is what
                     carries the meaning here too (spec §10). */}
@@ -131,10 +124,8 @@ export function ExpenseFilters() {
                     backgroundColor: colorForCategory(category.key),
                   }}
                 />
-                <Text style={{ color: selected ? palette.accent : palette.text, fontSize: 13 }}>
-                  {category.label}
-                </Text>
-              </Pressable>
+                <UIText>{category.label}</UIText>
+              </Chip>
             );
           })}
         </View>
