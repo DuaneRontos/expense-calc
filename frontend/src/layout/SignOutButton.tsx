@@ -1,12 +1,12 @@
 import { usePathname } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { View } from 'react-native';
 
-import { MIN_TOUCH_TARGET } from './breakpoints';
 import { api } from '../api/client';
 import { useSignedIn } from '../api/useSignedIn';
 import { clearAllDrafts } from '../expenses/draftStore';
-import { palette, spacing } from '../theme/tokens';
+import { Button } from '../ui/Button';
+import { Text } from '../ui/Text';
 
 /**
  * Ends the session, and only appears when there is one to end.
@@ -34,16 +34,25 @@ export function SignOutButton() {
   const pathname = usePathname();
   const [submitting, setSubmitting] = useState(false);
 
-  // **The question belongs to the screen it was asked on.** `AppShell` mounts
-  // this once above the navigator, so without binding it to a route the
-  // question rides along: ask on `/expenses`, change your mind and tap
-  // Overview instead of declining, and the Overview draws "Sign out?" in its
-  // chrome — where one stray tap ends the session, which is the tap this
-  // exists to prevent. Deriving `confirming` rather than resetting on a
-  // pathname effect keeps that a property of the state instead of a listener
-  // that can miss.
+  // **The question is dismissed by leaving the screen it was asked on.**
+  // `AppShell` mounts this once above the navigator, so without a route rule
+  // the question rides along: ask on `/expenses`, change your mind and tap
+  // Overview rather than declining, and the Overview draws "Sign out?" in its
+  // chrome — where one stray tap ends the session, which is the tap this exists
+  // to prevent.
+  //
+  // **Cleared rather than out-matched**, which is a real difference and not a
+  // spelling of the same thing. Deriving `askedOn === pathname` only *hides*
+  // the question: `askedOn` survives, so navigating back to the asking screen
+  // re-arms a question nobody asked on that visit. That was the first version
+  // of this, and it passed the away-leg test because that test never went back.
   const [askedOn, setAskedOn] = useState<string | null>(null);
-  const confirming = askedOn !== null && askedOn === pathname;
+
+  if (askedOn !== null && askedOn !== pathname) {
+    setAskedOn(null);
+  }
+
+  const confirming = askedOn !== null;
 
   if (!signedIn) {
     // **Adjusted during render, because this component does not unmount.**
@@ -73,15 +82,9 @@ export function SignOutButton() {
       // the next person's form. A page reload would have cleared it, and a
       // sign-out that did not would be the weaker of the two.
       //
-      // **Before the request, not after**, and unconditional because
-      // `logout()` clears local state in a `finally` — there is no path where
-      // this press leaves the session alive, so there is none where the draft
-      // should have been kept. After the await it might not run at all: the
-      // the guard redirects imperatively rather than unmounting the children,
-      // so this component is still mounted afterwards — but `clearAllDrafts`
-      // belongs before the request regardless: `logout()` clears local state
-      // in a `finally`, so there is no path where this press leaves the
-      // session alive and the draft worth keeping.
+      // **Before the request, and unconditional**, because `logout()` clears
+      // local state in a `finally`: there is no path where this press leaves
+      // the session alive, so none where the draft was worth keeping.
       clearAllDrafts();
       await api.logout();
     } finally {
@@ -117,26 +120,30 @@ export function SignOutButton() {
 
   if (confirming) {
     return (
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-        <Pressable
-          accessibilityRole="button"
-          // Disabled in flight as well: declining after the request has gone is
-          // a promise this cannot keep, since `logout()` clears local state in
-          // a `finally` whatever the server says. The flat prop is enough on
-          // every target — see the note on the confirm control above.
-          disabled={submitting}
-          onPress={() => setAskedOn(null)}
-          style={{
-            minHeight: MIN_TOUCH_TARGET,
-            justifyContent: 'center',
-            paddingVertical: spacing.sm,
-          }}
-        >
-          <Text style={{ color: palette.textMuted }}>Stay signed in</Text>
-        </Pressable>
+      <View className="flex-row items-center gap-3">
+        {/*
+          **Decline first, so the safe control sits under the finger that just
+          pressed "Sign out".** A double-tap then declines instead of signing
+          out. Ordering alone is not enough, though: in the medium band
+          `AppShell` gives the nav `flex-1`, which pins this component to the
+          row's right edge, so a two-control row grows leftward and the *last*
+          child keeps the slot the single button had. That is why the confirm
+          below is also shaped differently — the ordering helps in two bands,
+          the shape helps in all three.
+        */}
+        <Button variant="ghost" disabled={submitting} onPress={() => setAskedOn(null)}>
+          <Text className="text-textMuted">Stay signed in</Text>
+        </Button>
 
-        <Pressable
-          accessibilityRole="button"
+        {/*
+          Filled `destructive`, which is the other half of the delete control's
+          idiom (`Delete this expense` → a filled `negative` pill). A confirm
+          that differs from the control it replaced by one character reads as
+          the same button, and this one ends a session that cannot be resumed
+          without signing in again.
+        */}
+        <Button
+          variant="destructive"
           // Named for a screen reader rather than left to the visible text: two
           // controls both announcing "Sign out" is the ambiguity a confirmation
           // exists to remove, and a question mark is not spoken.
@@ -144,55 +151,27 @@ export function SignOutButton() {
           // **It still has to carry the in-flight state**, which a fixed label
           // would have silently taken away: an `accessibilityLabel` overrides
           // the text, so a constant one leaves nothing that changes when the
-          // press registers.
+          // press registers. `busy` carries it to assistive tech; this carries
+          // it to the name.
           accessibilityLabel={submitting ? 'Signing out…' : 'Confirm signing out'}
-          // `aria-busy` rather than `accessibilityState`, which react-native-web
-          // does not forward at all — it is absent from
-          // `modules/forwardedProps/index.js`, so the busy state was simply
-          // dropped on web. `aria-busy` *is* forwarded, and RN native merges it
-          // back into `accessibilityState.busy`, so one flat prop reaches all
-          // three targets. The same argument `AppShell` makes for
-          // `aria-expanded`.
-          //
-          // No `disabled` key beside it: RNW's `Pressable` already emits
-          // `aria-disabled` from the flat `disabled` prop, and RN's overrides
-          // `accessibilityState.disabled` with it regardless.
-          aria-busy={submitting}
+          busy={submitting}
           disabled={submitting}
           onPress={signOut}
-          style={{
-            minHeight: MIN_TOUCH_TARGET,
-            justifyContent: 'center',
-            paddingVertical: spacing.sm,
-          }}
         >
-          <Text
-            style={{ color: submitting ? palette.textMuted : palette.accent, fontWeight: '600' }}
-          >
+          {/* Filled, so the label is on the fill rather than in accent. */}
+          <Text className="font-semibold text-white">
             {submitting ? 'Signing out…' : 'Sign out?'}
           </Text>
-        </Pressable>
+        </Button>
       </View>
     );
   }
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={() => setAskedOn(pathname)}
-      style={{
-        minHeight: MIN_TOUCH_TARGET,
-        // Symmetric, so the label sits in the middle of its 44dp target.
-        justifyContent: 'center',
-        paddingVertical: spacing.sm,
-      }}
-    >
-      {/*
-        Plain, because this press no longer does anything irreversible — it
-        asks. The in-flight state lives on the confirm control above, which is
-        the only one that can be in flight.
-      */}
-      <Text style={{ color: palette.accent, fontWeight: '600' }}>Sign out</Text>
-    </Pressable>
+    // No `busy`/`disabled` here: this press only asks, and the request can only
+    // be in flight on the confirm control above.
+    <Button variant="link" onPress={() => setAskedOn(pathname)}>
+      <Text>Sign out</Text>
+    </Button>
   );
 }

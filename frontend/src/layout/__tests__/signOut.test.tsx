@@ -316,6 +316,50 @@ describe('Sign out behaviour', () => {
 
     expect(screen.queryByRole('button', { name: 'Confirm signing out' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+
+    // **And it stays dismissed on the way back.** Hiding the question behind a
+    // pathname comparison passes everything above while leaving `askedOn` set,
+    // so returning to the asking screen re-arms a question nobody asked on that
+    // visit — one stray tap from ending the session, which is the whole point.
+    mockPathname = '/expenses';
+    await shell.rerender(
+      <ExpenseQueryProvider>
+        <AppShell>
+          <></>
+        </AppShell>
+      </ExpenseQueryProvider>,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Confirm signing out' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+  });
+
+  /**
+   * The decline sits before the confirm, so the control under the finger that
+   * just pressed "Sign out" is the safe one and a double-tap declines.
+   *
+   * Pinned by position rather than by name, because every other query here is
+   * `getByRole` by name and none of them observes order — swapping the two
+   * passed all seventeen tests. It is load-bearing in two of the three bands:
+   * the medium band pins this component to the row's right edge, so ordering
+   * alone does not carry it there and the confirm's filled shape is what does.
+   */
+  it('puts the safe control first', async () => {
+    await renderShell();
+    await signIn();
+
+    await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+
+    // Positions of the real elements, rather than a prop lookup: "Stay signed
+    // in" takes its accessible name from its `Text` child and carries no
+    // `accessibilityLabel`, so reading props finds only one of the two.
+    const buttons = screen.getAllByRole('button');
+    const decline = buttons.indexOf(screen.getByRole('button', { name: 'Stay signed in' }));
+    const confirm = buttons.indexOf(screen.getByRole('button', { name: 'Confirm signing out' }));
+
+    expect(decline).toBeGreaterThanOrEqual(0);
+    expect(confirm).toBeGreaterThanOrEqual(0);
+    expect(decline).toBeLessThan(confirm);
   });
 
   /**

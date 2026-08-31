@@ -134,3 +134,37 @@ describe('ExpenseFilters', () => {
    * infrastructure this repo doesn't have yet.
    */
 });
+
+describe('the reclassify confirm row', () => {
+  /**
+   * One Cancel, not two.
+   *
+   * The #113 migration added a `<Button variant="ghost">Cancel` and left the
+   * raw `<Pressable>` it replaced sitting underneath it, so the panel rendered
+   * *Change category · Cancel · Cancel* with both wired to the same handler.
+   * Every suite stayed green: nothing on this screen queries "Cancel", and the
+   * one test that does query it by role is `formDraft.test.tsx`, which renders
+   * `new.tsx` — a different screen with exactly one.
+   *
+   * `getByRole` is deliberate: it throws "Found multiple elements" on a
+   * duplicate, which is the failure the suite did not have.
+   */
+  it('offers exactly one Cancel', async () => {
+    const user = userEvent.setup();
+
+    await render(
+      <ReclassifyControl
+        current="GROCERIES"
+        errors={{}}
+        submitting={false}
+        onReclassify={() => {}}
+      />,
+    );
+
+    // The confirm row only exists once a different category is picked.
+    await user.press(screen.getByLabelText('Transport'));
+
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeOnTheScreen();
+    expect(screen.queryAllByText('Cancel')).toHaveLength(1);
+  });
+});

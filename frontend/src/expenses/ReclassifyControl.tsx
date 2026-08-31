@@ -5,6 +5,11 @@ import { useCategories } from './useCategories';
 import { MAX_REASON_LENGTH, type FieldErrors } from './expenseFormRules';
 import { MIN_TOUCH_TARGET } from '../layout/breakpoints';
 import { colorForCategory, palette, spacing } from '../theme/tokens';
+import { Button } from '../ui/Button';
+// Aliased: the file keeps RN's `Text` for everything that is not a button
+// label. Only `ui/Text` reads `TextClassContext`, so a button label written
+// with the wrong one renders unstyled and nothing warns.
+import { Text as UIText } from '../ui/Text';
 import type { Category } from '../api/types';
 import { needsSignIn } from '../api/problem';
 
@@ -78,14 +83,9 @@ export function ReclassifyControl({
             second sign-in link here would sit right beside it.
           */}
           {needsSignIn(categoriesError) ? null : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Retry loading categories"
-              onPress={retry}
-              style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
-            >
-              <Text style={{ color: palette.accent }}>Try again</Text>
-            </Pressable>
+            <Button variant="link" accessibilityLabel="Retry loading categories" onPress={retry}>
+              <UIText>Try again</UIText>
+            </Button>
           )}
         </View>
       ) : null}
@@ -181,33 +181,26 @@ export function ReclassifyControl({
           ) : null}
 
           <View style={{ flexDirection: 'row', gap: spacing.md, alignItems: 'center' }}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !canSubmit }}
+            <Button
+              // The state the issue calls out: a screen reader announcing an
+              // enabled-sounding button that does nothing is the regression.
+              // `Button` declares both spellings; `busy` is separate because
+              // "cannot be pressed" and "is working" are different claims.
+              busy={submitting}
               disabled={!canSubmit}
               onPress={() => onReclassify(target, reason.trim())}
-              style={{
-                minHeight: MIN_TOUCH_TARGET,
-                justifyContent: 'center',
-                paddingHorizontal: spacing.md,
-                borderRadius: 6,
-                backgroundColor: canSubmit ? palette.accent : palette.border,
-              }}
             >
-              <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>
-                {submitting ? 'Saving…' : 'Change category'}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
+              <UIText>{submitting ? 'Saving…' : 'Change category'}</UIText>
+            </Button>
+            <Button
+              variant="ghost"
               onPress={() => {
                 setSelected(null);
                 setReason('');
               }}
-              style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
             >
-              <Text style={{ color: palette.textMuted }}>Cancel</Text>
-            </Pressable>
+              <UIText>Cancel</UIText>
+            </Button>
           </View>
         </View>
       ) : null}
