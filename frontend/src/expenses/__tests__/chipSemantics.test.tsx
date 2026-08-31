@@ -5,7 +5,9 @@ import { ExpenseQueryProvider } from '../ExpenseQueryProvider';
 import { SortControl } from '../SortControl';
 
 /**
- * Two a11y contracts that nothing covered before #115.
+ * Two a11y contracts that nothing covered before #115 — one on SortControl,
+ * one on the category filter group. Named for the contracts rather than for
+ * either control, since it holds both.
  *
  * `SortControl` had no test of its own, and the `role="group"` on the category
  * chips — the #69-era finding, written up at length in `ExpenseFilters` — was
