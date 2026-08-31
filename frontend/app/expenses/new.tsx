@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { api } from '../../src/api/client';
+import { NEW_EXPENSE_DRAFT, clearDraft, readDraft, saveDraft } from '../../src/expenses/draftStore';
 import { ExpenseFormFields } from '../../src/expenses/ExpenseFormFields';
 import {
   hasErrors,
@@ -66,14 +67,41 @@ export default function NewExpense() {
   // the date at whenever the bundle first loaded, so a tab left open across
   // midnight in Manila — or a native app resumed the next day — prefills
   // yesterday, in a field that looks filled and valid.
-  const [values, setValues] = useState<ExpenseFormValues>(emptyForm);
+  //
+  // A draft only exists if a previous mount of this screen was taken away with
+  // something typed into it — see `draftStore.ts` (#96).
+  //
+  // **It carries its own `occurredOn`, including one this function filled in.**
+  // So a draft started before midnight in Manila and restored after it keeps
+  // yesterday — the staleness the paragraph above exists to prevent, arriving
+  // by another door. Kept anyway, and deliberately: the date was on screen when
+  // they were typing, and restoring every field except that one silently moves
+  // an expense to a day they never saw. Re-running `today()` would be the
+  // surprising half, not the safe one. The form's own date check still governs
+  // whatever comes back, so nothing invalid is restored past validation.
+  const [values, setValues] = useState<ExpenseFormValues>(
+    () => readDraft(NEW_EXPENSE_DRAFT) ?? emptyForm(),
+  );
   const [local, setLocal] = useState<ReturnType<typeof validateExpenseForm>>({});
   const { submit, submitting, errors, clearError } = useExpenseSubmit<ExpenseDetail>();
 
   const merged = { ...errors, ...local };
 
   function change(patch: Partial<ExpenseFormValues>) {
-    setValues((current) => ({ ...current, ...patch }));
+    // Set from `values` rather than through an updater so the same object can
+    // be held as the draft. Safe because `ExpenseFormFields` sends one field
+    // per event and these inputs are controlled, so every keystroke re-renders
+    // before the next is read — a consumer contract rather than a structural
+    // guarantee, which is why it is written down.
+    //
+    // A `values`-keyed `useEffect` would remove that hazard, and here it would
+    // cost nothing: after `clearDraft` this screen navigates away without
+    // touching `values`, so nothing would re-fire. It is not used only so both
+    // forms save the same way — the hazard that rules it out is real on
+    // `[id].tsx`, which explains it.
+    const next = { ...values, ...patch };
+    setValues(next);
+    saveDraft(NEW_EXPENSE_DRAFT, next);
     // Clear the message for the field being edited, so a server complaint does
     // not sit under a value the user has since corrected.
     for (const field of Object.keys(patch)) {
@@ -95,6 +123,9 @@ export default function NewExpense() {
 
     const created = await submit(() => api.createExpense(toCreateRequest(values)));
     if (created) {
+      // The expense exists now; keeping what made it would offer to create it
+      // a second time the next time this form is opened.
+      clearDraft(NEW_EXPENSE_DRAFT);
       // Replace rather than push: going "back" to a form that has already been
       // submitted invites a second identical expense.
       router.replace({ pathname: '/expenses/[id]', params: { id: created.id } });
@@ -136,7 +167,11 @@ export default function NewExpense() {
 
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={() => {
+            // Leaving on purpose is not what the draft is for.
+            clearDraft(NEW_EXPENSE_DRAFT);
+            router.back();
+          }}
           style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
         >
           <Text style={{ color: palette.textMuted }}>Cancel</Text>

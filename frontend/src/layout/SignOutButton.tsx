@@ -4,6 +4,7 @@ import { Pressable, Text } from 'react-native';
 import { MIN_TOUCH_TARGET } from './breakpoints';
 import { api } from '../api/client';
 import { useSignedIn } from '../api/useSignedIn';
+import { clearAllDrafts } from '../expenses/draftStore';
 import { palette, spacing } from '../theme/tokens';
 
 /**
@@ -35,6 +36,18 @@ export function SignOutButton() {
     setSubmitting(true);
 
     try {
+      // Drafts are held for a session that ended *involuntarily* (#96);
+      // someone pressing this is leaving on purpose, and possibly handing over
+      // the machine, so what they typed does not survive to be restored into
+      // the next person's form. A page reload would have cleared it, and a
+      // sign-out that did not would be the weaker of the two.
+      //
+      // **Before the request, not after**, and unconditional because
+      // `logout()` clears local state in a `finally` — there is no path where
+      // this press leaves the session alive, so there is none where the draft
+      // should have been kept. After the await it might not run at all: the
+      // session clearing unmounts this component through `AuthGuard`.
+      clearAllDrafts();
       await api.logout();
     } finally {
       // **This navigates nowhere, and that is the fix.** `AuthGuard` owns where
