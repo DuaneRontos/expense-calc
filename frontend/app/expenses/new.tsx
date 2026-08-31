@@ -69,9 +69,16 @@ export default function NewExpense() {
   // yesterday, in a field that looks filled and valid.
   //
   // A draft only exists if a previous mount of this screen was taken away with
-  // something typed into it — see `draftStore.ts` (#96). It carries its own
-  // `occurredOn`, so a draft written yesterday keeps the date the person chose
-  // rather than being quietly moved to today.
+  // something typed into it — see `draftStore.ts` (#96).
+  //
+  // **It carries its own `occurredOn`, including one this function filled in.**
+  // So a draft started before midnight in Manila and restored after it keeps
+  // yesterday — the staleness the paragraph above exists to prevent, arriving
+  // by another door. Kept anyway, and deliberately: the date was on screen when
+  // they were typing, and restoring every field except that one silently moves
+  // an expense to a day they never saw. Re-running `today()` would be the
+  // surprising half, not the safe one. The form's own date check still governs
+  // whatever comes back, so nothing invalid is restored past validation.
   const [values, setValues] = useState<ExpenseFormValues>(
     () => readDraft(NEW_EXPENSE_DRAFT) ?? emptyForm(),
   );
