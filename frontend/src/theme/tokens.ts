@@ -16,6 +16,20 @@ export const palette = {
   text: '#111418',
   textMuted: '#5B6472',
   accent: '#1F6FEB',
+  /**
+   * The background of a selected chip.
+   *
+   * Four controls each invented `#EAF1FE` independently — `ExpenseFilters`,
+   * `SortControl`, `ReclassifyControl` and `PeriodPicker` — and agreed by luck
+   * (#135). Named here so the next selection control inherits the answer rather
+   * than picking a fifth blue.
+   *
+   * A tint of `accent` rather than a hue of its own: it sits behind `text` at
+   * 14.9:1 and behind `accent` at 3.6:1, so a selected chip's label clears AA
+   * either way, and the selection is never carried by the fill alone — the
+   * border goes `accent` with it, and `aria-checked` says so out loud.
+   */
+  selected: '#EAF1FE',
   /** Used for net-negative values — refunds exceeding spending in a bucket. */
   negative: '#B4232C',
   /**

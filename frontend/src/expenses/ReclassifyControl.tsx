@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
 
 import { useCategories } from './useCategories';
-import { MAX_REASON_LENGTH, type FieldErrors } from './expenseFormRules';
 import { MIN_TOUCH_TARGET } from '../layout/breakpoints';
+import { MAX_REASON_LENGTH, type FieldErrors } from './expenseFormRules';
 import { colorForCategory, palette, spacing } from '../theme/tokens';
 import { Button } from '../ui/Button';
+import { Chip } from '../ui/Chip';
 // Aliased: the file keeps RN's `Text` for everything that is not a button
 // label. Only `ui/Text` reads `TextClassContext`, so a button label written
 // with the wrong one renders unstyled and nothing warns.
@@ -112,8 +113,10 @@ export function ReclassifyControl({
         {categories.map((category) => {
           const isTarget = category.key === target;
           return (
-            <Pressable
+            <Chip
               key={category.key}
+              shape="pill"
+              selected={isTarget}
               accessibilityRole="radio"
               // `aria-checked` plus `accessibilityState.selected`, for the
               // reasons spelled out on the identical pair in PeriodPicker: the
@@ -123,17 +126,6 @@ export function ReclassifyControl({
               accessibilityState={{ selected: isTarget }}
               accessibilityLabel={category.label}
               onPress={() => setSelected(category.key)}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: spacing.xs,
-                minHeight: MIN_TOUCH_TARGET,
-                paddingHorizontal: spacing.sm,
-                borderRadius: 999,
-                borderWidth: 1,
-                borderColor: isTarget ? palette.accent : palette.border,
-                backgroundColor: isTarget ? '#EAF1FE' : palette.background,
-              }}
             >
               <View
                 aria-hidden
@@ -144,10 +136,8 @@ export function ReclassifyControl({
                   backgroundColor: colorForCategory(category.key),
                 }}
               />
-              <Text style={{ color: isTarget ? palette.accent : palette.text, fontSize: 13 }}>
-                {category.label}
-              </Text>
-            </Pressable>
+              <UIText>{category.label}</UIText>
+            </Chip>
           );
         })}
       </View>

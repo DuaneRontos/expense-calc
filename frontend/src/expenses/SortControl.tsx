@@ -1,9 +1,10 @@
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { useExpenseQuery, DEFAULT_SORT } from './ExpenseQueryProvider';
-import { MIN_TOUCH_TARGET } from '../layout/breakpoints';
 import { palette, spacing } from '../theme/tokens';
 import type { ExpenseSortField } from '../api/types';
+import { Chip } from '../ui/Chip';
+import { Text as UIText } from '../ui/Text';
 
 /**
  * Sort controls, limited to the fields the server actually sorts on (spec §6).
@@ -36,8 +37,10 @@ export function SortControl() {
           const direction = selected && active.direction === 'asc' ? 'asc' : 'desc';
 
           return (
-            <Pressable
+            <Chip
               key={field}
+              shape="block"
+              selected={selected}
               accessibilityRole="button"
               accessibilityState={{ selected }}
               accessibilityLabel={
@@ -54,21 +57,18 @@ export function SortControl() {
                   direction: selected && active.direction === 'desc' ? 'asc' : 'desc',
                 })
               }
-              style={{
-                minHeight: MIN_TOUCH_TARGET,
-                justifyContent: 'center',
-                paddingHorizontal: spacing.sm,
-                borderRadius: 6,
-                borderWidth: 1,
-                borderColor: selected ? palette.accent : palette.border,
-                backgroundColor: selected ? '#EAF1FE' : palette.background,
-              }}
             >
-              <Text style={{ color: selected ? palette.accent : palette.text, fontSize: 13 }}>
+              {/*
+                The arrow is inside the label rather than `aria-hidden` beside
+                it: the accessible name already says "ascending"/"descending" in
+                words, so a screen reader gets the direction from the name and a
+                sighted user gets it from the glyph. Two channels, one source.
+              */}
+              <UIText>
                 {label}
                 {selected ? (active.direction === 'asc' ? ' ↑' : ' ↓') : ''}
-              </Text>
-            </Pressable>
+              </UIText>
+            </Chip>
           );
         })}
       </View>
