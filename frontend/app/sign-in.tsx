@@ -1,12 +1,13 @@
 import Head from 'expo-router/head';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, Text as RNText, View } from 'react-native';
 
 import { api } from '../src/api/client';
 import { ApiError } from '../src/api/problem';
 import { FormField } from '../src/expenses/FormField';
-import { MIN_TOUCH_TARGET } from '../src/layout/breakpoints';
+import { Button } from '../src/ui/Button';
+import { Text } from '../src/ui/Text';
 import { APP_NAME, safeReturnPath } from '../src/layout/navigation';
 import { useSignedIn } from '../src/api/useSignedIn';
 import { palette, spacing } from '../src/theme/tokens';
@@ -146,7 +147,7 @@ export default function SignIn() {
         <title>Sign in · {APP_NAME}</title>
       </Head>
 
-      <Text style={{ color: palette.text, fontWeight: '600', fontSize: 16 }}>Sign in</Text>
+      <RNText style={{ color: palette.text, fontWeight: '600', fontSize: 16 }}>Sign in</RNText>
 
       <FormField
         label="Username"
@@ -184,44 +185,42 @@ export default function SignIn() {
         the installed react-native-web, so it costs no build warning.
       */}
       {error ? (
-        <Text accessibilityLiveRegion="polite" style={{ color: palette.negative, fontSize: 13 }}>
+        <RNText accessibilityLiveRegion="polite" style={{ color: palette.negative, fontSize: 13 }}>
           {error}
-        </Text>
+        </RNText>
       ) : null}
 
       {warning ? (
-        <Text accessibilityLiveRegion="polite" style={{ color: palette.text, fontSize: 13 }}>
+        <RNText accessibilityLiveRegion="polite" style={{ color: palette.text, fontSize: 13 }}>
           {warning}
-        </Text>
+        </RNText>
       ) : null}
 
       <View style={{ flexDirection: 'row', gap: spacing.md, alignItems: 'center' }}>
-        <Pressable
-          accessibilityRole="button"
-          // `disabled` alone never reaches the DOM under react-native-web, so a
-          // screen reader on web would announce an actionable button that does
-          // nothing. The state is declared as well as applied.
-          accessibilityState={{ disabled: !ready || submitting, busy: submitting }}
+        {/*
+          **`accessibilityLabel` is what actually keeps the name stable.**
+
+          The comment here used to claim the accessible name stayed "Sign in"
+          while the request was in flight. It did not: nothing set a label, so
+          the name came from the child text, which becomes "Signing in…" — and
+          `SignOutButton` describes itself as the deliberate exception to a rule
+          this button was not following. Nothing failed, because the one test
+          that queries by name presses before submitting.
+
+          The rule is worth having, which is why this fixes it rather than
+          deleting the claim: a name that changes mid-press makes the button a
+          different control to anything holding a reference to it. The visible
+          label still shows progress, and `busy` carries the state to a screen
+          reader.
+        */}
+        <Button
+          accessibilityLabel="Sign in"
+          busy={submitting}
           disabled={!ready || submitting}
           onPress={signIn}
-          style={{
-            minHeight: MIN_TOUCH_TARGET,
-            justifyContent: 'center',
-            paddingHorizontal: spacing.lg,
-            borderRadius: 6,
-            backgroundColor: !ready || submitting ? palette.border : palette.accent,
-          }}
         >
-          {/*
-            The accessible name stays "Sign in" while the request is in flight —
-            the label below changes to show progress, and a name that changes
-            with it would make the button a different control to anything
-            holding a reference to it.
-          */}
-          <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>
-            {submitting ? 'Signing in…' : 'Sign in'}
-          </Text>
-        </Pressable>
+          <Text>{submitting ? 'Signing in…' : 'Sign in'}</Text>
+        </Button>
 
         {submitting ? <ActivityIndicator color={palette.accent} /> : null}
       </View>

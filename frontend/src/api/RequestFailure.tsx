@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
-import { Pressable, Text, View } from 'react-native';
+import { Text as RNText, View } from 'react-native';
 
 import { ApiError, needsSignIn } from './problem';
-import { MIN_TOUCH_TARGET } from '../layout/breakpoints';
 import { palette, spacing } from '../theme/tokens';
+import { Button } from '../ui/Button';
+import { Text } from '../ui/Text';
 
 /**
  * How this app renders a failed request.
@@ -58,34 +59,23 @@ export function RequestFailure({
         rather than a heading with no explanation. The card replaces the screen's
         content, so nothing else says what happened.
       */}
-      <Text accessibilityLiveRegion="polite" style={{ color: palette.negative, fontWeight: '600' }}>
+      <RNText accessibilityLiveRegion="polite" style={{ color: palette.negative, fontWeight: '600' }}>
         {heading}
-      </Text>
-      <Text style={{ color: palette.textMuted }}>{detail}</Text>
+      </RNText>
+      <RNText style={{ color: palette.textMuted }}>{detail}</RNText>
 
       {signIn ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.navigate('/sign-in')}
-          style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
-        >
-          <Text style={{ color: palette.accent, fontWeight: '600' }}>Sign in</Text>
-        </Pressable>
+        <Button variant="link" onPress={() => router.navigate('/sign-in')}>
+          <Text>Sign in</Text>
+        </Button>
       ) : onRetry ? (
-        <Pressable
-          accessibilityRole="button"
-          // `disabled` alone never reaches the DOM under react-native-web, so a
-          // screen reader on web would announce an actionable button that does
-          // nothing. The state is declared as well as applied.
-          accessibilityState={{ disabled: retrying, busy: retrying }}
-          disabled={retrying}
-          onPress={onRetry}
-          style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
-        >
-          <Text style={{ color: retrying ? palette.textMuted : palette.accent, fontWeight: '600' }}>
-            {retrying ? 'Trying…' : 'Try again'}
-          </Text>
-        </Pressable>
+        // `disabled` alone never reaches the DOM under react-native-web, so a
+        // screen reader on web would announce an actionable button that does
+        // nothing. `Button` declares both spellings, and `busy` separately —
+        // "will do nothing" and "already did something" are different claims.
+        <Button variant="link" busy={retrying} disabled={retrying} onPress={onRetry}>
+          <Text>{retrying ? 'Trying…' : 'Try again'}</Text>
+        </Button>
       ) : null}
     </View>
   );

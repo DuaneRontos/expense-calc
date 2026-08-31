@@ -1,10 +1,12 @@
 import Head from 'expo-router/head';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, Text as RNText, View } from 'react-native';
 
 import { api } from '../../src/api/client';
 import { NEW_EXPENSE_DRAFT, clearDraft, readDraft, saveDraft } from '../../src/expenses/draftStore';
+import { Button } from '../../src/ui/Button';
+import { Text } from '../../src/ui/Text';
 import { ExpenseFormFields } from '../../src/expenses/ExpenseFormFields';
 import {
   hasErrors,
@@ -14,7 +16,6 @@ import {
   type ExpenseFormValues,
 } from '../../src/expenses/expenseFormRules';
 import { useExpenseSubmit } from '../../src/expenses/useExpenseSubmit';
-import { MIN_TOUCH_TARGET } from '../../src/layout/breakpoints';
 import { APP_NAME } from '../../src/layout/navigation';
 import { palette, spacing } from '../../src/theme/tokens';
 import type { ExpenseDetail } from '../../src/api/types';
@@ -138,52 +139,37 @@ export default function NewExpense() {
         <title>New expense · {APP_NAME}</title>
       </Head>
 
-      <Text style={{ color: palette.text, fontWeight: '600', fontSize: 16 }}>New expense</Text>
+      <RNText style={{ color: palette.text, fontWeight: '600', fontSize: 16 }}>New expense</RNText>
 
       <ExpenseFormFields values={values} errors={merged} onChange={change} />
 
       {merged.form ? (
-        <Text style={{ color: palette.negative, fontSize: 13 }}>{merged.form}</Text>
+        <RNText style={{ color: palette.negative, fontSize: 13 }}>{merged.form}</RNText>
       ) : null}
 
       <View style={{ flexDirection: 'row', gap: spacing.md, alignItems: 'center' }}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: submitting }}
-          disabled={submitting}
-          onPress={save}
-          style={{
-            minHeight: MIN_TOUCH_TARGET,
-            justifyContent: 'center',
-            paddingHorizontal: spacing.lg,
-            borderRadius: 6,
-            backgroundColor: submitting ? palette.border : palette.accent,
-          }}
-        >
-          <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>
-            {submitting ? 'Saving…' : 'Save expense'}
-          </Text>
-        </Pressable>
+        <Button busy={submitting} disabled={submitting} onPress={save}>
+          <Text>{submitting ? 'Saving…' : 'Save expense'}</Text>
+        </Button>
 
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="ghost"
           onPress={() => {
             // Leaving on purpose is not what the draft is for.
             clearDraft(NEW_EXPENSE_DRAFT);
             router.back();
           }}
-          style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
         >
-          <Text style={{ color: palette.textMuted }}>Cancel</Text>
-        </Pressable>
+          <Text>Cancel</Text>
+        </Button>
 
         {submitting ? <ActivityIndicator color={palette.accent} /> : null}
       </View>
 
-      <Text style={{ color: palette.textMuted, fontSize: 12 }}>
+      <RNText style={{ color: palette.textMuted, fontSize: 12 }}>
         The category is assigned by the rule engine when this is saved. You can change it
         afterwards, with a reason.
-      </Text>
+      </RNText>
     </ScrollView>
   );
 }

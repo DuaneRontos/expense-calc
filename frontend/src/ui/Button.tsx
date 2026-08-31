@@ -31,16 +31,27 @@ import { TextClassContext } from './Text';
  * question for whoever writes it.
  */
 const buttonVariants = cva(
-  'flex-row items-center justify-center rounded-md min-h-touch active:opacity-80 disabled:opacity-50',
+  'flex-row items-center justify-center rounded-md min-h-touch active:opacity-80',
   {
     variants: {
+      /**
+       * **Disabled is per-variant, not a blanket `disabled:opacity-50`.**
+       *
+       * A filled button goes solid grey when it cannot be pressed — that is
+       * what every screen in this app already did with
+       * `backgroundColor: submitting ? palette.border : palette.accent`, and a
+       * half-transparent accent reads as a rendering glitch rather than a
+       * state. The text variants have no fill to swap, so they dim instead.
+       */
       variant: {
-        default: 'bg-accent',
-        destructive: 'bg-negative',
-        outline: 'border border-border bg-background',
-        secondary: 'bg-surface',
-        ghost: 'bg-transparent',
-        link: 'bg-transparent',
+        default: 'bg-accent disabled:bg-border',
+        destructive: 'bg-negative disabled:bg-border',
+        outline: 'border border-border bg-background disabled:opacity-50',
+        secondary: 'bg-surface disabled:opacity-50',
+        /** The quiet action beside a primary one — "Cancel", "Keep it". */
+        ghost: 'bg-transparent disabled:opacity-50',
+        /** A text action that still asks to be pressed — "Sign out", "Try again". */
+        link: 'bg-transparent disabled:opacity-50',
       },
       size: {
         default: 'px-4 py-2',
@@ -51,6 +62,20 @@ const buttonVariants = cva(
         icon: 'min-w-touch px-0 py-0',
       },
     },
+    /**
+     * The text variants carry no horizontal padding.
+     *
+     * A filled button needs padding to give its background shape; a text
+     * button's "edge" is the glyphs, so `px-4` just pushes the label away from
+     * whatever it sits beside — and every text button in this app was written
+     * with `minHeight` and nothing else. `min-h-touch` still gives it a full
+     * 44dp target vertically, which is where the pressable area actually
+     * matters for a row of text.
+     *
+     * A compound variant rather than a variant class, because `size` is emitted
+     * after `variant` and its `px-4` would otherwise win.
+     */
+    compoundVariants: [{ variant: ['ghost', 'link'], class: 'px-0' }],
     defaultVariants: { variant: 'default', size: 'default' },
   },
 );
@@ -64,13 +89,23 @@ const buttonVariants = cva(
  */
 const buttonTextVariants = cva('font-semibold', {
   variants: {
+    /**
+     * `ghost` is muted and `link` is not underlined — both deviate from
+     * upstream shadcn, and both follow what this app already did.
+     *
+     * A ghost button here is always the de-emphasised half of a pair
+     * ("Cancel" beside "Save"), which `text-textMuted` says and `text-text`
+     * does not. Underlining a link is a web convention that no button in this
+     * app has ever had, and it would arrive as a visual change dressed up as a
+     * migration.
+     */
     variant: {
       default: 'text-background',
       destructive: 'text-background',
       outline: 'text-text',
       secondary: 'text-text',
-      ghost: 'text-text',
-      link: 'text-accent underline',
+      ghost: 'text-textMuted',
+      link: 'text-accent',
     },
     size: {
       default: 'text-base',
@@ -85,6 +120,15 @@ const buttonTextVariants = cva('font-semibold', {
 export type ButtonProps = PressableProps &
   VariantProps<typeof buttonVariants> & {
     className?: string;
+    /**
+     * Announces work in flight, separately from `disabled`.
+     *
+     * Both are needed and they are not the same claim: `disabled` says a press
+     * will do nothing, `busy` says one already did and has not finished. Half
+     * the buttons in this app set both while submitting, and a screen reader
+     * that hears only "dimmed" cannot tell a pressed button from a blocked one.
+     */
+    busy?: boolean;
     /**
      * Renders the child element instead of a `Pressable`, handing it these
      * props.
@@ -112,6 +156,7 @@ export function Button({
   size,
   asChild = false,
   disabled,
+  busy = false,
   ...props
 }: ButtonProps) {
   // Generic `Slot`, not the deprecated per-element `Slot.Pressable` — the
@@ -130,8 +175,9 @@ export function Button({
         // DOM under react-native-web, and `aria-disabled` is unmapped on
         // native — a button that announces as enabled while doing nothing is
         // the failure #69 was.
-        accessibilityState={{ disabled: !!disabled }}
+        accessibilityState={{ disabled: !!disabled, busy }}
         aria-disabled={!!disabled}
+        aria-busy={busy}
         disabled={disabled}
         className={cn(buttonVariants({ variant, size }), className)}
         {...props}

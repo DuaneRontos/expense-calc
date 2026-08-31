@@ -309,6 +309,53 @@ describe('sign-in screen', () => {
     );
   });
 
+  it('keeps its accessible name while the request is in flight', async () => {
+    /*
+     * The name must not change with the visible label.
+     *
+     * A control that renames itself mid-press becomes a different control to
+     * anything holding a reference to it — a screen reader's focus, or a test.
+     * The visible label still shows progress; `busy` is what carries the state.
+     *
+     * **This was claimed and not true.** A comment on this button asserted the
+     * stable name while nothing set `accessibilityLabel`, so the name came from
+     * the child text and became "Signing in…" the moment it was pressed.
+     * `SignOutButton` documents itself as the deliberate exception to a rule
+     * this button was not following. It went unnoticed because `fillIn` above
+     * queries the name *before* submitting, which is the only moment it held.
+     */
+    // Resolved on a later tick rather than never: `fillIn` awaits its press,
+    // and a promise that never settles hangs the test rather than failing it.
+    // One microtask is enough to observe the in-flight render.
+    let release!: () => void;
+    const inFlight = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    jest
+      .spyOn(api, 'login')
+      .mockImplementation(async () => {
+        await inFlight;
+        return { persisted: true };
+      });
+
+    await render(<SignIn />);
+
+    await fireEvent.changeText(screen.getByLabelText('Username'), 'dev');
+    await fireEvent.changeText(screen.getByLabelText('Password'), 'dev');
+    // Not awaited: the press starts a request this test deliberately holds
+    // open, so awaiting it would wait for the thing being observed.
+    fireEvent.press(screen.getByRole('button', { name: 'Sign in' }));
+
+    // Mid-flight: the label has changed, the name must not have.
+    expect(await screen.findByText('Signing in…')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeOnTheScreen();
+
+    await act(async () => {
+      release();
+      await inFlight;
+    });
+  });
+
   it('refuses to submit before both fields are filled', async () => {
     // Anchored on a control known to be on screen, so the "not called" below is
     // an absence within a tree that exists rather than the whole tree missing.

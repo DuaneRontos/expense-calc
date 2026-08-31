@@ -1,11 +1,16 @@
 import Head from 'expo-router/head';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 
 import { api } from '../../src/api/client';
 import { ApiError } from '../../src/api/problem';
 import { RequestFailure } from '../../src/api/RequestFailure';
+import { Button } from '../../src/ui/Button';
+// Aliased: this file keeps RN's `Text` for its many non-button labels. Only
+// `ui/Text` reads `TextClassContext`, so a button label on the wrong one
+// renders unstyled and nothing warns.
+import { Text as UIText } from '../../src/ui/Text';
 import { clearDraft, expenseDraftKey, readDraft, saveDraft } from '../../src/expenses/draftStore';
 import { ExpenseFormFields } from '../../src/expenses/ExpenseFormFields';
 import { ReclassifyControl } from '../../src/expenses/ReclassifyControl';
@@ -19,7 +24,6 @@ import {
 } from '../../src/expenses/expenseFormRules';
 import { useExpenseDetail } from '../../src/expenses/useExpenseDetail';
 import { useExpenseSubmit } from '../../src/expenses/useExpenseSubmit';
-import { MIN_TOUCH_TARGET } from '../../src/layout/breakpoints';
 import { APP_NAME } from '../../src/layout/navigation';
 import { formatMoney } from '../../src/money/format';
 import { colorForCategory, palette, spacing } from '../../src/theme/tokens';
@@ -98,13 +102,9 @@ export default function ExpenseDetailScreen() {
           <Text style={{ color: palette.text, fontWeight: '600' }}>
             That expense no longer exists.
           </Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.replace('/expenses')}
-            style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
-          >
-            <Text style={{ color: palette.accent }}>Back to the list</Text>
-          </Pressable>
+          <Button variant="link" onPress={() => router.replace('/expenses')}>
+            <UIText>Back to the list</UIText>
+          </Button>
         </View>
       );
     }
@@ -112,13 +112,9 @@ export default function ExpenseDetailScreen() {
     return (
       <View style={{ padding: spacing.md, gap: spacing.sm }}>
         <RequestFailure error={error} onRetry={reload} retrying={loading} />
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.replace('/expenses')}
-          style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
-        >
-          <Text style={{ color: palette.accent }}>Back to the list</Text>
-        </Pressable>
+        <Button variant="link" onPress={() => router.replace('/expenses')}>
+          <UIText>Back to the list</UIText>
+        </Button>
       </View>
     );
   }
@@ -266,23 +262,9 @@ export default function ExpenseDetailScreen() {
       ) : null}
 
       <View style={{ flexDirection: 'row', gap: spacing.md, alignItems: 'center' }}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !sendable || edit.submitting }}
-          disabled={!sendable || edit.submitting}
-          onPress={save}
-          style={{
-            minHeight: MIN_TOUCH_TARGET,
-            justifyContent: 'center',
-            paddingHorizontal: spacing.lg,
-            borderRadius: 6,
-            backgroundColor: sendable && !edit.submitting ? palette.accent : palette.border,
-          }}
-        >
-          <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>
-            {edit.submitting ? 'Saving…' : 'Save changes'}
-          </Text>
-        </Pressable>
+        <Button busy={edit.submitting} disabled={!sendable || edit.submitting} onPress={save}>
+          <UIText>{edit.submitting ? 'Saving…' : 'Save changes'}</UIText>
+        </Button>
         {/*
           Says why the button is inert rather than leaving it mysteriously grey
           — and distinguishes the two reasons. "Nothing changed" and "the only
@@ -354,43 +336,38 @@ export default function ExpenseDetailScreen() {
       */}
       {confirmingDelete ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            variant="destructive"
+            size="sm"
             accessibilityLabel="Confirm deleting this expense and its history"
+            busy={removal.submitting}
             disabled={removal.submitting}
             onPress={remove}
-            style={{
-              minHeight: MIN_TOUCH_TARGET,
-              justifyContent: 'center',
-              paddingHorizontal: spacing.md,
-              borderRadius: 6,
-              backgroundColor: palette.negative,
-            }}
           >
-            <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>
-              {removal.submitting ? 'Deleting…' : 'Delete permanently'}
-            </Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setConfirmingDelete(false)}
-            style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
-          >
-            <Text style={{ color: palette.textMuted }}>Keep it</Text>
-          </Pressable>
+            <UIText>{removal.submitting ? 'Deleting…' : 'Delete permanently'}</UIText>
+          </Button>
+          <Button variant="ghost" onPress={() => setConfirmingDelete(false)}>
+            <UIText>Keep it</UIText>
+          </Button>
           <Text style={{ color: palette.textMuted, fontSize: 12, flex: 1 }}>
             This also removes its classification history, which cannot be recovered.
           </Text>
         </View>
       ) : (
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="link"
           accessibilityLabel="Delete this expense"
           onPress={() => setConfirmingDelete(true)}
-          style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
         >
-          <Text style={{ color: palette.negative }}>Delete this expense</Text>
-        </Pressable>
+          {/*
+            Negative rather than accent: this opens a destructive flow, and the
+            colour is the only thing distinguishing it from the other text
+            buttons on this screen. Overridden at the call site because it is
+            the one text button in the app that is destructive — a variant for a
+            single use would be vocabulary nobody else needs.
+          */}
+          <UIText className="text-negative">Delete this expense</UIText>
+        </Button>
       )}
 
       {removal.errors.form ? (
