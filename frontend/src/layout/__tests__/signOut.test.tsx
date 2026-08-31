@@ -181,19 +181,33 @@ describe('Sign out behaviour', () => {
     expect(logout).not.toHaveBeenCalled();
     expect(api.session.isSignedIn()).toBe(true);
 
-    const confirm = screen.getByRole('button', { name: 'Confirm signing out' });
-    expect(confirm).toBeOnTheScreen();
-
-    // **The filled shape, which is the half of the double-tap protection that
-    // works in every band.** The ordering only helps where this control is not
-    // pinned to the row's right edge — in the medium band it is, and the fill
-    // is what stops the confirm reading as the button just pressed. It was the
-    // unpinned half: swapping `destructive` for `link` passed all eighteen
-    // tests, and did so quietly, since the label then renders in accent on the
-    // page background rather than disappearing.
-    expect(confirm.props.className).toContain('bg-negative');
+    expect(screen.getByRole('button', { name: 'Confirm signing out' })).toBeOnTheScreen();
 
     logout.mockRestore();
+  });
+
+  /**
+   * **The half of the double-tap protection that works in every band.**
+   *
+   * Ordering only helps where this control is not pinned to the row's right
+   * edge; in the medium band it is, so the fill is what stops the confirm
+   * reading as the button just pressed. It was the unpinned half, and it failed
+   * quietly — under `variant="link"` the label renders in accent on the page
+   * background rather than disappearing.
+   *
+   * Its own test rather than an assertion inside the one above, for the reason
+   * this file already gives about itself: a fill regression reporting as
+   * "asks before it ends the session" names the wrong thing.
+   */
+  it('shapes the confirm so it does not read as the button just pressed', async () => {
+    await renderShell();
+    await signIn();
+
+    await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+
+    expect(
+      screen.getByRole('button', { name: 'Confirm signing out' }).props.className,
+    ).toContain('bg-negative');
   });
 
   it('ends the session on the second press', async () => {
@@ -512,6 +526,14 @@ describe('Sign out behaviour', () => {
 
     const confirm = screen.getByRole('button', { name: 'Signing out…' });
     expect(confirm).toBeDisabled();
+
+    // **The decline is disabled too, and this is the one control here whose
+    // name is a promise.** Pressing it mid-flight would swap the whole confirm
+    // row for the plain "Sign out" — dropping the busy state and the "Signing
+    // out…" label — while `logout()` goes on to clear the session anyway. No
+    // double revoke (`signOut`'s own guard covers that); the cost is that
+    // "Stay signed in" appears to have worked and has not.
+    expect(screen.getByRole('button', { name: 'Stay signed in' })).toBeDisabled();
     // **`aria-busy`, and asserted rather than assumed.** `accessibilityState`
     // is absent from react-native-web's forwarded-prop list, so the busy state
     // used to be dropped on web entirely — silently, because the label change
