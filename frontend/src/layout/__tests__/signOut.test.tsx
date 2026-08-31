@@ -3,6 +3,7 @@ import { act, render, screen, userEvent } from '@testing-library/react-native';
 import { AppShell } from '../AppShell';
 import { BREAKPOINTS, type LayoutSize } from '../breakpoints';
 import { api } from '../../api/client';
+import { NEW_EXPENSE_DRAFT, clearAllDrafts, readDraft, saveDraft } from '../../expenses/draftStore';
 import { ExpenseQueryProvider } from '../../expenses/ExpenseQueryProvider';
 
 /**
@@ -71,6 +72,18 @@ const signIn = () => act(async () => {
 });
 
 /**
+ * Both presses, since #98 put a question between the tap and the request.
+ *
+ * `userEvent` rather than `fireEvent` throughout this file: `user.press`
+ * respects `disabled` and `fireEvent.press` does not, which is the difference
+ * the readiness test below exists to detect.
+ */
+const confirmSignOut = async () => {
+  await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+  await userEvent.press(screen.getByRole('button', { name: 'Confirm signing out' }));
+};
+
+/**
  * Wrapped, because RNTL registers its auto-cleanup at the root level and Jest
  * runs an inner `afterEach` *first* — so the tree is still mounted and clearing
  * the session notifies a live subscriber outside `act`. Warnings that all pass
@@ -130,7 +143,156 @@ describe('Sign out behaviour', () => {
     await api.session.clear();
   });
 
-  afterEach(resetSession);
+  /**
+   * **`restoreAllMocks` as well as the session reset.** Every test here spies
+   * on `api.logout` and restores it on its last line — which does not run when
+   * an assertion above it throws, so one genuine failure used to reappear as
+   * several unrelated ones in the tests that followed. Restoring here means a
+   * red test reports only itself.
+   */
+  afterEach(async () => {
+    await resetSession();
+    jest.restoreAllMocks();
+  });
+
+  /**
+   * One press asks; it does not end anything (#98).
+   *
+   * The control sits in the chrome on every screen, so it is reachable by an
+   * accidental tap — and on web the credential is an `httpOnly` cookie, so once
+   * the server has cleared it there is no undo short of signing in again.
+   */
+  it('asks before it ends the session', async () => {
+    const logout = jest.spyOn(api, 'logout').mockResolvedValue(null);
+
+    await renderShell();
+    await signIn();
+
+    await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+
+    expect(logout).not.toHaveBeenCalled();
+    expect(api.session.isSignedIn()).toBe(true);
+    expect(screen.getByRole('button', { name: 'Confirm signing out' })).toBeOnTheScreen();
+
+    logout.mockRestore();
+  });
+
+  it('ends the session on the second press', async () => {
+    const logout = jest.spyOn(api, 'logout').mockResolvedValue(null);
+
+    await renderShell();
+    await signIn();
+
+    await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+    await userEvent.press(screen.getByRole('button', { name: 'Confirm signing out' }));
+
+    expect(logout).toHaveBeenCalledTimes(1);
+
+    logout.mockRestore();
+  });
+
+  it('leaves the session alone when the question is declined', async () => {
+    const logout = jest.spyOn(api, 'logout').mockResolvedValue(null);
+
+    await renderShell();
+    await signIn();
+
+    await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+    await userEvent.press(screen.getByRole('button', { name: 'Stay signed in' }));
+
+    expect(logout).not.toHaveBeenCalled();
+    expect(api.session.isSignedIn()).toBe(true);
+    // Back to the plain offer, so declining is not a one-way door either.
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Confirm signing out' })).toBeNull();
+
+    logout.mockRestore();
+  });
+
+  /**
+   * Declining must not cost what a sign-out costs.
+   *
+   * `clearAllDrafts()` is on the sign-out path because leaving on purpose
+   * should not leave typed work for the next person (#96). Asked-and-declined
+   * is not leaving, so putting that call on the *first* press would destroy a
+   * draft for someone who then said no — the exact opposite of what this
+   * confirmation is for.
+   */
+  it('keeps a held draft when the question is declined', async () => {
+    const logout = jest.spyOn(api, 'logout').mockResolvedValue(null);
+    const held = {
+      amount: '2450.75',
+      occurredOn: '2026-08-30',
+      merchant: 'Puregold',
+      description: '',
+    };
+
+    await renderShell();
+    await signIn();
+    saveDraft(NEW_EXPENSE_DRAFT, held);
+
+    await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+    await userEvent.press(screen.getByRole('button', { name: 'Stay signed in' }));
+
+    expect(readDraft(NEW_EXPENSE_DRAFT)).toEqual(held);
+
+    logout.mockRestore();
+    clearAllDrafts();
+  });
+
+  /**
+   * **The state trap this component already has a scar from.**
+   *
+   * `AppShell` wraps the whole `Stack`, `sign-in` included, so navigating there
+   * never unmounts this — the component re-renders as `null` and keeps its
+   * `useState`. That is why `submitting` once stuck as a permanently disabled
+   * "Signing out…", and a `confirming` flag left set is the same bug wearing a
+   * different label: the next session would open with the chrome already asking
+   * a question nobody had been asked.
+   */
+  it('does not carry the question into the next session', async () => {
+    const logout = jest.spyOn(api, 'logout').mockImplementation(async () => {
+      await api.session.clear();
+      return null;
+    });
+
+    await renderShell();
+    await signIn();
+
+    await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+    await userEvent.press(screen.getByRole('button', { name: 'Confirm signing out' }));
+    expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
+
+    await signIn();
+
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Confirm signing out' })).toBeNull();
+
+    logout.mockRestore();
+  });
+
+  /**
+   * The case that decides *where* the reset lives.
+   *
+   * A session can end while the question is on screen without anyone answering
+   * it — a refresh that finally fails. Resetting in `signOut`'s `finally` would
+   * not cover this, because `signOut` never ran; resetting on the signed-out
+   * render covers both, which is why there is one mechanism and it is that one.
+   */
+  it('does not leave the question up when the session ends underneath it', async () => {
+    await renderShell();
+    await signIn();
+
+    await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+    expect(screen.getByRole('button', { name: 'Confirm signing out' })).toBeOnTheScreen();
+
+    // Not a sign-out: what a failed refresh does.
+    await resetSession();
+    await signIn();
+
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Confirm signing out' })).toBeNull();
+  });
 
   /**
    * **Calls `logout()` and navigates nowhere.**
@@ -160,7 +322,7 @@ describe('Sign out behaviour', () => {
     await renderShell();
     await signIn();
 
-    await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+    await confirmSignOut();
 
     expect(logout).toHaveBeenCalledTimes(1);
     expect(mockReplace).not.toHaveBeenCalled();
@@ -184,7 +346,7 @@ describe('Sign out behaviour', () => {
     await renderShell();
     await signIn();
 
-    await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+    await confirmSignOut();
 
     // Positive first, so the absence below is asserted against a real outcome
     // rather than against a render that did nothing.
@@ -217,7 +379,7 @@ describe('Sign out behaviour', () => {
     await renderShell();
     await signIn();
 
-    await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+    await confirmSignOut();
     expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
 
     await signIn();
@@ -244,7 +406,7 @@ describe('Sign out behaviour', () => {
     await renderShell();
     await signIn();
 
-    await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+    await confirmSignOut();
 
     expect(screen.getByRole('button', { name: 'Signing out…' })).toBeDisabled();
 

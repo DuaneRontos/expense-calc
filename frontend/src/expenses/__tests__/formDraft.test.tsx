@@ -333,7 +333,11 @@ describe('signing out, as against a session expiring', () => {
     // signs in on the same machine and opens the same expense.
     saveDraft(expenseDraftKey('e-1'), held);
 
+    // Two presses since #98: the first only asks. That the draft survives the
+    // first one is asserted in `signOut.test.tsx`, which is where the question
+    // itself lives.
     await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Confirm signing out' }));
 
     await waitFor(() => expect(readDraft(NEW_EXPENSE_DRAFT)).toBeUndefined());
     expect(readDraft(expenseDraftKey('e-1'))).toBeUndefined();
