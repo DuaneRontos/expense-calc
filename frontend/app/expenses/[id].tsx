@@ -58,10 +58,17 @@ export default function ExpenseDetailScreen() {
 
   useEffect(() => {
     if (expense) {
-      // An edit held from a mount this screen was taken away from wins over the
-      // stored value (#96) — that is the whole point of holding it. Keyed on
-      // the expense's own id, so one expense's draft cannot surface while
-      // looking at another.
+      // A held edit wins over the stored value (#96) — that is the point of
+      // holding it. Keyed on the expense's own id, so one expense's draft
+      // cannot surface while looking at another.
+      //
+      // **Two callers, and the second is the one that is easy to miss.** One is
+      // a fresh mount after the guard's redirect took the screen away. The
+      // other is a `replace(updated)` in the same mount — a saved edit, or a
+      // reclassify — which hands this effect a new `expense` identity. Without
+      // the draft, that second case overwrites whatever was typed, which is why
+      // `save` clears the draft before calling `replace` and why a reclassify,
+      // which clears nothing, keeps the edit.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setValues(readDraft(expenseDraftKey(expense.id)) ?? toValues(expense));
     }

@@ -40,8 +40,16 @@ import type { ExpenseFormValues } from './expenseFormRules';
  * ₱250.00 above `999.00`.
  *
  * Kept anyway, because the alternative reading is worse: a draft that survives
- * only the session-expiry path would discard typed changes on a reclassify —
- * which remounts this screen — and that is the same lost work by another route.
+ * only the session-expiry path would discard typed changes on a **reclassify**,
+ * and that is the same lost work by a route people take far more often.
+ *
+ * Not by unmounting — the mechanism matters, because it is what a future reader
+ * follows to find the code. `reclassify` calls `replace(updated)`, which swaps
+ * `expense` for a new identity within the same mount; the effect keyed on it
+ * re-runs `setValues`, and without a draft to prefer that write lands on top of
+ * whatever was typed. `main` does exactly that today, so this PR fixes it.
+ * `formDraft.test.tsx` pins it — reverting the restore fails that test with
+ * `Expected: "Watsons" / Received: "Mercury Drug"`.
  * **If the divergence above ever bites, the fix is to restore only when the
  * previous unmount was the guard's redirect**, which means marking drafts at
  * the moment the session ends rather than holding them unconditionally. That is

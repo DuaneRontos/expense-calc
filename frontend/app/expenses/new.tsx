@@ -92,8 +92,13 @@ export default function NewExpense() {
     // be held as the draft. Safe because `ExpenseFormFields` sends one field
     // per event and these inputs are controlled, so every keystroke re-renders
     // before the next is read — a consumer contract rather than a structural
-    // guarantee, which is why it is written down. `[id].tsx` says why the
-    // `useEffect` alternative that would remove the hazard was not taken.
+    // guarantee, which is why it is written down.
+    //
+    // A `values`-keyed `useEffect` would remove that hazard, and here it would
+    // cost nothing: after `clearDraft` this screen navigates away without
+    // touching `values`, so nothing would re-fire. It is not used only so both
+    // forms save the same way — the hazard that rules it out is real on
+    // `[id].tsx`, which explains it.
     const next = { ...values, ...patch };
     setValues(next);
     saveDraft(NEW_EXPENSE_DRAFT, next);

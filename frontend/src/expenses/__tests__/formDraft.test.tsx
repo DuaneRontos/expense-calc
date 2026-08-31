@@ -206,6 +206,42 @@ describe('an edit whose session ends underneath it', () => {
     expect(readDraft(expenseDraftKey('e-2'))).toBeUndefined();
   });
 
+  /**
+   * The case the wider rule *buys* something for, and the reason it was kept
+   * rather than narrowed to the guard's redirect (see `draftStore.ts`).
+   *
+   * A reclassify does not remount this screen — `replace(updated)` swaps the
+   * expense for a new identity and the effect above re-runs `setValues` inside
+   * the same mount. Without the draft that `setValues` overwrites whatever was
+   * typed, which is what `main` does today: a category change silently discards
+   * an unsaved edit. The other tests here all cover what the rule costs; this
+   * is the one that covers what it is for.
+   */
+  it('keeps typed changes across a reclassify', async () => {
+    jest.spyOn(api, 'expense').mockResolvedValue(stored);
+    jest.spyOn(api, 'categories').mockResolvedValue([
+      { key: 'HEALTH', label: 'Health' },
+      { key: 'GROCERIES', label: 'Groceries' },
+    ]);
+    jest
+      .spyOn(api, 'reclassify')
+      .mockResolvedValue({ ...stored, category: 'GROCERIES', categoryLabel: 'Groceries' });
+
+    await render(<ExpenseDetailScreen />);
+    await screen.findByLabelText('Merchant');
+    await type({ merchant: 'Watsons' });
+
+    await fireEvent.press(await screen.findByLabelText('Groceries'));
+    await fireEvent.changeText(
+      screen.getByLabelText('Reason for the category change'),
+      'it is groceries',
+    );
+    await fireEvent.press(screen.getByRole('button', { name: 'Change category' }));
+
+    await waitFor(() => expect(api.reclassify).toHaveBeenCalled());
+    expect(screen.getByLabelText('Merchant').props.value).toBe('Watsons');
+  });
+
   it('discards the draft once the edit is saved', async () => {
     jest.spyOn(api, 'expense').mockResolvedValue(stored);
     jest.spyOn(api, 'updateExpense').mockResolvedValue({ ...stored, merchant: 'Watsons' });
