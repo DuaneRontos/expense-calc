@@ -21,8 +21,11 @@ import { ExpenseQueryProvider } from '../../expenses/ExpenseQueryProvider';
  */
 const mockReplace = jest.fn();
 
+// `mock`-prefixed so the hoisted factory may read it.
+let mockPathname = '/expenses';
+
 jest.mock('expo-router', () => ({
-  usePathname: () => '/expenses',
+  usePathname: () => mockPathname,
   router: {
     navigate: () => {},
     replace: (...args: unknown[]) => mockReplace(...args),
@@ -153,6 +156,11 @@ describe('Sign out behaviour', () => {
   afterEach(async () => {
     await resetSession();
     jest.restoreAllMocks();
+    // Same reasoning as the restore above, for the same reason: a per-test
+    // cleanup on the last line does not run when an assertion above it throws,
+    // and a leaked draft would surface as a failure in a later test.
+    clearAllDrafts();
+    mockPathname = '/expenses';
   });
 
   /**
@@ -219,7 +227,9 @@ describe('Sign out behaviour', () => {
    * confirmation is for.
    */
   it('keeps a held draft when the question is declined', async () => {
-    const logout = jest.spyOn(api, 'logout').mockResolvedValue(null);
+    // Stubbed so a stray confirm could not reach the network; the spy itself
+    // is not what this asserts on.
+    jest.spyOn(api, 'logout').mockResolvedValue(null);
     const held = {
       amount: '2450.75',
       occurredOn: '2026-08-30',
@@ -235,9 +245,6 @@ describe('Sign out behaviour', () => {
     await userEvent.press(screen.getByRole('button', { name: 'Stay signed in' }));
 
     expect(readDraft(NEW_EXPENSE_DRAFT)).toEqual(held);
-
-    logout.mockRestore();
-    clearAllDrafts();
   });
 
   /**
@@ -269,6 +276,46 @@ describe('Sign out behaviour', () => {
     expect(screen.queryByRole('button', { name: 'Confirm signing out' })).toBeNull();
 
     logout.mockRestore();
+  });
+
+  /**
+   * A question is about the screen it was asked on.
+   *
+   * `AppShell` mounts this once above the navigator, so without binding the
+   * question to a route it rides along: ask on `/expenses`, change your mind
+   * and tap Overview rather than declining, and the Overview draws "Sign out?"
+   * in its chrome — where one stray tap ends the session, which is the tap this
+   * whole feature exists to prevent.
+   *
+   * **A separate rule from the signed-out reset, not a second mechanism for
+   * it** — the #124 trap is two ways to enforce one rule, and each of these has
+   * its own mutation. The delete control needs nothing like this because
+   * `expenses/[id]` unmounts; persistent chrome is where it matters.
+   */
+  it('does not carry the question to another screen', async () => {
+    const shell = await renderShell();
+    await signIn();
+
+    await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+    expect(screen.getByRole('button', { name: 'Confirm signing out' })).toBeOnTheScreen();
+
+    // **`rerender`, not a second `render`.** A fresh tree mounts a fresh
+    // `SignOutButton` whose state starts empty, so it shows no question
+    // whatever the code does — the first version of this test passed against a
+    // `confirming` that ignored the pathname entirely. Re-rendering the same
+    // tree is what a route change actually is here, since `AppShell` stays
+    // mounted across one.
+    mockPathname = '/';
+    await shell.rerender(
+      <ExpenseQueryProvider>
+        <AppShell>
+          <></>
+        </AppShell>
+      </ExpenseQueryProvider>,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Confirm signing out' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeOnTheScreen();
   });
 
   /**
@@ -408,7 +455,14 @@ describe('Sign out behaviour', () => {
 
     await confirmSignOut();
 
-    expect(screen.getByRole('button', { name: 'Signing out…' })).toBeDisabled();
+    const confirm = screen.getByRole('button', { name: 'Signing out…' });
+    expect(confirm).toBeDisabled();
+    // **`aria-busy`, and asserted rather than assumed.** `accessibilityState`
+    // is absent from react-native-web's forwarded-prop list, so the busy state
+    // used to be dropped on web entirely — silently, because the label change
+    // made the control look like it was saying something. The flat prop reaches
+    // all three targets, and this is what stops it going missing again.
+    expect(confirm).toBeBusy();
 
     await act(async () => {
       release(null);

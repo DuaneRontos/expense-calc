@@ -1,3 +1,4 @@
+import { usePathname } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
@@ -30,21 +31,31 @@ import { palette, spacing } from '../theme/tokens';
  */
 export function SignOutButton() {
   const signedIn = useSignedIn();
+  const pathname = usePathname();
   const [submitting, setSubmitting] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+
+  // **The question belongs to the screen it was asked on.** `AppShell` mounts
+  // this once above the navigator, so without binding it to a route the
+  // question rides along: ask on `/expenses`, change your mind and tap
+  // Overview instead of declining, and the Overview draws "Sign out?" in its
+  // chrome — where one stray tap ends the session, which is the tap this
+  // exists to prevent. Deriving `confirming` rather than resetting on a
+  // pathname effect keeps that a property of the state instead of a listener
+  // that can miss.
+  const [askedOn, setAskedOn] = useState<string | null>(null);
+  const confirming = askedOn !== null && askedOn === pathname;
 
   if (!signedIn) {
     // **Adjusted during render, because this component does not unmount.**
     // `AppShell` wraps the whole `Stack`, `sign-in` included, so navigating
     // there re-renders this as `null` and keeps its `useState` — which is how
-    // `submitting` once stuck as a permanently disabled "Signing out…". A
-    // `confirming` left set is the same bug with a different label: the next
-    // session would open with the chrome already asking a question nobody had
-    // been asked. `signOut` clears it too, so this is the case that one cannot
-    // reach — a session ending underneath the question rather than because of
-    // it.
-    if (confirming) {
-      setConfirming(false);
+    // `submitting` once stuck as a permanently disabled "Signing out…".
+    //
+    // Not covered by the route binding above: signing out and back in returns
+    // to the same route, where a stale `askedOn` would match it again and open
+    // the next session mid-question.
+    if (askedOn !== null) {
+      setAskedOn(null);
     }
     return null;
   }
@@ -66,7 +77,11 @@ export function SignOutButton() {
       // `logout()` clears local state in a `finally` — there is no path where
       // this press leaves the session alive, so there is none where the draft
       // should have been kept. After the await it might not run at all: the
-      // session clearing unmounts this component through `AuthGuard`.
+      // the guard redirects imperatively rather than unmounting the children,
+      // so this component is still mounted afterwards — but `clearAllDrafts`
+      // belongs before the request regardless: `logout()` clears local state
+      // in a `finally`, so there is no path where this press leaves the
+      // session alive and the draft worth keeping.
       clearAllDrafts();
       await api.logout();
     } finally {
@@ -86,16 +101,17 @@ export function SignOutButton() {
       // the ordering that claim rests on is not guaranteed. It held often
       // enough to look deliberate and failed often enough to be reported.
       //
-      // The reset stays: it is cheap, and it is correct whether or not the
-      // guard unmounts this component first.
+      // The reset stays: it is cheap, and it is what keeps the control usable
+      // on the next session — the guard redirects without unmounting the
+      // children, so this component's state outlives the sign-out.
       setSubmitting(false);
-      // **`confirming` is deliberately not reset here as well.** The
+      // **`askedOn` is deliberately not cleared here as well.** The
       // render-phase reset above already covers this path, and covers one more
       // besides — a session ending underneath the question rather than because
       // of it. Two mechanisms for one rule is what #124 shipped and had to
       // undo: with either one alone sufficient, removing either passed the
       // whole suite, so nothing was pinned and the tests only looked like they
-      // held. One mechanism, and a mutation that kills it.
+      // held. One mechanism per rule, each with a mutation that kills it.
     }
   }
 
@@ -104,17 +120,44 @@ export function SignOutButton() {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
         <Pressable
           accessibilityRole="button"
+          // Disabled in flight as well: declining after the request has gone is
+          // a promise this cannot keep, since `logout()` clears local state in
+          // a `finally` whatever the server says. The flat prop is enough on
+          // every target — see the note on the confirm control above.
+          disabled={submitting}
+          onPress={() => setAskedOn(null)}
+          style={{
+            minHeight: MIN_TOUCH_TARGET,
+            justifyContent: 'center',
+            paddingVertical: spacing.sm,
+          }}
+        >
+          <Text style={{ color: palette.textMuted }}>Stay signed in</Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
           // Named for a screen reader rather than left to the visible text: two
           // controls both announcing "Sign out" is the ambiguity a confirmation
           // exists to remove, and a question mark is not spoken.
           //
           // **It still has to carry the in-flight state**, which a fixed label
           // would have silently taken away: an `accessibilityLabel` overrides
-          // the text, and RNW forwards no `accessibilityState`, so this string
-          // is the only thing that can tell a screen reader on web that the
-          // press registered.
+          // the text, so a constant one leaves nothing that changes when the
+          // press registers.
           accessibilityLabel={submitting ? 'Signing out…' : 'Confirm signing out'}
-          accessibilityState={{ disabled: submitting, busy: submitting }}
+          // `aria-busy` rather than `accessibilityState`, which react-native-web
+          // does not forward at all — it is absent from
+          // `modules/forwardedProps/index.js`, so the busy state was simply
+          // dropped on web. `aria-busy` *is* forwarded, and RN native merges it
+          // back into `accessibilityState.busy`, so one flat prop reaches all
+          // three targets. The same argument `AppShell` makes for
+          // `aria-expanded`.
+          //
+          // No `disabled` key beside it: RNW's `Pressable` already emits
+          // `aria-disabled` from the flat `disabled` prop, and RN's overrides
+          // `accessibilityState.disabled` with it regardless.
+          aria-busy={submitting}
           disabled={submitting}
           onPress={signOut}
           style={{
@@ -129,23 +172,6 @@ export function SignOutButton() {
             {submitting ? 'Signing out…' : 'Sign out?'}
           </Text>
         </Pressable>
-
-        <Pressable
-          accessibilityRole="button"
-          // Disabled in flight as well: declining after the request has gone is
-          // a promise this cannot keep, since `logout()` clears local state in
-          // a `finally` whatever the server says.
-          accessibilityState={{ disabled: submitting }}
-          disabled={submitting}
-          onPress={() => setConfirming(false)}
-          style={{
-            minHeight: MIN_TOUCH_TARGET,
-            justifyContent: 'center',
-            paddingVertical: spacing.sm,
-          }}
-        >
-          <Text style={{ color: palette.textMuted }}>Stay signed in</Text>
-        </Pressable>
       </View>
     );
   }
@@ -153,7 +179,7 @@ export function SignOutButton() {
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={() => setConfirming(true)}
+      onPress={() => setAskedOn(pathname)}
       style={{
         minHeight: MIN_TOUCH_TARGET,
         // Symmetric, so the label sits in the middle of its 44dp target.
