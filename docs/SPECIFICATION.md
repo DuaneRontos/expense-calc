@@ -1,15 +1,18 @@
 # Expense Calculator — Specification
 
-**Version** 0.2 · **Status** Nothing implemented · **Decisions** all six resolved
+**Version** 0.3 · **Status** Backend and frontend both under way · **Decisions** all seven resolved
 
-This spec is written forward from the domain, not derived from existing code —
-at time of writing the repository contains no `backend/` or `frontend/` source.
+This spec was written forward from the domain rather than derived from existing
+code: at the time of writing the repository contained no `backend/` or
+`frontend/` source. Both exist now, and where this document and the code
+disagree the code is the bug — that is what makes it a specification rather than
+a description.
 Conventions referenced here are already committed in [`CLAUDE.md`](../CLAUDE.md)
 and [`.claude/skills/expense-classification/SKILL.md`](../.claude/skills/expense-classification/SKILL.md);
 this document is the layer above them.
 
 Remaining assumptions are marked **[A]**. Decisions are collected in §9 — all
-six are resolved as of v0.2.
+seven are resolved as of v0.3.
 
 ---
 
@@ -64,6 +67,11 @@ The realistic risk is the charting library: **it must have confirmed React
 Native Web support, verified by rendering a chart on the web target** — not by
 reading a README. Discovering the gap at the chart-screen stage means rewriting
 the visualization layer.
+
+That risk generalises to every UI dependency, and it came due a second time: a
+component library was proposed that runs only on the web, which is what §9.7
+settles. **Option C is the cost of getting this wrong** — a library that cannot
+render on a device does not reduce the work, it forks the frontend.
 
 Issue [#3](https://github.com/DuaneRontos/expense-calc/issues/3) has been
 updated accordingly: the scaffold is Expo rather than bare React Native, the
@@ -382,7 +390,69 @@ change and a conversion service, not a migration.
 
 ---
 
-**All six decisions are resolved.** New questions get appended here with the
+**9.7 — UI component library. RESOLVED — shadcn/ui's *model*, not shadcn/ui.**
+
+**The ask was shadcn/ui by name.** Recorded plainly so the next person asking
+gets the answer without re-deriving it, because the answer is not "no" and is
+not "yes".
+
+shadcn/ui cannot be used here. It is Radix UI primitives plus Tailwind class
+names, and both halves are DOM-bound: Radix needs `document`, DOM refs and
+portals, and renders `<div>` / `<button>` / `<input>`; `className` is an inert
+prop on a React Native component. iOS and Android have no DOM at all. Adopting
+it as published means a web-only app, and keeping it for web while hand-writing
+native equivalents is §2 **Option C** — two frontends, two sets of bugs, a
+duplicated API client — already rejected in 9.1.
+
+**Adopted instead: the same model on React Native.** Tailwind classes compiled
+to `StyleSheet` objects at build time by NativeWind, unstyled composable
+primitives from `@rn-primitives`, and component source **copied into the repo
+and owned there** rather than consumed as a dependency. Same `cva` variant
+pattern, same component names.
+
+The components stay React Native components — `View`, `Text`, `Pressable`. Only
+how they are styled changes. That is the whole reason iOS and Android survive
+the change.
+
+**Verified on all three targets before adoption, not assumed** (#108). Both
+native platforms bundle, and their compiled output carries a React Native style
+registry rather than CSS — `min-h-touch` resolves to `{minHeight:44}` in an iOS
+bundle. **That is a build-level proof and not a device run**, which #122 still
+owes: the spike's own reviewer found a native-only defect invisible from the web
+render, where a class compiled 12.5% smaller on device than in a browser.
+
+**NativeWind 4.x on Tailwind 3, not the 5 preview.** `react-native-css-interop`
+declares `tailwindcss: '~3'` — tighter than the `>3.3.0` NativeWind advertises —
+so Tailwind 4 is unavailable without moving to a preview line, and a preview
+build under the merge gate is a second moving target. Revisit when 5 is stable;
+it also drops the `react-native-reanimated` dependency that accounts for most of
+the bundle growth this decision cost (iOS +33%, Android +27%).
+
+**What this decision does not touch:**
+
+- **Charts stay `react-native-svg`.** shadcn's charting is Recharts, which is
+  DOM-only — the same reason the library as a whole does not apply. 9.5 stands,
+  and §10's rule that every chart pairs with an accessible legend or table is a
+  reporting concern rather than a component-library one.
+- **Money is unchanged.** `BigDecimal` server-side, `Intl.NumberFormat("en-PH")`
+  client-side, signed amounts, net totals. A restyle touches none of it.
+- **Auth and token storage are unchanged.** 9.2's per-target table stands.
+
+**Colour has one source.** `frontend/src/theme/tokens.ts` feeds the Tailwind
+theme, so a component's class and a chart's `fill` prop cannot disagree about
+what a category or a negative amount looks like — SVG takes literal colour
+strings and cannot read a class, so the two consumers are reconciled by
+derivation rather than by convention.
+
+**Accessibility outranks visual consistency.** Where an upstream component
+cannot carry an accessibility contract a hand-written control already carries,
+the hand-written control stays. This repo has refused that trade before (#69,
+#71, #80, #83), and the copied source is edited in place to honour it rather
+than kept pristine for a future upstream diff.
+
+---
+
+**All seven decisions are resolved.** New questions get appended here with the
 same numbering rather than being settled in a PR comment.
 
 ---

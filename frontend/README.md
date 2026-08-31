@@ -223,7 +223,10 @@ Four files carry it, and none of them is optional:
 | `tailwind.config.ts` | Content globs, this app's three breakpoints, and the token-derived theme |
 | `nativewind-env.d.ts` | Types for `className`, plus the `*.css` declaration |
 
-The full adoption is #110; the spec's decision record is §9.7.
+The decision record is **spec §9.7**, which carries the reasoning, the evidence
+it rests on, and what it deliberately did not change. Read that before proposing
+a different library — the answer to "why not shadcn/ui itself" is there, and it
+is not a matter of taste.
 
 ### The babel config is why the test suite got slower
 

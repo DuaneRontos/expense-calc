@@ -14,7 +14,7 @@ scaffolding around it.
 | [`docs/SPECIFICATION.md`](docs/SPECIFICATION.md) | **Read this before implementing anything.** Domain model, API surface, resolved decisions |
 | `backend/` | Java Spring Boot API — expense model, classification, query, reporting |
 | [`backend/expensecalc.postman_collection.json`](backend/expensecalc.postman_collection.json) | Postman collection for the API — 19 requests with assertions, runs top to bottom |
-| `frontend/` | Expo / React Native Web — iOS, Android, and desktop web from one codebase |
+| `frontend/` | Expo / React Native Web — iOS, Android, and desktop web from one codebase; shadcn-model UI in `src/ui/` |
 | `.claude/skills/` | Skills the agents load on demand |
 | `.claude/agents/` | Subagent definitions |
 | `.github/workflows/` | The agents themselves (see below) |
@@ -266,6 +266,35 @@ a migration plus a predicate on every query — don't half-add it early.
 prompt text, so the same expense always lands in the same category. See
 `.claude/skills/expense-classification/` for the category taxonomy the rules
 must implement.
+
+**Components are styled with Tailwind classes, not `style` objects** (spec
+§9.7). `src/ui/` holds shadcn-model primitives — `Button`, `Card`, `Text` — and
+`className` compiles to a React Native `StyleSheet` at build time, so the same
+component works on iOS, Android and web.
+
+**shadcn/ui itself does not run here**, and that is the decision rather than an
+oversight: Radix is DOM-bound and `className` is inert on React Native, so the
+library as published would mean a web-only app. What was adopted is its *model*
+on RN primitives. Do not "fix" this by adding `@radix-ui` or reaching for a
+Recharts chart.
+
+**Copied component source is owned here, not vendored.** Edit it in place to
+meet this repo's accessibility rules and comment the edit. A file nobody may
+touch is a dependency wearing a copy's clothes, and it will be touched the first
+time a screen reader needs something upstream did not provide.
+
+**`src/theme/tokens.ts` is the only place a colour is written.**
+`tailwind.config.ts` imports it, so a Tailwind class and a chart's SVG `fill`
+prop cannot disagree — SVG takes literal colour strings and cannot read a class.
+A hex literal anywhere else is a bug; `tokensMatchTailwind.test.ts` fails the
+build on the ones it can see.
+
+**Touch targets use `min-h-touch` / `min-w-touch`, never `min-h-11`.** They
+resolve to `MIN_TOUCH_TARGET`. `min-h-11` is 44 only while `inlineRem` is 16 —
+NativeWind's default is 14, which silently makes the same class 38.5dp on
+device. **An unknown Tailwind class compiles to nothing rather than failing**,
+so a typo in a spacing class is invisible until someone reads the generated
+bundle.
 
 **Charts get pre-aggregated data.** The backend returns report-shaped
 responses (buckets with labels and totals); the frontend does not aggregate
