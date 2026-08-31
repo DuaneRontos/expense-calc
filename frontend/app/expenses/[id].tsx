@@ -262,7 +262,8 @@ export default function ExpenseDetailScreen() {
       ) : null}
 
       <View style={{ flexDirection: 'row', gap: spacing.md, alignItems: 'center' }}>
-        <Button busy={edit.submitting} disabled={!sendable || edit.submitting} onPress={save}>
+        {/* `lg` = px-6 = 24, matching the `spacing.lg` this button had. */}
+        <Button size="lg" busy={edit.submitting} disabled={!sendable || edit.submitting} onPress={save}>
           <UIText>{edit.submitting ? 'Saving…' : 'Save changes'}</UIText>
         </Button>
         {/*
@@ -338,7 +339,6 @@ export default function ExpenseDetailScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
           <Button
             variant="destructive"
-            size="sm"
             accessibilityLabel="Confirm deleting this expense and its history"
             busy={removal.submitting}
             disabled={removal.submitting}

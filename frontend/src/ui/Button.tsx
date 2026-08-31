@@ -45,7 +45,18 @@ const buttonVariants = cva(
        */
       variant: {
         default: 'bg-accent disabled:bg-border',
-        destructive: 'bg-negative disabled:bg-border',
+        /**
+         * Dimmed, not greyed — unlike `default`.
+         *
+         * Every filled button in this app went solid `border` when it could not
+         * be pressed, and for the primary action that reads correctly. It does
+         * not here: the only `destructive` button in the app is disabled
+         * *because the delete is in flight*, and the old code pinned
+         * `backgroundColor: palette.negative` unconditionally so it stayed red
+         * throughout. A button that turns grey at the moment it commits an
+         * irreversible action looks like a different button.
+         */
+        destructive: 'bg-negative disabled:opacity-50',
         outline: 'border border-border bg-background disabled:opacity-50',
         secondary: 'bg-surface disabled:opacity-50',
         /** The quiet action beside a primary one — "Cancel", "Keep it". */
@@ -72,10 +83,17 @@ const buttonVariants = cva(
      * 44dp target vertically, which is where the pressable area actually
      * matters for a row of text.
      *
+     * `justify-start` for the same reason the padding goes: a text button in a
+     * column stretches to full width, and `justify-center` then floats its
+     * label in the middle of the screen where it used to sit at the left
+     * margin with the content around it. In a row it shrinks to fit and the
+     * justification is moot, which is why only the column-context buttons
+     * ("Back to the list", "Try again") looked wrong.
+     *
      * A compound variant rather than a variant class, because `size` is emitted
      * after `variant` and its `px-4` would otherwise win.
      */
-    compoundVariants: [{ variant: ['ghost', 'link'], class: 'px-0' }],
+    compoundVariants: [{ variant: ['ghost', 'link'], class: 'px-0 justify-start' }],
     defaultVariants: { variant: 'default', size: 'default' },
   },
 );
@@ -107,11 +125,21 @@ const buttonTextVariants = cva('font-semibold', {
       ghost: 'text-textMuted',
       link: 'text-accent',
     },
+    /**
+     * `text-sm` by default, which is both shadcn's own default and what this
+     * app already had.
+     *
+     * React Native's `Text` has no intrinsic size and react-native-web's base
+     * is 14; every migrated label was 14 before this. `text-base` would make
+     * button labels a step larger than the body text beside them on all three
+     * targets — a change nobody asked for, arriving through the primitive
+     * rather than through a decision.
+     */
     size: {
-      default: 'text-base',
+      default: 'text-sm',
       sm: 'text-sm',
       lg: 'text-base',
-      icon: 'text-base',
+      icon: 'text-sm',
     },
   },
   defaultVariants: { variant: 'default', size: 'default' },
@@ -157,6 +185,7 @@ export function Button({
   asChild = false,
   disabled,
   busy = false,
+  accessibilityState,
   ...props
 }: ButtonProps) {
   // Generic `Slot`, not the deprecated per-element `Slot.Pressable` — the
@@ -175,7 +204,13 @@ export function Button({
         // DOM under react-native-web, and `aria-disabled` is unmapped on
         // native — a button that announces as enabled while doing nothing is
         // the failure #69 was.
-        accessibilityState={{ disabled: !!disabled, busy }}
+        // **Merged, not overwritten.** `accessibilityState` is destructured out
+        // of `...props` so a caller passing their own — `{ selected: true }` on
+        // a toggle, say — extends this button's state instead of silently
+        // replacing `disabled` *and* `busy` with undefined. The caller's keys
+        // win where they overlap, which is what a prop should do; the ones they
+        // did not mention survive, which spreading alone did not give.
+        accessibilityState={{ disabled: !!disabled, busy, ...accessibilityState }}
         aria-disabled={!!disabled}
         aria-busy={busy}
         disabled={disabled}

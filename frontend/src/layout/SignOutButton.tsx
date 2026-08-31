@@ -86,7 +86,15 @@ export function SignOutButton() {
         reference to this control across the transition, since the whole
         component unmounts the moment the session clears.
       */}
-      <Text>{submitting ? 'Signing out…' : 'Sign out'}</Text>
+      {/*
+        The label goes muted rather than the button going translucent. The
+        container's `disabled:opacity-50` would render accent at half strength
+        (≈ #8FB7F5) where this used to be slate — legible either way, but a
+        different colour, and this one is the app's existing "inactive text".
+      */}
+      <Text className={submitting ? 'text-textMuted' : undefined}>
+        {submitting ? 'Signing out…' : 'Sign out'}
+      </Text>
     </Button>
   );
 }

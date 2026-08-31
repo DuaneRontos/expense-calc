@@ -214,6 +214,9 @@ export default function SignIn() {
           reader.
         */}
         <Button
+          // `lg` because this button had `paddingHorizontal: spacing.lg` (24);
+          // the default size is `px-4` (16) and would have quietly narrowed it.
+          size="lg"
           accessibilityLabel="Sign in"
           busy={submitting}
           disabled={!ready || submitting}

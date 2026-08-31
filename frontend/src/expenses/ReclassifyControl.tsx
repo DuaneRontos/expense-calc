@@ -83,14 +83,9 @@ export function ReclassifyControl({
             second sign-in link here would sit right beside it.
           */}
           {needsSignIn(categoriesError) ? null : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Retry loading categories"
-              onPress={retry}
-              style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
-            >
-              <Text style={{ color: palette.accent }}>Try again</Text>
-            </Pressable>
+            <Button variant="link" accessibilityLabel="Retry loading categories" onPress={retry}>
+              <UIText>Try again</UIText>
+            </Button>
           )}
         </View>
       ) : null}
@@ -206,16 +201,6 @@ export function ReclassifyControl({
             >
               <UIText>Cancel</UIText>
             </Button>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                setSelected(null);
-                setReason('');
-              }}
-              style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
-            >
-              <Text style={{ color: palette.textMuted }}>Cancel</Text>
-            </Pressable>
           </View>
         </View>
       ) : null}

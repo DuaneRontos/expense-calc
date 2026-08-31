@@ -148,7 +148,8 @@ export default function NewExpense() {
       ) : null}
 
       <View style={{ flexDirection: 'row', gap: spacing.md, alignItems: 'center' }}>
-        <Button busy={submitting} disabled={submitting} onPress={save}>
+        {/* `lg` = px-6 = 24, matching the `spacing.lg` this button had. */}
+        <Button size="lg" busy={submitting} disabled={submitting} onPress={save}>
           <Text>{submitting ? 'Saving…' : 'Save expense'}</Text>
         </Button>
 

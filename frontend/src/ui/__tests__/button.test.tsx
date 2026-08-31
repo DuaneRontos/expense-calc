@@ -164,3 +164,39 @@ describe('every Button variant', () => {
     }
   });
 });
+
+describe('Button accessibilityState', () => {
+  it('merges a caller’s state instead of replacing its own', async () => {
+    // `accessibilityState` is destructured out of the props spread precisely so
+    // this does not silently drop `disabled` and `busy`. Before that, a caller
+    // passing any state at all wiped both — and since RN folds the flat
+    // `aria-*` props back in, the failure was partial and confusing rather than
+    // total.
+    await render(
+      <Button disabled busy accessibilityState={{ selected: true }}>
+        <Text>Pick</Text>
+      </Button>,
+    );
+
+    expect(screen.getByRole('button').props.accessibilityState).toMatchObject({
+      disabled: true,
+      busy: true,
+      selected: true,
+    });
+  });
+
+  it('announces busy separately from disabled', async () => {
+    // A button can be busy without being disabled, and the two say different
+    // things: "a press will do nothing" versus "one already did".
+    await render(
+      <Button busy>
+        <Text>Saving</Text>
+      </Button>,
+    );
+
+    const button = screen.getByRole('button');
+
+    expect(button.props.accessibilityState).toMatchObject({ busy: true, disabled: false });
+    expect(button).not.toBeDisabled();
+  });
+});

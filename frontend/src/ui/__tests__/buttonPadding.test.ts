@@ -1,4 +1,5 @@
 import { buttonVariants } from '../Button';
+import { cn } from '../cn';
 
 /**
  * The text variants must not inherit the filled variants' horizontal padding.
@@ -16,6 +17,13 @@ describe('the text button variants', () => {
     // Emitted last, so it wins the merge in `cn`. Asserting on order rather
     // than presence, because both classes are in the string.
     expect(classes.lastIndexOf('px-0')).toBeGreaterThan(classes.lastIndexOf('px-4'));
+
+    // **And on the string the component actually renders.** The order above
+    // only decides the outcome *because* `cn` merges — if `cn` ever stopped
+    // being `twMerge`, the assertion above would stay green while the padding
+    // changed. This pins the thing that reaches the screen.
+    expect(cn(classes)).not.toContain('px-4');
+    expect(cn(classes)).toContain('px-0');
   });
 
   it.each(['default', 'destructive'] as const)('keeps it at %s', (variant) => {

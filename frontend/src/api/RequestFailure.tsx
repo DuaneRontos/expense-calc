@@ -74,7 +74,10 @@ export function RequestFailure({
         // nothing. `Button` declares both spellings, and `busy` separately —
         // "will do nothing" and "already did something" are different claims.
         <Button variant="link" busy={retrying} disabled={retrying} onPress={onRetry}>
-          <Text>{retrying ? 'Trying…' : 'Try again'}</Text>
+          {/* Muted while in flight, as before — see `SignOutButton`. */}
+          <Text className={retrying ? 'text-textMuted' : undefined}>
+            {retrying ? 'Trying…' : 'Try again'}
+          </Text>
         </Button>
       ) : null}
     </View>
