@@ -17,9 +17,13 @@ import { join } from 'path';
  * failed, so nothing noticed for months. Re-adding an override anywhere else
  * reproduces the whole story with a different filename.
  *
- * The remedy is the global: raise `testTimeout` in `package.json`, where one
+ * The remedy is the global: raise `testTimeout` in `jest.config.js`, where one
  * number governs every file and cannot be overtaken by a later edit somewhere
  * else. See `frontend/README.md`.
+ *
+ * (It lived in `package.json` until #112 moved jest's config out so
+ * `transformIgnorePatterns` could be derived from the preset rather than
+ * restated.)
  */
 describe('jest timeout configuration', () => {
   it('is set in one place, with no per-file overrides anywhere in src', () => {

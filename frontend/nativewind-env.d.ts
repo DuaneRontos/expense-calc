@@ -1,5 +1,5 @@
 /**
- * Ambient types for the NativeWind styling layer (spike #108).
+ * Ambient types for the NativeWind styling layer (#108).
  *
  * `nativewind/types` is what teaches React Native's components to accept
  * `className` at all.
@@ -22,3 +22,19 @@
  */
 /// <reference types="expo/types" />
 /// <reference types="nativewind/types" />
+
+/**
+ * `nativewind/preset` ships an **empty** `index.d.ts`, so TypeScript resolves
+ * the import and then reports `File ... is not a module` — which reads like a
+ * broken install rather than a missing declaration.
+ *
+ * Declared here so `tailwind.config.ts` can import the preset as a value
+ * instead of falling back to `require`, which the lint config forbids. The
+ * shape is the only thing Tailwind asks of a preset: a partial `Config`.
+ */
+declare module 'nativewind/preset' {
+  import type { Config } from 'tailwindcss';
+
+  const preset: Partial<Config>;
+  export default preset;
+}
