@@ -89,9 +89,11 @@ export default function NewExpense() {
 
   function change(patch: Partial<ExpenseFormValues>) {
     // Set from `values` rather than through an updater so the same object can
-    // be held as the draft. Safe here because `ExpenseFormFields` sends one
-    // field per event and these inputs are controlled, so every keystroke
-    // re-renders before the next one is read.
+    // be held as the draft. Safe because `ExpenseFormFields` sends one field
+    // per event and these inputs are controlled, so every keystroke re-renders
+    // before the next is read — a consumer contract rather than a structural
+    // guarantee, which is why it is written down. `[id].tsx` says why the
+    // `useEffect` alternative that would remove the hazard was not taken.
     const next = { ...values, ...patch };
     setValues(next);
     saveDraft(NEW_EXPENSE_DRAFT, next);

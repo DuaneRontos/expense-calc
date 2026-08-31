@@ -7,7 +7,14 @@ import ExpenseDetailScreen from '../../../app/expenses/[id]';
 import NewExpense from '../../../app/expenses/new';
 import { api } from '../../api/client';
 import { SignOutButton } from '../../layout/SignOutButton';
-import { NEW_EXPENSE_DRAFT, clearDraft, readDraft, saveDraft } from '../draftStore';
+import {
+  NEW_EXPENSE_DRAFT,
+  clearAllDrafts,
+  clearDraft,
+  expenseDraftKey,
+  readDraft,
+  saveDraft,
+} from '../draftStore';
 import type { ExpenseDetail } from '../../api/types';
 
 /**
@@ -146,11 +153,11 @@ describe('a form whose session ends underneath it', () => {
 
 describe('an edit whose session ends underneath it', () => {
   beforeEach(() => {
-    clearDraft(EXPENSE_ID);
+    clearDraft(expenseDraftKey(EXPENSE_ID));
   });
 
   afterEach(() => {
-    clearDraft(EXPENSE_ID);
+    clearDraft(expenseDraftKey(EXPENSE_ID));
   });
 
   it('keeps the edit rather than the stored value when the screen comes back', async () => {
@@ -195,8 +202,8 @@ describe('an edit whose session ends underneath it', () => {
 
     // And e-1's edit is still held, so the isolation above is the key working
     // rather than the draft having been dropped somewhere along the way.
-    expect(readDraft(EXPENSE_ID)?.merchant).toBe('Watsons');
-    expect(readDraft('e-2')).toBeUndefined();
+    expect(readDraft(expenseDraftKey(EXPENSE_ID))?.merchant).toBe('Watsons');
+    expect(readDraft(expenseDraftKey('e-2'))).toBeUndefined();
   });
 
   it('discards the draft once the edit is saved', async () => {
@@ -207,11 +214,11 @@ describe('an edit whose session ends underneath it', () => {
     await screen.findByLabelText('Merchant');
     await type({ merchant: 'Watsons' });
 
-    expect(readDraft(EXPENSE_ID)).toBeDefined();
+    expect(readDraft(expenseDraftKey(EXPENSE_ID))).toBeDefined();
 
     await fireEvent.press(screen.getByRole('button', { name: 'Save changes' }));
 
-    await waitFor(() => expect(readDraft(EXPENSE_ID)).toBeUndefined());
+    await waitFor(() => expect(readDraft(expenseDraftKey(EXPENSE_ID))).toBeUndefined());
   });
 
   /**
@@ -226,7 +233,7 @@ describe('an edit whose session ends underneath it', () => {
     await screen.findByLabelText('Merchant');
     await type({ merchant: 'Watsons' });
 
-    expect(readDraft(EXPENSE_ID)).toBeDefined();
+    expect(readDraft(expenseDraftKey(EXPENSE_ID))).toBeDefined();
 
     await fireEvent.press(screen.getByLabelText('Delete this expense'));
     // Named by its `accessibilityLabel`, which overrides the 'Delete
@@ -236,7 +243,7 @@ describe('an edit whose session ends underneath it', () => {
     );
 
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/expenses'));
-    expect(readDraft(EXPENSE_ID)).toBeUndefined();
+    expect(readDraft(expenseDraftKey(EXPENSE_ID))).toBeUndefined();
   });
 });
 
@@ -259,14 +266,14 @@ describe('signing out, as against a session expiring', () => {
     await act(async () => {
       await api.session.clear();
     });
-    clearDraft(NEW_EXPENSE_DRAFT);
+    clearAllDrafts();
   });
 
   afterEach(async () => {
     await act(async () => {
       await api.session.clear();
     });
-    clearDraft(NEW_EXPENSE_DRAFT);
+    clearAllDrafts();
   });
 
   it('drops what was typed when the visitor signs out on purpose', async () => {
@@ -284,10 +291,16 @@ describe('signing out, as against a session expiring', () => {
     });
 
     saveDraft(NEW_EXPENSE_DRAFT, held);
+    // **A second key, and the one that matters.** Clearing only the create
+    // form passes every other test here while leaving this slot intact — so
+    // person A's unsaved edit to e-1 is restored into person B's form when B
+    // signs in on the same machine and opens the same expense.
+    saveDraft(expenseDraftKey('e-1'), held);
 
     await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
 
     await waitFor(() => expect(readDraft(NEW_EXPENSE_DRAFT)).toBeUndefined());
+    expect(readDraft(expenseDraftKey('e-1'))).toBeUndefined();
   });
 
   it('keeps what was typed when the session merely ends', async () => {
@@ -296,15 +309,17 @@ describe('signing out, as against a session expiring', () => {
     });
 
     saveDraft(NEW_EXPENSE_DRAFT, held);
+    saveDraft(expenseDraftKey('e-1'), held);
 
     // What a failed refresh does, and the case #96 is about. The same call the
     // sign-out path makes — so clearing drafts from here rather than from the
-    // control would take this one with it.
+    // control would take these with it.
     await act(async () => {
       await api.session.clear();
     });
 
     expect(api.session.isSignedIn()).toBe(false);
     expect(readDraft(NEW_EXPENSE_DRAFT)).toEqual(held);
+    expect(readDraft(expenseDraftKey('e-1'))).toEqual(held);
   });
 });

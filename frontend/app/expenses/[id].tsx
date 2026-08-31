@@ -6,7 +6,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 import { api } from '../../src/api/client';
 import { ApiError } from '../../src/api/problem';
 import { RequestFailure } from '../../src/api/RequestFailure';
-import { clearDraft, readDraft, saveDraft } from '../../src/expenses/draftStore';
+import { clearDraft, expenseDraftKey, readDraft, saveDraft } from '../../src/expenses/draftStore';
 import { ExpenseFormFields } from '../../src/expenses/ExpenseFormFields';
 import { ReclassifyControl } from '../../src/expenses/ReclassifyControl';
 import {
@@ -63,7 +63,7 @@ export default function ExpenseDetailScreen() {
       // the expense's own id, so one expense's draft cannot surface while
       // looking at another.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setValues(readDraft(expense.id) ?? toValues(expense));
+      setValues(readDraft(expenseDraftKey(expense.id)) ?? toValues(expense));
     }
   }, [expense]);
 
@@ -140,11 +140,20 @@ export default function ExpenseDetailScreen() {
     }
 
     // Set from `values` rather than through an updater so the same object can
-    // be held as the draft. Safe here for the reason `new.tsx` gives: one field
-    // per event, and controlled inputs re-render between keystrokes.
-    const next = { ...values, ...patch };
-    setValues(next);
-    saveDraft(expense.id, next);
+    // be held as the draft. Safe because `ExpenseFormFields` sends one field
+    // per event and these inputs are controlled, so every keystroke re-renders
+    // before the next is read — a consumer contract rather than a structural
+    // guarantee, which is why it is written down here.
+    //
+    // `useEffect(() => saveDraft(key, values), [key, values])` would keep the
+    // updater form and drop that hazard, and was not taken: it re-saves on any
+    // `values` change, including the one `replace(updated)` causes immediately
+    // after a successful save clears the draft — putting the draft straight
+    // back. Trading a stated contract for a resurrected draft is the worse end
+    // of the deal.
+    const edited = { ...values, ...patch };
+    setValues(edited);
+    saveDraft(expenseDraftKey(expense.id), edited);
     for (const field of Object.keys(patch)) {
       setLocal((current) => {
         const next = { ...current };
@@ -183,7 +192,7 @@ export default function ExpenseDetailScreen() {
       // Saved, so the held copy has served its purpose. Cleared before
       // `replace`, whose refreshed expense re-runs the effect above and would
       // otherwise restore the draft over the values just written.
-      clearDraft(expense.id);
+      clearDraft(expenseDraftKey(expense.id));
       replace(updated);
     }
   }
@@ -210,7 +219,7 @@ export default function ExpenseDetailScreen() {
     });
     if (!removal.errors.form && done !== undefined) {
       // There is nothing left to edit.
-      clearDraft(expense.id);
+      clearDraft(expenseDraftKey(expense.id));
       router.replace('/expenses');
     }
   }
