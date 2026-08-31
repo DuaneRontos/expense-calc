@@ -71,6 +71,14 @@ export default {
        */
       minHeight: {
         touch: `${MIN_TOUCH_TARGET}px`,
+        /**
+         * A multiline field, which is two rows tall.
+         *
+         * Derived rather than written as `88px`, for the same reason `touch` is:
+         * the number only means anything as a multiple of the floor, and an
+         * arbitrary value would drift the moment `MIN_TOUCH_TARGET` moved.
+         */
+        'touch-2': `${MIN_TOUCH_TARGET * 2}px`,
       },
       minWidth: {
         touch: `${MIN_TOUCH_TARGET}px`,

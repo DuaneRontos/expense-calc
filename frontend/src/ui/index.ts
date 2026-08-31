@@ -21,4 +21,7 @@ export {
   CardTitle,
 } from './Card';
 export { cn } from './cn';
+export { FormMessage } from './FormMessage';
+export { Input, type InputProps } from './Input';
+export { Label } from './Label';
 export { Text, TextClassContext, type TextProps } from './Text';

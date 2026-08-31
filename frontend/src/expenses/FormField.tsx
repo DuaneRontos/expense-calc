@@ -1,8 +1,7 @@
 import { type ReactNode } from 'react';
-import { Text, TextInput, View, type KeyboardTypeOptions } from 'react-native';
+import { View, type KeyboardTypeOptions } from 'react-native';
 
-import { MIN_TOUCH_TARGET } from '../layout/breakpoints';
-import { palette, spacing } from '../theme/tokens';
+import { FormMessage, Input, Label } from '../ui';
 
 /**
  * One labelled input with its error message underneath.
@@ -49,12 +48,19 @@ export function FormField({
   secureTextEntry?: boolean;
 }) {
   return (
-    <View style={{ gap: spacing.xs }}>
-      <Text style={{ color: palette.textMuted, fontSize: 12 }}>{label}</Text>
+    <View className="gap-1">
+      {/*
+        Presentation only. `Label` cannot be wired to the input the way a web
+        `<label htmlFor>` is: `aria-labelledby` does reach native, but only as
+        Android's `accessibilityLabelledBy`, and iOS has no equivalent. So the
+        same string goes to the input as `accessibilityLabel` below. Both,
+        deliberately — see `Label` for the full reasoning.
+      */}
+      <Label>{label}</Label>
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+      <View className="flex-row items-center gap-2">
         {accessory}
-        <TextInput
+        <Input
           accessibilityLabel={label}
           // Announces the error with the field rather than leaving a screen
           // reader to find a red line somewhere below it.
@@ -62,31 +68,19 @@ export function FormField({
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor={palette.textMuted}
           keyboardType={keyboardType}
           autoCapitalize={autoCapitalize}
-          autoCorrect={false}
           multiline={multiline}
           editable={editable}
           secureTextEntry={secureTextEntry}
-          style={{
-            flex: 1,
-            borderWidth: 1,
-            borderColor: error ? palette.negative : palette.border,
-            borderRadius: 6,
-            paddingHorizontal: spacing.sm,
-            paddingVertical: multiline ? spacing.sm : 0,
-            minHeight: multiline ? MIN_TOUCH_TARGET * 2 : MIN_TOUCH_TARGET,
-            color: editable ? palette.text : palette.textMuted,
-            backgroundColor: editable ? palette.background : palette.surface,
-          }}
+          invalid={!!error}
         />
       </View>
 
       {error ? (
-        <Text style={{ color: palette.negative, fontSize: 11 }}>{error}</Text>
+        <FormMessage tone="error">{error}</FormMessage>
       ) : hint ? (
-        <Text style={{ color: palette.textMuted, fontSize: 11 }}>{hint}</Text>
+        <FormMessage>{hint}</FormMessage>
       ) : null}
     </View>
   );

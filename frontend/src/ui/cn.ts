@@ -20,7 +20,7 @@ import { extendTailwindMerge } from 'tailwind-merge';
 const twMerge = extendTailwindMerge({
   extend: {
     classGroups: {
-      'min-h': ['min-h-touch'],
+      'min-h': ['min-h-touch', 'min-h-touch-2'],
       'min-w': ['min-w-touch'],
     },
   },
