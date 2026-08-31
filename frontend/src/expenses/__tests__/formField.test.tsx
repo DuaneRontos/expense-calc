@@ -76,6 +76,27 @@ describe('FormField', () => {
     expect(className).toContain('text-textMuted');
   });
 
+  it('announces a locked field as disabled, not just draws it muted', async () => {
+    // `TextInput` builds its accessibility state from `accessibilityState` and
+    // the `aria-*` props only — `editable` is never consulted — so without this
+    // a locked field announces as an ordinary editable one on iOS and Android,
+    // with the state carried by colour alone. The live case is the sign-in
+    // screen during a submit.
+    await render(<FormField {...base} editable={false} />);
+
+    expect(screen.getByLabelText('Amount').props.accessibilityState).toMatchObject({
+      disabled: true,
+    });
+  });
+
+  it('leaves an editable field undisabled', async () => {
+    await render(<FormField {...base} />);
+
+    expect(screen.getByLabelText('Amount').props.accessibilityState).toMatchObject({
+      disabled: false,
+    });
+  });
+
   it('gives a multiline field two rows of height', async () => {
     await render(<FormField {...base} label="Reason" multiline />);
 

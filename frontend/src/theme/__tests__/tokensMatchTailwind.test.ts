@@ -71,6 +71,38 @@ describe('the metro config', () => {
   });
 });
 
+/**
+ * The touch tokens must be *derived* from `MIN_TOUCH_TARGET`, not written out.
+ *
+ * A literal that agrees with the constant today is invisible to every
+ * assertion on the resolved theme — `'88px'` and `` `${MIN_TOUCH_TARGET * 2}px` ``
+ * are the same string — and stays invisible right up until someone changes
+ * `MIN_TOUCH_TARGET` and only two of the three tokens follow it.
+ *
+ * Same shape and same remedy as the `inlineRem` scan below: read the source,
+ * strip the comments first so prose naming a value cannot satisfy a scan for
+ * the value.
+ */
+describe('the Tailwind config', () => {
+  const source = readFileSync(join(__dirname, '..', '..', '..', 'tailwind.config.ts'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
+
+  it('derives every touch token from MIN_TOUCH_TARGET', () => {
+    // One `touch: ` for minHeight, one for minWidth, one `touch-2`.
+    expect(source.match(/touch:\s*`\$\{MIN_TOUCH_TARGET\}px`/g)).toHaveLength(2);
+    expect(source).toMatch(/'touch-2':\s*`\$\{MIN_TOUCH_TARGET \* 2\}px`/);
+  });
+
+  it('writes no pixel literal into the touch scale', () => {
+    // Guards the guard: the assertions above would still pass if a fourth token
+    // were added as a literal beside them.
+    const touchScale = source.slice(source.indexOf('minHeight:'), source.indexOf('plugins:'));
+
+    expect(touchScale).not.toMatch(/'\d+px'/);
+  });
+});
+
 describe('the Tailwind theme and the app tokens', () => {
   it('gives every taxonomy category a colour, from the same object the charts read', () => {
     const categories = (resolved.theme.colors as unknown as { category: Record<string, string> })
@@ -115,6 +147,15 @@ describe('the Tailwind theme and the app tokens', () => {
     // square button's hit area unconstrained horizontally and says nothing.
     expect(resolved.theme.minHeight.touch).toBe(`${MIN_TOUCH_TARGET}px`);
     expect(resolved.theme.minWidth.touch).toBe(`${MIN_TOUCH_TARGET}px`);
+
+    // The multiline field's height. `cn.test.ts` walks `extend` and picked this
+    // key up for free, but nothing pinned the number.
+    //
+    // **This catches a wrong value, not a hardcoded one.** `'88px'` and
+    // `` `${MIN_TOUCH_TARGET * 2}px` `` resolve to the same string, so no
+    // assertion on the resolved theme can tell a derivation from a literal that
+    // happens to agree with it today — the scan below is what does that.
+    expect(resolved.theme.minHeight['touch-2']).toBe(`${MIN_TOUCH_TARGET * 2}px`);
   });
 
   it('already expresses the spacing steps, so no second set of names was invented', () => {

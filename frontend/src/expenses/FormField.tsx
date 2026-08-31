@@ -1,9 +1,7 @@
 import { type ReactNode } from 'react';
 import { View, type KeyboardTypeOptions } from 'react-native';
 
-import { FormMessage } from '../ui/FormMessage';
-import { Input } from '../ui/Input';
-import { Label } from '../ui/Label';
+import { FormMessage, Input, Label } from '../ui';
 
 /**
  * One labelled input with its error message underneath.
@@ -53,9 +51,10 @@ export function FormField({
     <View className="gap-1">
       {/*
         Presentation only. `Label` cannot be wired to the input the way a web
-        `<label htmlFor>` is — `aria-labelledby` is unmapped on native and
-        `nativeID` does not reach the native tree — so the same string goes to
-        the input as `accessibilityLabel` below. Both, deliberately.
+        `<label htmlFor>` is: `aria-labelledby` does reach native, but only as
+        Android's `accessibilityLabelledBy`, and iOS has no equivalent. So the
+        same string goes to the input as `accessibilityLabel` below. Both,
+        deliberately — see `Label` for the full reasoning.
       */}
       <Label>{label}</Label>
 
