@@ -132,7 +132,24 @@ export function SignOutButton() {
 
   if (confirming) {
     return (
-      <View className="flex-row items-center gap-3">
+      <View
+        // **Announces that the question appeared.** Pressing "Sign out"
+        // unmounts the control that was focused — RNW's `Pressable` renders
+        // `tabIndex={0}` when it is not disabled — and mounts two different
+        // ones, so focus falls back to `document.body` and a screen-reader user
+        // is told nothing. The `accessibilityLabel` on the confirm exists so
+        // that user can tell the two controls apart; without this they have no
+        // way to learn there are two.
+        //
+        // `accessibilityLiveRegion` rather than `aria-live`, matching
+        // `AppShell`'s drawer and `sign-in`'s error: it is the cross-platform
+        // spelling, which Android reads natively. **Web and Android only** —
+        // iOS VoiceOver ignores it and would want
+        // `AccessibilityInfo.announceForAccessibility`, which nothing in this
+        // app does yet.
+        accessibilityLiveRegion="polite"
+        className="flex-row items-center gap-3"
+      >
         {/*
           **Decline first, so the safe control sits under the finger that just
           pressed "Sign out".** A double-tap then declines instead of signing

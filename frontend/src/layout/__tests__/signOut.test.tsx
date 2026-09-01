@@ -199,6 +199,27 @@ describe('Sign out behaviour', () => {
    * this file already gives about itself: a fill regression reporting as
    * "asks before it ends the session" names the wrong thing.
    */
+  /**
+   * The question's *arrival*, which nothing else here tells anyone about.
+   *
+   * Five rounds of this PR went on the in-flight state — `busy`, the
+   * accessible name, the visible label — and the moment that matters more
+   * reached assistive tech through nothing. Pressing "Sign out" unmounts the
+   * focused control and mounts two others, so focus falls to the document body
+   * and no announcement follows.
+   */
+  it('announces the question when it appears', async () => {
+    await renderShell();
+    await signIn();
+
+    await userEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+
+    expect(screen.getByRole('button', { name: 'Confirm signing out' }).parent).toHaveProp(
+      'accessibilityLiveRegion',
+      'polite',
+    );
+  });
+
   it('shapes the confirm so it does not read as the button just pressed', async () => {
     await renderShell();
     await signIn();
