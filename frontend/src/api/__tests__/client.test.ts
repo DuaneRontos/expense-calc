@@ -786,6 +786,101 @@ describe('auth', () => {
     expect(await client.logout()).toBeNull();
   });
 
+  /**
+   * The `null` a caller has to act on, remembered rather than only returned
+   * (#142).
+   *
+   * `logout()`'s own doc says a caller must surface the `null` rather than show
+   * a plain signed-out screen, because on web the refresh cookie may still be
+   * live and a reload builds a fresh client that signs the user back in. It was
+   * returned and dropped. Recording it here rather than at the one call site
+   * makes every caller right, which is what the contract actually asks for.
+   */
+  it('remembers that a sign-out was never confirmed', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(WEB_TOKENS))
+      .mockRejectedValue(new TypeError('network down'));
+    const client = webClient(fetchImpl);
+
+    await client.login({ username: 'duane', password: 'hunter2' });
+    expect(client.signOutWasUnconfirmed()).toBe(false);
+
+    expect(await client.logout()).toBeNull();
+    expect(client.signOutWasUnconfirmed()).toBe(true);
+  });
+
+  /**
+   * The other two outcomes are confirmations, and must not raise it.
+   *
+   * `revokedSessions: 0` with a note is this client saying "my credential was
+   * already gone" — a sign-out, not a failure, and the doc on `logout()` is
+   * emphatic that reporting it as one tells someone to retry a sign-out that
+   * has already fully happened.
+   */
+  it('does not claim a confirmed sign-out was unconfirmed', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(WEB_TOKENS))
+      .mockResolvedValue(json({ revokedSessions: 2, note: 'Signed out everywhere.' }));
+    const client = webClient(fetchImpl);
+
+    await client.login({ username: 'duane', password: 'hunter2' });
+    await client.logout();
+
+    expect(client.signOutWasUnconfirmed()).toBe(false);
+  });
+
+  /**
+   * A retry that works clears the verdict of the one that did not.
+   *
+   * `login()` is not the only way out of the flag: `logout()` is public and a
+   * second call can succeed where the first failed. Without a reset on entry
+   * the client would keep reporting the stale failure, and the sign-in screen
+   * would warn about a cookie that has since been revoked — the false direction,
+   * since it tells someone to worry about a session that is actually gone.
+   */
+  it('drops the verdict when a later sign-out succeeds', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(WEB_TOKENS))
+      .mockRejectedValueOnce(new TypeError('network down'))
+      .mockResolvedValue(json({ revokedSessions: 1, note: 'Signed out everywhere.' }));
+    const client = webClient(fetchImpl);
+
+    await client.login({ username: 'duane', password: 'hunter2' });
+    expect(await client.logout()).toBeNull();
+    expect(client.signOutWasUnconfirmed()).toBe(true);
+
+    // No sign-in between the two, so `login()`'s reset cannot be what clears it.
+    await client.logout();
+
+    expect(client.signOutWasUnconfirmed()).toBe(false);
+  });
+
+  /**
+   * Cleared by `login()`, like `signedOut` and `noSessionToResume`.
+   *
+   * Signing in is the thing that makes the warning moot: whatever cookie was
+   * left live, there is a session now and this client is using it.
+   */
+  it('stops reporting an unconfirmed sign-out once signed in again', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(WEB_TOKENS))
+      .mockRejectedValueOnce(new TypeError('network down'))
+      .mockResolvedValue(json(WEB_TOKENS));
+    const client = webClient(fetchImpl);
+
+    await client.login({ username: 'duane', password: 'hunter2' });
+    await client.logout();
+    expect(client.signOutWasUnconfirmed()).toBe(true);
+
+    await client.login({ username: 'duane', password: 'hunter2' });
+
+    expect(client.signOutWasUnconfirmed()).toBe(false);
+  });
+
   it('reports an expired cookie as signed out, not as a failed sign-out', async () => {
     // The second operand of the web claim, and the only claim-deciding operand
     // in the file that nothing asserted. Delete `|| isMissingWebCookie(error)`
