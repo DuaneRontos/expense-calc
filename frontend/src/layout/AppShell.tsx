@@ -291,14 +291,19 @@ function NavButton({ item, align = 'center' }: { item: NavItem; align?: 'center'
       )}
     >
       {/*
-        `text-sm` = 14, which is what this was: the old style set colour,
-        weight and alignment and no `fontSize`, so it took react-native-web's
-        base of 14. `ui/Text` defaults to 16, so migrating without saying so
-        would grow the entire navigation by a step.
+        `text-[14px]`, which is what this was: the old style set colour, weight
+        and alignment and no `fontSize`, so it took react-native-web's base of
+        14 with the platform's own line height.
+        
+        Not `text-sm` — that is 14 *and* an imposed 20px line height, the same
+        one-property drift `text-lg` would have added to the title above. I
+        fixed the title and left this, which is how the drift keeps recurring:
+        the size is the obvious half and the line height is the half nobody
+        checks. `shellChrome.test.tsx` now pins both.
       */}
       <Text
         className={cn(
-          'text-sm',
+          'text-[14px]',
           align === 'center' ? 'text-center' : 'text-left',
           item.active ? 'font-semibold text-accent' : 'font-normal text-textMuted',
         )}

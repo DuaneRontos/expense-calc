@@ -1,7 +1,7 @@
 import { act, render, screen } from '@testing-library/react-native';
 
 import { AppShell } from '../AppShell';
-import { BREAKPOINTS, MIN_TOUCH_TARGET } from '../breakpoints';
+import { BREAKPOINTS } from '../breakpoints';
 import { ExpenseQueryProvider } from '../../expenses/ExpenseQueryProvider';
 import { api } from '../../api/client';
 
@@ -22,9 +22,12 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
 
 // Non-zero on every edge, so an inset that is dropped shows up as a missing
 // number rather than as a zero indistinguishable from the default.
-const INSETS = { top: 59, bottom: 34, left: 21, right: 13 };
+//
+// `mock`-prefixed so jest's hoisted factory may read it, like `mockWidth`
+// above — the numbers are written once rather than repeated inside the factory.
+const mockInsets = { top: 59, bottom: 34, left: 21, right: 13 };
 jest.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 59, bottom: 34, left: 21, right: 13 }),
+  useSafeAreaInsets: () => mockInsets,
 }));
 
 jest.mock('expo-router', () => ({
@@ -74,10 +77,10 @@ describe('the shell container', () => {
     const style = screen.getByTestId('shell-root').props.style;
     const flat = Array.isArray(style) ? Object.assign({}, ...style.filter(Boolean)) : style;
 
-    expect(flat.paddingTop).toBe(INSETS.top);
-    expect(flat.paddingBottom).toBe(INSETS.bottom);
-    expect(flat.paddingLeft).toBe(INSETS.left);
-    expect(flat.paddingRight).toBe(INSETS.right);
+    expect(flat.paddingTop).toBe(mockInsets.top);
+    expect(flat.paddingBottom).toBe(mockInsets.bottom);
+    expect(flat.paddingLeft).toBe(mockInsets.left);
+    expect(flat.paddingRight).toBe(mockInsets.right);
   });
 });
 
@@ -98,7 +101,68 @@ describe('the navigation', () => {
 
     const overview = screen.getByLabelText('Overview');
 
-    expect(overview.props.className).toContain('min-h-touch');
-    expect(MIN_TOUCH_TARGET).toBe(44);
+    // Token match, not a substring: `min-h-touch-2` (88dp, for multiline
+    // inputs) contains `min-h-touch`, and both live in the same `twMerge`
+    // group that `cn.ts` had to teach by hand — so a mis-merge leaving the
+    // doubled height on a nav button is exactly what a substring would miss.
+    //
+    // No assertion on `MIN_TOUCH_TARGET`'s value here: `breakpoints.test.ts`
+    // pins the floor as `>= 44` deliberately, so raising it is a legal change,
+    // and restating `=== 44` in a layout suite would fail three tests here for
+    // a reason that has nothing to do with the shell. `tokensMatchTailwind`
+    // already ties the class to the constant.
+    expect(overview.props.className.split(/\s+/)).toContain('min-h-touch');
+  });
+});
+
+describe('the chrome text sizes', () => {
+  /**
+   * Sizes must not acquire a line height they never had.
+   *
+   * Tailwind's named font sizes are pairs — `text-lg` is 18 *and* a 28px line
+   * height, `text-sm` is 14 *and* 20 — while the styles these replaced set a
+   * `fontSize` and nothing else. Substituting the named class is the obvious
+   * migration and it silently makes every line taller.
+   *
+   * **This has now recurred three times**: `Label` (#114), `ExpenseRow` (#116),
+   * and both of this file's text elements — where I corrected the title and
+   * left the nav label, because the size is the half people check and the line
+   * height is the half they do not. A comment did not stop it; this does.
+   */
+  it('keeps the header title on an exact size', async () => {
+    mockWidth = BREAKPOINTS.compact + 1;
+    await signIn();
+    await renderShell();
+
+    // By role, not by text: the destination name appears twice — once as the
+    // heading and once as its own nav item.
+    const className = screen.getByRole('header').props.className;
+
+    expect(className.split(/\s+/)).toContain('text-[18px]');
+    expect(className.split(/\s+/)).not.toContain('text-lg');
+  });
+
+  it('keeps the band line on an exact size', async () => {
+    mockWidth = BREAKPOINTS.compact + 1;
+    await signIn();
+    await renderShell();
+
+    const className = screen.getByText(/layout · /).props.className;
+
+    expect(className.split(/\s+/)).toContain('text-[12px]');
+    expect(className.split(/\s+/)).not.toContain('text-xs');
+  });
+
+  it('keeps the navigation label on an exact size', async () => {
+    mockWidth = BREAKPOINTS.compact - 1;
+    await signIn();
+    await renderShell();
+
+    // The label is a child of the button queried above; `getByText` finds the
+    // `Text` itself rather than the pressable.
+    const className = screen.getByText('Overview').props.className;
+
+    expect(className.split(/\s+/)).toContain('text-[14px]');
+    expect(className.split(/\s+/)).not.toContain('text-sm');
   });
 });
