@@ -144,9 +144,18 @@ export function SignOutButton() {
         // `accessibilityLiveRegion` rather than `aria-live`, matching
         // `AppShell`'s drawer and `sign-in`'s error: it is the cross-platform
         // spelling, which Android reads natively. **Web and Android only** —
-        // iOS VoiceOver ignores it and would want
-        // `AccessibilityInfo.announceForAccessibility`, which nothing in this
-        // app does yet.
+        // React Native annotates the prop `@platform android`, and iOS
+        // VoiceOver would want `AccessibilityInfo.announceForAccessibility`,
+        // which nothing in this app does yet.
+        //
+        // **This answers the announcement and not the focus loss**, which the
+        // paragraph above names as well. Focus still falls to the body, so a
+        // screen-reader user hears the question and then Tabs from the top of
+        // the document to reach either control — and a keyboard-only sighted
+        // user, who gets nothing from a live region at all, simply loses their
+        // place. Nothing in `app/` or `src/` calls `focus()`, `autoFocus` or
+        // `setAccessibilityFocus`, so there is no idiom here to follow and
+        // inventing one belongs in its own change rather than this one.
         accessibilityLiveRegion="polite"
         className="flex-row items-center gap-3"
       >
