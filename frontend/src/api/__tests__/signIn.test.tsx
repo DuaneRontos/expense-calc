@@ -261,6 +261,20 @@ describe('sign-in screen', () => {
    * Found by mutation: removing `!submitted` from the redirect left all 23
    * other tests green.
    */
+  it('stays on the form when a real session is adopted but not persisted', async () => {
+    jest.spyOn(api, 'login').mockImplementation(async () => {
+      await api.session.adopt({ accessToken: 'access-1', expiresInSeconds: 900 }, true);
+      return { persisted: false };
+    });
+
+    await render(<SignIn />);
+    await fillIn();
+
+    expect(await screen.findByText(/sign in again/i)).toBeOnTheScreen();
+    expect(mockRedirects).toHaveLength(0);
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
   /**
    * The sign-out that was never confirmed, said out loud (#142).
    *
@@ -294,20 +308,6 @@ describe('sign-in screen', () => {
     // Anchored on a field that exists, so the absence below is a real render.
     expect(screen.getByLabelText('Username')).toBeOnTheScreen();
     expect(screen.queryByText(/could not confirm the last sign-out/i)).toBeNull();
-  });
-
-  it('stays on the form when a real session is adopted but not persisted', async () => {
-    jest.spyOn(api, 'login').mockImplementation(async () => {
-      await api.session.adopt({ accessToken: 'access-1', expiresInSeconds: 900 }, true);
-      return { persisted: false };
-    });
-
-    await render(<SignIn />);
-    await fillIn();
-
-    expect(await screen.findByText(/sign in again/i)).toBeOnTheScreen();
-    expect(mockRedirects).toHaveLength(0);
-    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it('announces both outcomes, which appear with no other cue that anything happened', async () => {

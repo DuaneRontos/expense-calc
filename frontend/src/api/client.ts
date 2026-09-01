@@ -258,6 +258,11 @@ export class ExpenseCalcClient {
    * persisted marker would hide a live credential behind a local screen and
    * call that signed out. So this survives the navigation to `/sign-in` — a
    * client-side one — and not a reload, which is the honest bound.
+   *
+   * **Only ever true on web**, for the reason {@link logout} scopes itself the
+   * same way: the credential this cannot revoke is the `httpOnly` cookie. A
+   * device's store is cleared by `session.clear()`, so nothing survives to
+   * resume with.
    */
   private signOutUnconfirmed = false;
 
@@ -727,7 +732,16 @@ export class ExpenseCalcClient {
       // credential the server had already rejected means the sign-out has
       // happened — and `logout()`'s doc is emphatic that calling it a failure
       // tells someone to retry something already done.
-      this.signOutUnconfirmed = true;
+      //
+      // **Web only, matching the scope of the doc above**: "*and on web that
+      // matters*, because the refresh cookie may still be live". The `finally`
+      // below calls `session.clear()`, which on a device empties the persisted
+      // store — so there is nothing left to resume with and no sentence to say.
+      // Raised there, a phone with no signal would be told a browser it does
+      // not have may sign back in without a password, which is false and not
+      // actionable. The device story is a different one — other devices may not
+      // have been revoked — and in a single-user v1 may not be worth telling.
+      this.signOutUnconfirmed = this.clientType === 'web';
       return null;
     } finally {
       // Set even when the call failed, which is the point: local state is

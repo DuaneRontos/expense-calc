@@ -165,6 +165,31 @@ export default function SignIn() {
 
       <RNText style={{ color: palette.text, fontWeight: '600', fontSize: 16 }}>Sign in</RNText>
 
+      {/*
+        No live region, unlike the error and warning below: this one renders
+        above the fields and is present at first paint rather than appearing
+        after a press, so a screen reader reaches it in document order on the
+        way into the form. Announcing it as well would be the same sentence
+        twice.
+
+        **Above the fields on purpose.** Below them it was a claim about how
+        the visitor arrived, and an instruction — "close the browser as well" —
+        sitting under the password box, where someone who tabs straight in and
+        submits never meets it.
+
+        Deliberately not `palette.negative`. Nothing failed that the visitor did
+        — they are signed out on this device — and colouring it as an error next
+        to a form would read as a rejected credential before it is read as a
+        sentence about the last session.
+      */}
+      {signOutUnconfirmed ? (
+        <RNText style={{ color: palette.text, fontSize: 13 }}>
+          We could not confirm the last sign-out with the server, so this browser
+          may still be able to sign back in without a password. Signing in again
+          replaces it; on a shared computer, close the browser as well.
+        </RNText>
+      ) : null}
+
       <FormField
         label="Username"
         value={username}
@@ -212,24 +237,6 @@ export default function SignIn() {
         </RNText>
       ) : null}
 
-      {/*
-        No live region, unlike the two above: this one is on screen before a
-        screen reader reaches the form rather than appearing after a press, so
-        it is read in document order and announcing it again would be the same
-        sentence twice.
-
-        Deliberately not `palette.negative`. Nothing failed that the visitor did
-        — they are signed out on this device — and colouring it as an error next
-        to a form would read as a rejected credential before it is read as a
-        sentence about the last session.
-      */}
-      {signOutUnconfirmed ? (
-        <RNText style={{ color: palette.text, fontSize: 13 }}>
-          We could not confirm the last sign-out with the server, so this browser
-          may still be able to sign back in without a password. Signing in again
-          replaces it; on a shared computer, close the browser as well.
-        </RNText>
-      ) : null}
 
       <View style={{ flexDirection: 'row', gap: spacing.md, alignItems: 'center' }}>
         {/*

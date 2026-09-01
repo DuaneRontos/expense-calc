@@ -832,6 +832,66 @@ describe('auth', () => {
   });
 
   /**
+   * **The already-gone branch, which the test above does not reach.**
+   *
+   * That one drives a plain HTTP success, so the `catch` never runs and nothing
+   * asserted what the flag is after a *failure* the client could narrow. The
+   * gap was invisible: setting the flag as the first line of the `catch`, above
+   * `holdsNoLiveCredential`, left all 452 tests green while telling a user whose
+   * credential the server had already rejected to worry about a session that is
+   * definitively gone — the inversion `logout()`'s doc is emphatic about.
+   */
+  it('does not raise the warning when the credential was already gone', async () => {
+    // The same shape as `reports an expired cookie as signed out`: the refresh
+    // that `logout()` runs first comes back saying there is no cookie, which is
+    // this client's credential being already gone.
+    const fetchImpl = jest.fn().mockImplementation((url: string) => {
+      if (url.endsWith('/auth/refresh')) {
+        return Promise.resolve(
+          problem(400, {
+            type: 'https://expense-calc.invalid/problems/no-refresh-token',
+            title: 'No refresh token',
+          }),
+        );
+      }
+      return Promise.resolve(json(WEB_TOKENS));
+    });
+    const client = webClient(fetchImpl);
+
+    const outcome = await client.logout();
+
+    // The sign-out happened; this is the confirmation branch, not a failure.
+    expect(outcome).not.toBeNull();
+    expect(client.signOutWasUnconfirmed()).toBe(false);
+  });
+
+  /**
+   * **Never raised off web**, because the sentence it raises is about a cookie
+   * a device does not have.
+   *
+   * `logout()`'s `finally` calls `session.clear()`, which empties the persisted
+   * store on a device — so nothing is left to resume with. A phone with no
+   * signal was being told a browser it does not have might sign back in without
+   * a password: false, and not actionable. Every other test here is a
+   * `webClient`, which is exactly why nothing caught it.
+   */
+  it('does not warn about a browser on a device', async () => {
+    // `clientWith` is the device shape: the default `clientType` and a store
+    // that really holds the refresh token, unlike `webClient`'s.
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(TOKENS))
+      .mockRejectedValue(new TypeError('network down'));
+    const client = clientWith(fetchImpl);
+
+    await client.login({ username: 'duane', password: 'hunter2' });
+
+    // Same failure as the web case: the request never reached the server.
+    expect(await client.logout()).toBeNull();
+    expect(client.signOutWasUnconfirmed()).toBe(false);
+  });
+
+  /**
    * A retry that works clears the verdict of the one that did not.
    *
    * `login()` is not the only way out of the flag: `logout()` is public and a
