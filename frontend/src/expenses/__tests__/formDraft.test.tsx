@@ -42,6 +42,9 @@ jest.mock('expo-router', () => ({
     back: (...args: unknown[]) => mockBack(...args),
   },
   useLocalSearchParams: () => ({ id: 'e-1' }),
+  // `SignOutButton` binds its confirmation to the route it was asked on (#98),
+  // so rendering it needs a pathname.
+  usePathname: () => '/expenses/new',
 }));
 
 const EXPENSE_ID = 'e-1';
@@ -314,8 +317,8 @@ describe('signing out, as against a session expiring', () => {
 
   it('drops what was typed when the visitor signs out on purpose', async () => {
     // The real side effect, not a wholesale stub: `logout()` clearing the
-    // session is what unmounts this control, and a stub that skips it never
-    // reaches the state the ordering here exists for.
+    // session is what re-renders this control as `null`, and a stub that skips
+    // it never reaches the state the ordering here exists for.
     jest.spyOn(api, 'logout').mockImplementation(async () => {
       await api.session.clear();
       return null;
@@ -333,7 +336,11 @@ describe('signing out, as against a session expiring', () => {
     // signs in on the same machine and opens the same expense.
     saveDraft(expenseDraftKey('e-1'), held);
 
+    // Two presses since #98: the first only asks. That the draft survives the
+    // first one is asserted in `signOut.test.tsx`, which is where the question
+    // itself lives.
     await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Confirm signing out' }));
 
     await waitFor(() => expect(readDraft(NEW_EXPENSE_DRAFT)).toBeUndefined());
     expect(readDraft(expenseDraftKey('e-1'))).toBeUndefined();

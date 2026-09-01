@@ -1,4 +1,6 @@
+import { usePathname } from 'expo-router';
 import { useState } from 'react';
+import { View } from 'react-native';
 
 import { api } from '../api/client';
 import { useSignedIn } from '../api/useSignedIn';
@@ -19,12 +21,63 @@ import { Text } from '../ui/Text';
  * this renders nothing at all and the chrome does not offer to end something
  * that never began. Read once at mount it would be wrong the moment someone
  * signed in, which is precisely when it needs to appear.
+ *
+ * **It asks first (#98).** The control sits in the chrome on every screen, so
+ * it is reachable by an accidental tap, and on web the credential is an
+ * `httpOnly` cookie — once the server has cleared it there is no undo short of
+ * signing in again. The question is in place rather than in a dialog or behind
+ * a route, which is the same shape the delete control on the expense detail
+ * screen uses.
  */
 export function SignOutButton() {
   const signedIn = useSignedIn();
+  const pathname = usePathname();
   const [submitting, setSubmitting] = useState(false);
 
+  // **The question is dismissed by leaving the screen it was asked on.**
+  // `AppShell` mounts this once above the navigator, so without a route rule
+  // the question rides along: ask on `/expenses`, change your mind and tap
+  // Overview rather than declining, and the Overview draws "Sign out?" in its
+  // chrome — where one stray tap ends the session, which is the tap this exists
+  // to prevent.
+  //
+  // **Cleared rather than out-matched**, which is a real difference and not a
+  // spelling of the same thing. Deriving `askedOn === pathname` only *hides*
+  // the question: `askedOn` survives, so navigating back to the asking screen
+  // re-arms a question nobody asked on that visit. That was the first version
+  // of this, and it passed the away-leg test because that test never went back.
+  const [askedOn, setAskedOn] = useState<string | null>(null);
+
+  // **Held while the request is in flight**, which is the same rule
+  // `disabled={submitting}` enforces on the two controls. This is the third way
+  // out of the question, and without the guard it was the one that opted out
+  // silently: navigating mid-request swapped the row for a plain, enabled "Sign
+  // out" — dropping `busy` and the "Signing out…" label — while `logout()` ran
+  // to completion and ended the session anyway. Nothing was lost but the
+  // telling, and the telling is what this component is careful about.
+  //
+  // It cannot strand the question: `submitting` goes false in `signOut`'s
+  // `finally`, and the signed-out reset below collects it when the session
+  // clears. The away and back legs both run with `submitting` false, so neither
+  // is affected.
+  if (!submitting && askedOn !== null && askedOn !== pathname) {
+    setAskedOn(null);
+  }
+
+  const confirming = askedOn !== null;
+
   if (!signedIn) {
+    // **Adjusted during render, because this component does not unmount.**
+    // `AppShell` wraps the whole `Stack`, `sign-in` included, so navigating
+    // there re-renders this as `null` and keeps its `useState` — which is how
+    // `submitting` once stuck as a permanently disabled "Signing out…".
+    //
+    // Not covered by the route binding above: signing out and back in returns
+    // to the same route, where a stale `askedOn` would match it again and open
+    // the next session mid-question.
+    if (askedOn !== null) {
+      setAskedOn(null);
+    }
     return null;
   }
 
@@ -41,11 +94,9 @@ export function SignOutButton() {
       // the next person's form. A page reload would have cleared it, and a
       // sign-out that did not would be the weaker of the two.
       //
-      // **Before the request, not after**, and unconditional because
-      // `logout()` clears local state in a `finally` — there is no path where
-      // this press leaves the session alive, so there is none where the draft
-      // should have been kept. After the await it might not run at all: the
-      // session clearing unmounts this component through `AuthGuard`.
+      // **Before the request, and unconditional**, because `logout()` clears
+      // local state in a `finally`: there is no path where this press leaves
+      // the session alive, so none where the draft was worth keeping.
       clearAllDrafts();
       await api.logout();
     } finally {
@@ -65,36 +116,97 @@ export function SignOutButton() {
       // the ordering that claim rests on is not guaranteed. It held often
       // enough to look deliberate and failed often enough to be reported.
       //
-      // The reset stays: it is cheap, and it is correct whether or not the
-      // guard unmounts this component first.
+      // The reset stays: it is cheap, and it is what keeps the control usable
+      // on the next session — the guard redirects without unmounting the
+      // children, so this component's state outlives the sign-out.
       setSubmitting(false);
+      // **`askedOn` is deliberately not cleared here as well.** The
+      // render-phase reset above already covers this path, and covers one more
+      // besides — a session ending underneath the question rather than because
+      // of it. Two mechanisms for one rule is what #124 shipped and had to
+      // undo: with either one alone sufficient, removing either passed the
+      // whole suite, so nothing was pinned and the tests only looked like they
+      // held. One mechanism per rule, each with a mutation that kills it.
     }
   }
 
+  if (confirming) {
+    return (
+      <View
+        // **Announces that the question appeared.** Pressing "Sign out"
+        // unmounts the control that was focused — RNW's `Pressable` renders
+        // `tabIndex={0}` when it is not disabled — and mounts two different
+        // ones, so focus falls back to `document.body` and a screen-reader user
+        // is told nothing. The `accessibilityLabel` on the confirm exists so
+        // that user can tell the two controls apart; without this they have no
+        // way to learn there are two.
+        //
+        // `accessibilityLiveRegion` rather than `aria-live`, matching
+        // `AppShell`'s drawer and `sign-in`'s error: it is the cross-platform
+        // spelling, which Android reads natively. **Web and Android only** —
+        // React Native annotates the prop `@platform android`, and iOS
+        // VoiceOver would want `AccessibilityInfo.announceForAccessibility`,
+        // which nothing in this app does yet.
+        //
+        // **This answers the announcement and not the focus loss**, which the
+        // paragraph above names as well. Focus still falls to the body, so a
+        // screen-reader user hears the question and then Tabs from the top of
+        // the document to reach either control — and a keyboard-only sighted
+        // user, who gets nothing from a live region at all, simply loses their
+        // place. Nothing in `app/` or `src/` calls `focus()`, `autoFocus` or
+        // `setAccessibilityFocus`, so there is no idiom here to follow and
+        // inventing one belongs in its own change rather than this one.
+        accessibilityLiveRegion="polite"
+        className="flex-row items-center gap-3"
+      >
+        {/*
+          **Decline first, so the safe control sits under the finger that just
+          pressed "Sign out".** A double-tap then declines instead of signing
+          out. Ordering alone is not enough, though: in the medium band
+          `AppShell` gives the nav `flex-1`, which pins this component to the
+          row's right edge, so a two-control row grows leftward and the *last*
+          child keeps the slot the single button had. That is why the confirm
+          below is also shaped differently — the ordering helps in two bands,
+          the shape helps in all three.
+        */}
+        <Button variant="ghost" disabled={submitting} onPress={() => setAskedOn(null)}>
+          <Text>Stay signed in</Text>
+        </Button>
+
+        {/*
+          Filled `destructive`, which is the other half of the delete control's
+          idiom (`Delete this expense` → a filled `negative` pill). A confirm
+          that differs from the control it replaced by one character reads as
+          the same button, and this one ends a session that cannot be resumed
+          without signing in again.
+        */}
+        <Button
+          variant="destructive"
+          // Named for a screen reader rather than left to the visible text: two
+          // controls both announcing "Sign out" is the ambiguity a confirmation
+          // exists to remove, and a question mark is not spoken.
+          //
+          // **It still has to carry the in-flight state**, which a fixed label
+          // would have silently taken away: an `accessibilityLabel` overrides
+          // the text, so a constant one leaves nothing that changes when the
+          // press registers. `busy` carries it to assistive tech; this carries
+          // it to the name.
+          accessibilityLabel={submitting ? 'Signing out…' : 'Confirm signing out'}
+          busy={submitting}
+          disabled={submitting}
+          onPress={signOut}
+        >
+          <Text>{submitting ? 'Signing out…' : 'Sign out?'}</Text>
+        </Button>
+      </View>
+    );
+  }
+
   return (
-    // `disabled` and `busy` both, and both spellings of each: `disabled` alone
-    // never reaches the DOM under react-native-web (#69), so a screen reader
-    // there would announce an actionable button that ignores presses. `Button`
-    // handles the doubling; the two flags stay distinct because "will do
-    // nothing" and "already did something" are different claims.
-    <Button variant="link" busy={submitting} disabled={submitting} onPress={signOut}>
-      {/*
-        The label carries the in-flight state rather than a spinner alone,
-        because RNW forwards no `accessibilityState` — so on web the text is the
-        only thing that can say a press was registered. Unlike the sign-in
-        button, the accessible name is *allowed* to change here: nothing holds a
-        reference to this control across the transition, since the whole
-        component unmounts the moment the session clears.
-      */}
-      {/*
-        The label goes muted rather than the button going translucent. The
-        container's `disabled:opacity-50` would render accent at half strength
-        (≈ #8FB7F5) where this used to be slate — legible either way, but a
-        different colour, and this one is the app's existing "inactive text".
-      */}
-      <Text className={submitting ? 'text-textMuted' : undefined}>
-        {submitting ? 'Signing out…' : 'Sign out'}
-      </Text>
+    // No `busy`/`disabled` here: this press only asks, and the request can only
+    // be in flight on the confirm control above.
+    <Button variant="link" onPress={() => setAskedOn(pathname)}>
+      <Text>Sign out</Text>
     </Button>
   );
 }
