@@ -1,15 +1,17 @@
 import Head from 'expo-router/head';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 
 import { ExpenseRow } from '../../src/expenses/ExpenseRow';
 import { SortControl } from '../../src/expenses/SortControl';
 import { useExpenseQuery } from '../../src/expenses/ExpenseQueryProvider';
 import { useExpenses } from '../../src/expenses/useExpenses';
 import { RequestFailure } from '../../src/api/RequestFailure';
-import { MIN_TOUCH_TARGET } from '../../src/layout/breakpoints';
 import { webTitleFor } from '../../src/layout/navigation';
+import { Button } from '../../src/ui/Button';
+import { Skeleton } from '../../src/ui/Skeleton';
+import { Text as UIText } from '../../src/ui/Text';
 import { palette, spacing } from '../../src/theme/tokens';
 import type { ExpenseSummary } from '../../src/api/types';
 
@@ -37,6 +39,44 @@ import type { ExpenseSummary } from '../../src/api/types';
 const keyExtractor = (item: ExpenseSummary) => item.id;
 
 const renderItem = ({ item }: { item: ExpenseSummary }) => <ExpenseRow expense={item} />;
+
+/** Six rows: enough to fill a phone screen, few enough to imply no count. */
+const SKELETON_ROWS = ['a', 'b', 'c', 'd', 'e', 'f'];
+
+/**
+ * The first load, shaped like the rows that are coming.
+ *
+ * A skeleton is only honest where the layout is known ahead of the data, which
+ * it is here — this mirrors `ExpenseRow`'s stripe, its two lines of text and
+ * its right-hand amount. The footer keeps a spinner instead, because an
+ * append's row count is not known and six grey rows would promise a number
+ * nobody has.
+ *
+ * Each `Skeleton` is `aria-hidden`; the header already says "Loading…" in
+ * words, and a screen reader stopping on six grey rectangles learns nothing.
+ */
+function ExpenseRowSkeletons() {
+  return (
+    // **No gap, and a `border-b` per row.** Real rows are separated by their
+    // bottom border and nothing else (`ExpenseRow`), so a `gap-2` here made the
+    // six placeholders taller than the six rows replacing them and shifted the
+    // content up when the data landed — the exact reflow `Skeleton`'s own doc
+    // block argues against. `self-stretch` on the stripe for the same reason:
+    // the real one stretches to the row.
+    <View testID="expense-skeletons">
+      {SKELETON_ROWS.map((key) => (
+        <View key={key} className="flex-row items-center gap-2 border-b border-border py-2">
+          <Skeleton className="w-1 self-stretch rounded-sm" />
+          <View className="flex-1 gap-1">
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="h-3 w-1/3" />
+          </View>
+          <Skeleton className="h-4 w-16" />
+        </View>
+      ))}
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
   list: { flex: 1 },
@@ -91,21 +131,18 @@ export default function Expenses() {
         contentContainerStyle={styles.content}
         ListHeaderComponent={
           <View style={{ gap: spacing.md, paddingBottom: spacing.md }}>
-            <Pressable
-              accessibilityRole="button"
+            {/*
+              Missed by #113, which listed the six files it covered and not this
+              one. `self-start` because the button sizes to its label rather
+              than spanning the list.
+            */}
+            <Button
+              className="self-start"
               accessibilityLabel="Record a new expense"
               onPress={() => router.push('/expenses/new')}
-              style={{
-                minHeight: MIN_TOUCH_TARGET,
-                justifyContent: 'center',
-                alignSelf: 'flex-start',
-                paddingHorizontal: spacing.md,
-                borderRadius: 6,
-                backgroundColor: palette.accent,
-              }}
             >
-              <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>New expense</Text>
-            </Pressable>
+              <UIText>New expense</UIText>
+            </Button>
 
             <SortControl />
             <Text style={{ color: palette.textMuted, fontSize: 12 }}>
@@ -120,7 +157,13 @@ export default function Expenses() {
           </View>
         }
         ListEmptyComponent={
-          loading ? null : (
+          // Both states live here because `FlatList` renders this slot in
+          // exactly the right place — after the header, only at zero rows —
+          // which an absolutely-positioned overlay had to guess at with a
+          // hardcoded offset.
+          loading ? (
+            <ExpenseRowSkeletons />
+          ) : (
             <EmptyState error={error} activeFilterCount={activeFilterCount} onClear={clear} onRetry={retry} />
           )
         }
@@ -135,16 +178,13 @@ export default function Expenses() {
               70, and scrolling at the bottom did not retry it.
             */}
             {error && items.length > 0 && !loadingMore ? (
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="link"
                 accessibilityLabel="Could not load more expenses. Retry."
                 onPress={loadMore}
-                style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
               >
-                <Text style={{ color: palette.negative }}>
-                  Could not load more. Tap to retry.
-                </Text>
-              </Pressable>
+                <UIText className="text-negative">Could not load more. Tap to retry.</UIText>
+              </Button>
             ) : null}
             {!loading && !hasMore && items.length > 0 ? (
               <Text style={{ color: palette.textMuted, fontSize: 12 }}>
@@ -159,11 +199,6 @@ export default function Expenses() {
         onEndReachedThreshold={0.4}
       />
 
-      {loading && items.length === 0 ? (
-        <View style={{ position: 'absolute', top: spacing.xl * 3, left: 0, right: 0, alignItems: 'center' }}>
-          <ActivityIndicator color={palette.accent} />
-        </View>
-      ) : null}
     </>
   );
 }
@@ -196,21 +231,13 @@ function EmptyState({
         {activeFilterCount > 0 ? 'No expenses match these filters.' : 'No expenses yet.'}
       </Text>
       {activeFilterCount > 0 ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={onClear}
-          style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
-        >
-          <Text style={{ color: palette.accent, fontWeight: '600' }}>Clear filters</Text>
-        </Pressable>
+        <Button variant="link" onPress={onClear}>
+          <UIText>Clear filters</UIText>
+        </Button>
       ) : (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push('/expenses/new')}
-          style={{ minHeight: MIN_TOUCH_TARGET, justifyContent: 'center' }}
-        >
-          <Text style={{ color: palette.accent, fontWeight: '600' }}>Record your first expense</Text>
-        </Pressable>
+        <Button variant="link" onPress={() => router.push('/expenses/new')}>
+          <UIText>Record your first expense</UIText>
+        </Button>
       )}
     </View>
   );

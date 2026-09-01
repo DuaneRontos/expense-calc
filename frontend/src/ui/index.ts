@@ -25,4 +25,5 @@ export { cn } from './cn';
 export { FormMessage } from './FormMessage';
 export { Input, type InputProps } from './Input';
 export { Label } from './Label';
+export { Skeleton } from './Skeleton';
 export { Text, TextClassContext, type TextProps } from './Text';
