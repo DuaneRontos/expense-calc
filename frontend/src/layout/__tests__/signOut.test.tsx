@@ -219,9 +219,11 @@ describe('Sign out behaviour', () => {
    * quietly — under `variant="link"` the label renders in accent on the page
    * background rather than disappearing.
    *
-   * Its own test rather than an assertion inside the one above, for the reason
-   * this file already gives about itself: a fill regression reporting as
-   * "asks before it ends the session" names the wrong thing.
+   * Its own test rather than an assertion inside `asks before it ends the
+   * session`, for the reason this file already gives about itself: a fill
+   * regression reporting under that name says the wrong thing. Named rather
+   * than positional, because this docblock has already been moved once and
+   * "the one above" did not survive it.
    */
   it('shapes the confirm so it does not read as the button just pressed', async () => {
     await renderShell();
