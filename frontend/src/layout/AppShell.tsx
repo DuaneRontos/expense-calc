@@ -1,14 +1,15 @@
 import { useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { MIN_TOUCH_TARGET } from './breakpoints';
 import { SignOutButton } from './SignOutButton';
 import { useSignedIn } from '../api/useSignedIn';
 import { APP_NAME, useActiveDestination, useNavItems, useShowsFilters, type NavItem } from './navigation';
 import { useLayout } from './useLayout';
 import { ExpenseFilters } from '../expenses/ExpenseFilters';
-import { palette, spacing } from '../theme/tokens';
+import { Button } from '../ui/Button';
+import { Text } from '../ui/Text';
+import { cn } from '../ui/cn';
 
 /**
  * The one layout system of spec §2, expressed as a single component.
@@ -88,9 +89,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <View
+      // A handle for `shellChrome.test.tsx`, which asserts all four safe-area
+      // insets land here. There is no accessible name to query the root by, and
+      // dropping one of these insets passed every test until that suite existed.
+      testID="shell-root"
+      className="flex-1 bg-background"
       style={{
-        flex: 1,
-        backgroundColor: palette.background,
         // All four insets live here rather than on the pieces that happen to
         // touch an edge. The bottom one used to sit on the tab bar, which only
         // renders when compact — so medium and expanded had none at all, and a
@@ -101,42 +105,43 @@ export function AppShell({ children }: { children: ReactNode }) {
         // stops short of the physical edges on a notched phone instead of
         // running full-bleed. That is deliberate — don't "fix" it back without
         // moving the insets onto the content first.
+        //
+        // Runtime values from `useSafeAreaInsets`, so these stay a `style`
+        // object: there is no class for a number that is only known on device.
         paddingTop: insets.top,
         paddingBottom: insets.bottom,
         paddingLeft: insets.left,
         paddingRight: insets.right,
       }}
     >
-      <View
-        style={{
-          paddingHorizontal: spacing.md,
-          paddingVertical: spacing.sm,
-          borderBottomWidth: 1,
-          borderBottomColor: palette.border,
-        }}
-      >
+      <View className="border-b border-border px-4 py-2">
         {/*
           A real heading, not just large bold text. react-native-web maps
           `header` onto `role="heading"`, and native onto the iOS header trait,
           so this is the landmark a screen reader jumps between screens by —
           the one thing on the page that says which screen this is.
         */}
-        <Text
-          accessibilityRole="header"
-          style={{ fontSize: 18, fontWeight: '700', color: palette.text }}
-        >
+        {/*
+          `text-[18px]`, not `text-lg`. Tailwind pairs `lg` with a 28px line
+          height; the old `fontSize: 18` had none and took the platform's. On a
+          heading that is a taller header band on every screen — the same
+          one-property drift `Label` and `ExpenseRow` each had to undo.
+        */}
+        <Text accessibilityRole="header" className="text-[18px] font-bold text-text">
           {title}
         </Text>
-        <Text style={{ color: palette.textMuted, fontSize: 12 }}>
+        {/* `text-[12px]`, not `text-xs`: Tailwind's `xs` pairs a 16px line
+            height that the old `fontSize: 12` did not have. */}
+        <Text className="text-[12px] text-textMuted">
           {/* Surfaced on purpose: this scaffold's job is to prove one codebase
               drives all three targets, and the band is the thing to verify. */}
           {layout.size} layout · {Math.round(layout.width)}px
         </Text>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+        <View className="flex-row items-center gap-4">
           {/* The medium band's navigation: no bottom tabs, no sidebar to put it in. */}
           {layout.isMedium && signedIn ? (
-            <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm, flex: 1 }}>
+            <View className="mt-2 flex-1 flex-row gap-4">
               {nav.map((item) => (
                 <NavButton key={item.key} item={item} />
               ))}
@@ -144,8 +149,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           ) : null}
 
           {showsDrawer ? (
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="link"
               // The flat prop alone, for the reason PeriodPicker spells out:
               // it is the only form that reaches all three targets, since RNW
               // forwards no `accessibilityState` and RN merges `aria-expanded`
@@ -160,18 +165,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               aria-expanded={drawerOpen}
               accessibilityLabel={drawerOpen ? 'Hide filters' : 'Show filters'}
               onPress={() => setDrawerOpen((open) => !open)}
-              style={{
-                minHeight: MIN_TOUCH_TARGET,
-                // Symmetric, so the label sits in the middle of its 44dp target
-                // rather than top-aligned with the tap centre somewhere below it.
-                justifyContent: 'center',
-                paddingVertical: spacing.sm,
-              }}
             >
-              <Text style={{ color: palette.accent, fontWeight: '600' }}>
-                {drawerOpen ? 'Hide filters' : 'Filters'}
-              </Text>
-            </Pressable>
+              <Text>{drawerOpen ? 'Hide filters' : 'Filters'}</Text>
+            </Button>
           ) : null}
 
           {/*
@@ -199,23 +195,24 @@ export function AppShell({ children }: { children: ReactNode }) {
           // toggle tells a screen-reader user its state; nothing otherwise
           // tells them content appeared elsewhere on the screen.
           accessibilityLiveRegion="polite"
+          className="border-b border-border bg-surface"
           style={{
             // Bounded and scrollable: a phone in landscape is 667×375, which
             // lands in the *medium* band, so #14's real filter panel would
             // otherwise fill the viewport and push the content out of reach.
+            //
+            // Stays a `style`: it is a fraction of the live viewport height,
+            // which no class can express.
             maxHeight: Math.round(layout.height * 0.5),
-            backgroundColor: palette.surface,
-            borderBottomWidth: 1,
-            borderBottomColor: palette.border,
           }}
         >
-          <ScrollView contentContainerStyle={{ padding: spacing.md }}>
+          <ScrollView contentContainerClassName="p-4">
             <ExpenseFilters />
           </ScrollView>
         </View>
       ) : null}
 
-      <View style={{ flex: 1, flexDirection: layout.isExpanded ? 'row' : 'column' }}>
+      <View className={cn('flex-1', layout.isExpanded ? 'flex-row' : 'flex-col')}>
         {/*
           Gated on having something to put in it. Both children are conditional
           — the nav on the session, the filters on the destination — and signed
@@ -225,20 +222,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           redirect window still has filters worth showing.
         */}
         {layout.isExpanded && (signedIn || filterable) ? (
-          <View
-            testID="nav-sidebar"
-            style={{
-              width: 280,
-              borderRightWidth: 1,
-              borderRightColor: palette.border,
-              padding: spacing.md,
-              backgroundColor: palette.surface,
-            }}
-          >
+          <View testID="nav-sidebar" className="w-[280px] border-r border-border bg-surface p-4">
             {/* The inner gate stays: the container may be here for the filters
                 alone, and the destinations should not come with them. */}
             {signedIn ? (
-              <View style={{ gap: spacing.xs, marginBottom: spacing.lg }}>
+              <View className="mb-6 gap-1">
                 {nav.map((item) => (
                   <NavButton key={item.key} item={item} align="left" />
                 ))}
@@ -254,18 +242,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           offset and a screen that needs a `FlatList` (#14's expense list, which
           must not render 200 rows eagerly) could not have one.
         */}
-        <View style={{ flex: 1 }}>{children}</View>
+        <View className="flex-1">{children}</View>
       </View>
 
       {/* Signed out, this would be a bordered strip with nothing in it. */}
       {layout.isCompact && signedIn ? (
         <View
           testID="nav-tab-bar"
-          style={{
-            flexDirection: 'row',
-            borderTopWidth: 1,
-            borderTopColor: palette.border,
-          }}
+          className="flex-row border-t border-border"
         >
           {nav.map((item) => (
             <NavButton key={item.key} item={item} />
@@ -298,20 +282,31 @@ function NavButton({ item, align = 'center' }: { item: NavItem; align?: 'center'
       accessibilityLabel={item.active ? `${item.label}, current screen` : item.label}
       accessibilityState={{ selected: item.active }}
       onPress={item.onPress}
-      style={{
-        flex: align === 'center' ? 1 : undefined,
+      className={cn(
         // Spec §2: touch targets keep mobile sizing at every breakpoint.
-        minHeight: MIN_TOUCH_TARGET,
-        justifyContent: 'center',
-        paddingVertical: spacing.sm,
-      }}
+        // `min-h-touch` is `MIN_TOUCH_TARGET`, not the visually similar
+        // `min-h-11`, which is only 44 while `inlineRem` is 16.
+        'min-h-touch justify-center py-2',
+        align === 'center' ? 'flex-1' : '',
+      )}
     >
+      {/*
+        `text-[14px]`, which is what this was: the old style set colour, weight
+        and alignment and no `fontSize`, so it took react-native-web's base of
+        14 with the platform's own line height.
+        
+        Not `text-sm` — that is 14 *and* an imposed 20px line height, the same
+        one-property drift `text-lg` would have added to the title above. I
+        fixed the title and left this, which is how the drift keeps recurring:
+        the size is the obvious half and the line height is the half nobody
+        checks. `shellChrome.test.tsx` now pins both.
+      */}
       <Text
-        style={{
-          textAlign: align,
-          color: item.active ? palette.accent : palette.textMuted,
-          fontWeight: item.active ? '600' : '400',
-        }}
+        className={cn(
+          'text-[14px]',
+          align === 'center' ? 'text-center' : 'text-left',
+          item.active ? 'font-semibold text-accent' : 'font-normal text-textMuted',
+        )}
       >
         {item.label}
       </Text>
