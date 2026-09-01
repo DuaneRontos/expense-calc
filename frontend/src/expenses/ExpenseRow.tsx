@@ -48,7 +48,14 @@ function ExpenseRowComponent({ expense }: { expense: ExpenseSummary }) {
       />
 
       <View className="flex-1 gap-0.5">
-        <Text className="text-base font-medium text-text" numberOfLines={1}>
+        {/*
+          `text-sm` = 14, which is what these lines were: the old styles set
+          colour and weight and no `fontSize`, so they took react-native-web's
+          base of 14. `ui/Text` defaults to `text-base` = 16, so migrating
+          without saying so grew every line in the row by a step — the same
+          silent growth #113 had to undo.
+        */}
+        <Text className="text-sm font-medium text-text" numberOfLines={1}>
           {expense.merchant ?? 'No merchant'}
         </Text>
         <Text className="text-xs text-textMuted" numberOfLines={1}>
@@ -69,7 +76,7 @@ function ExpenseRowComponent({ expense }: { expense: ExpenseSummary }) {
         signed-amount rule in CLAUDE.md).
       */}
       <Text
-        className={cn('font-semibold', negative ? 'text-negative' : 'text-text')}
+        className={cn('text-sm font-semibold', negative ? 'text-negative' : 'text-text')}
         style={{ fontVariant: ['tabular-nums'] }}
       >
         {amount}

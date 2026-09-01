@@ -1,8 +1,19 @@
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import { ExpenseRow } from '../ExpenseRow';
 import { formatMoney } from '../../money/format';
 import type { ExpenseSummary } from '../../api/types';
+
+// `mock`-prefixed so jest's hoisted factory may read it, as in
+// `expensesFailure.test.tsx`.
+const mockPush = jest.fn();
+jest.mock('expo-router', () => ({
+  router: { push: (...args: unknown[]) => mockPush(...args) },
+}));
+
+beforeEach(() => {
+  mockPush.mockClear();
+});
 
 /**
  * **Nothing rendered `ExpenseRow` before #116.** `format.test.ts` covers the
@@ -83,6 +94,38 @@ describe('ExpenseRow', () => {
     // the prop deleted. The composite label above is what does the grouping
     // work; this is what would catch the row splitting into several controls.
     expect(screen.getAllByRole('button')).toHaveLength(1);
+  });
+
+  it('opens the expense it names when pressed', async () => {
+    /*
+     * **The row's actual job, and nothing covered it.** `accessibilityHint`
+     * promises "Opens this expense" and every other test in this file passes
+     * with `onPress` deleted outright — a row that navigates nowhere was
+     * indistinguishable from one that works.
+     *
+     * This is the case I expected not to matter and did not mutate, which is
+     * the habit the last two reviews have been correcting.
+     */
+    await render(<ExpenseRow expense={expense()} />);
+
+    await fireEvent.press(screen.getByRole('button', { name: /^Puregold, / }));
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/expenses/[id]',
+      params: { id: 'e1' },
+    });
+  });
+
+  it('shows a description when there is one and nothing when there is not', async () => {
+    // The row renders a third line conditionally; nothing asserted it, so the
+    // condition could invert unnoticed.
+    const { rerender } = await render(
+      <ExpenseRow expense={expense({ description: 'Weekly shop' })} />,
+    );
+    expect(screen.getByText('Weekly shop')).toBeOnTheScreen();
+
+    await rerender(<ExpenseRow expense={expense({ description: null })} />);
+    expect(screen.queryByText('Weekly shop')).toBeNull();
   });
 
   it('names a merchantless expense rather than leaving a gap in the sentence', async () => {

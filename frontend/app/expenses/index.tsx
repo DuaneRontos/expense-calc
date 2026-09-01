@@ -57,10 +57,16 @@ const SKELETON_ROWS = ['a', 'b', 'c', 'd', 'e', 'f'];
  */
 function ExpenseRowSkeletons() {
   return (
-    <View className="gap-2">
+    // **No gap, and a `border-b` per row.** Real rows are separated by their
+    // bottom border and nothing else (`ExpenseRow`), so a `gap-2` here made the
+    // six placeholders taller than the six rows replacing them and shifted the
+    // content up when the data landed — the exact reflow `Skeleton`'s own doc
+    // block argues against. `self-stretch` on the stripe for the same reason:
+    // the real one stretches to the row.
+    <View testID="expense-skeletons">
       {SKELETON_ROWS.map((key) => (
-        <View key={key} className="flex-row items-center gap-2 py-2">
-          <Skeleton className="h-10 w-1 rounded-sm" />
+        <View key={key} className="flex-row items-center gap-2 border-b border-border py-2">
+          <Skeleton className="w-1 self-stretch rounded-sm" />
           <View className="flex-1 gap-1">
             <Skeleton className="h-4 w-1/2" />
             <Skeleton className="h-3 w-1/3" />
