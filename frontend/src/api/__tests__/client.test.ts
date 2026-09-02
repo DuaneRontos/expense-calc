@@ -811,12 +811,13 @@ describe('auth', () => {
   });
 
   /**
-   * The other two outcomes are confirmations, and must not raise it.
+   * A plain HTTP success is a confirmation, and must not raise it.
    *
-   * `revokedSessions: 0` with a note is this client saying "my credential was
-   * already gone" — a sign-out, not a failure, and the doc on `logout()` is
-   * emphatic that reporting it as one tells someone to retry a sign-out that
-   * has already fully happened.
+   * Only that one: the `revokedSessions: 0` already-gone branch is a different
+   * path through `logout()` and has its own test below. This docblock used to
+   * describe both while the body drove only this one, which is how that branch
+   * went unpinned — the same mistake, one level up, as a test asserting less
+   * than its name claims.
    */
   it('does not claim a confirmed sign-out was unconfirmed', async () => {
     const fetchImpl = jest
@@ -837,7 +838,7 @@ describe('auth', () => {
    * That one drives a plain HTTP success, so the `catch` never runs and nothing
    * asserted what the flag is after a *failure* the client could narrow. The
    * gap was invisible: setting the flag as the first line of the `catch`, above
-   * `holdsNoLiveCredential`, left all 452 tests green while telling a user whose
+   * `holdsNoLiveCredential`, left the whole suite green while telling a user whose
    * credential the server had already rejected to worry about a session that is
    * definitively gone — the inversion `logout()`'s doc is emphatic about.
    */
@@ -860,8 +861,15 @@ describe('auth', () => {
 
     const outcome = await client.logout();
 
-    // The sign-out happened; this is the confirmation branch, not a failure.
-    expect(outcome).not.toBeNull();
+    // **The shape, not just non-null.** `not.toBeNull()` and a false flag are
+    // both satisfied by the plain-success path — the mock falls back to
+    // `json(WEB_TOKENS)` for `/auth/logout` — so this test could drift out of
+    // the branch it is named after without saying so. Asserting the note is
+    // what proves the `catch` ran and took the already-gone branch.
+    expect(outcome).toEqual({
+      revokedSessions: 0,
+      note: expect.stringContaining('already gone'),
+    });
     expect(client.signOutWasUnconfirmed()).toBe(false);
   });
 

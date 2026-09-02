@@ -237,7 +237,6 @@ export default function SignIn() {
         </RNText>
       ) : null}
 
-
       <View style={{ flexDirection: 'row', gap: spacing.md, alignItems: 'center' }}>
         {/*
           **`accessibilityLabel` is what actually keeps the name stable.**
