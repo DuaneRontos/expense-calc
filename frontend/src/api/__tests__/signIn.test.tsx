@@ -275,6 +275,41 @@ describe('sign-in screen', () => {
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
+  /**
+   * The sign-out that was never confirmed, said out loud (#142).
+   *
+   * `client.logout()`'s own doc names this screen as where its `null` gets
+   * consumed, and says why the plain signed-out screen is the wrong answer: on
+   * web the refresh cookie may still be live, so a reload builds a fresh client
+   * and signs the user back in on a credential they asked to revoke. The `null`
+   * was returned and dropped, so the sentence the doc calls true was never
+   * said anywhere.
+   */
+  it('says so when the last sign-out could not be confirmed', async () => {
+    jest.spyOn(api, 'signOutWasUnconfirmed').mockReturnValue(true);
+
+    await render(<SignIn />);
+
+    expect(
+      await screen.findByText(/could not confirm the last sign-out/i),
+    ).toBeOnTheScreen();
+  });
+
+  /**
+   * The ordinary arrival, which is most of them — a lapsed session, a first
+   * visit, a sign-out that worked. A warning shown then would train people to
+   * ignore it.
+   */
+  it('says nothing about sign-out on an ordinary arrival', async () => {
+    jest.spyOn(api, 'signOutWasUnconfirmed').mockReturnValue(false);
+
+    await render(<SignIn />);
+
+    // Anchored on a field that exists, so the absence below is a real render.
+    expect(screen.getByLabelText('Username')).toBeOnTheScreen();
+    expect(screen.queryByText(/could not confirm the last sign-out/i)).toBeNull();
+  });
+
   it('announces both outcomes, which appear with no other cue that anything happened', async () => {
     // Both messages arrive after a press, and the button label goes back to
     // "Sign in" — so without a live region a screen-reader user gets silence.

@@ -45,6 +45,22 @@ export default function SignIn() {
   const [warning, setWarning] = useState<string | null>(null);
 
   /**
+   * Whether the sign-out that brought them here went unconfirmed (#142).
+   *
+   * `client.logout()` names this screen as where its `null` gets consumed, and
+   * says why a plain signed-out screen is the wrong answer: on web the refresh
+   * cookie may still be live, so a reload builds a fresh client and signs the
+   * user back in on the credential they asked to revoke. Until now the `null`
+   * was returned and dropped.
+   *
+   * **Read once at mount, not reactively.** It describes how the visitor
+   * arrived, so it should not appear or vanish underneath them while they type
+   * — and `login()` clears the flag, which would otherwise pull the message off
+   * screen at the moment it stops being true but is still worth having read.
+   */
+  const [signOutUnconfirmed] = useState(() => api.signOutWasUnconfirmed());
+
+  /**
    * Where to go once there is a session (#93).
    *
    * The guard puts the interrupted route in the URL, so someone who opened a
@@ -148,6 +164,31 @@ export default function SignIn() {
       </Head>
 
       <RNText style={{ color: palette.text, fontWeight: '600', fontSize: 16 }}>Sign in</RNText>
+
+      {/*
+        No live region, unlike the error and warning below: this one renders
+        above the fields and is present at first paint rather than appearing
+        after a press, so a screen reader reaches it in document order on the
+        way into the form. Announcing it as well would be the same sentence
+        twice.
+
+        **Above the fields on purpose.** Below them it was a claim about how
+        the visitor arrived, and an instruction — "close the browser as well" —
+        sitting under the password box, where someone who tabs straight in and
+        submits never meets it.
+
+        Deliberately not `palette.negative`. Nothing failed that the visitor did
+        — they are signed out on this device — and colouring it as an error next
+        to a form would read as a rejected credential before it is read as a
+        sentence about the last session.
+      */}
+      {signOutUnconfirmed ? (
+        <RNText style={{ color: palette.text, fontSize: 13 }}>
+          We could not confirm the last sign-out with the server, so this browser
+          may still be able to sign back in without a password. Signing in again
+          replaces it; on a shared computer, close the browser as well.
+        </RNText>
+      ) : null}
 
       <FormField
         label="Username"

@@ -786,6 +786,169 @@ describe('auth', () => {
     expect(await client.logout()).toBeNull();
   });
 
+  /**
+   * The `null` a caller has to act on, remembered rather than only returned
+   * (#142).
+   *
+   * `logout()`'s own doc says a caller must surface the `null` rather than show
+   * a plain signed-out screen, because on web the refresh cookie may still be
+   * live and a reload builds a fresh client that signs the user back in. It was
+   * returned and dropped. Recording it here rather than at the one call site
+   * makes every caller right, which is what the contract actually asks for.
+   */
+  it('remembers that a sign-out was never confirmed', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(WEB_TOKENS))
+      .mockRejectedValue(new TypeError('network down'));
+    const client = webClient(fetchImpl);
+
+    await client.login({ username: 'duane', password: 'hunter2' });
+    expect(client.signOutWasUnconfirmed()).toBe(false);
+
+    expect(await client.logout()).toBeNull();
+    expect(client.signOutWasUnconfirmed()).toBe(true);
+  });
+
+  /**
+   * A plain HTTP success is a confirmation, and must not raise it.
+   *
+   * Only that one: the `revokedSessions: 0` already-gone branch is a different
+   * path through `logout()` and has its own test below. This docblock used to
+   * describe both while the body drove only this one, which is how that branch
+   * went unpinned — the same mistake, one level up, as a test asserting less
+   * than its name claims.
+   */
+  it('does not claim a confirmed sign-out was unconfirmed', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(WEB_TOKENS))
+      .mockResolvedValue(json({ revokedSessions: 2, note: 'Signed out everywhere.' }));
+    const client = webClient(fetchImpl);
+
+    await client.login({ username: 'duane', password: 'hunter2' });
+    await client.logout();
+
+    expect(client.signOutWasUnconfirmed()).toBe(false);
+  });
+
+  /**
+   * **The already-gone branch, which the test above does not reach.**
+   *
+   * That one drives a plain HTTP success, so the `catch` never runs and nothing
+   * asserted what the flag is after a *failure* the client could narrow. The
+   * gap was invisible: setting the flag as the first line of the `catch`, above
+   * `holdsNoLiveCredential`, left the whole suite green while telling a user whose
+   * credential the server had already rejected to worry about a session that is
+   * definitively gone — the inversion `logout()`'s doc is emphatic about.
+   */
+  it('does not raise the warning when the credential was already gone', async () => {
+    // The same shape as `reports an expired cookie as signed out`: the refresh
+    // that `logout()` runs first comes back saying there is no cookie, which is
+    // this client's credential being already gone.
+    const fetchImpl = jest.fn().mockImplementation((url: string) => {
+      if (url.endsWith('/auth/refresh')) {
+        return Promise.resolve(
+          problem(400, {
+            type: 'https://expense-calc.invalid/problems/no-refresh-token',
+            title: 'No refresh token',
+          }),
+        );
+      }
+      return Promise.resolve(json(WEB_TOKENS));
+    });
+    const client = webClient(fetchImpl);
+
+    const outcome = await client.logout();
+
+    // **The shape, not just non-null.** `not.toBeNull()` and a false flag are
+    // both satisfied by the plain-success path — the mock falls back to
+    // `json(WEB_TOKENS)` for `/auth/logout` — so this test could drift out of
+    // the branch it is named after without saying so. Asserting the note is
+    // what proves the `catch` ran and took the already-gone branch.
+    expect(outcome).toEqual({
+      revokedSessions: 0,
+      note: expect.stringContaining('already gone'),
+    });
+    expect(client.signOutWasUnconfirmed()).toBe(false);
+  });
+
+  /**
+   * **Never raised off web**, because the sentence it raises is about a cookie
+   * a device does not have.
+   *
+   * `logout()`'s `finally` calls `session.clear()`, which empties the persisted
+   * store on a device — so nothing is left to resume with. A phone with no
+   * signal was being told a browser it does not have might sign back in without
+   * a password: false, and not actionable. Every other test here is a
+   * `webClient`, which is exactly why nothing caught it.
+   */
+  it('does not warn about a browser on a device', async () => {
+    // `clientWith` is the device shape: the default `clientType` and a store
+    // that really holds the refresh token, unlike `webClient`'s.
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(TOKENS))
+      .mockRejectedValue(new TypeError('network down'));
+    const client = clientWith(fetchImpl);
+
+    await client.login({ username: 'duane', password: 'hunter2' });
+
+    // Same failure as the web case: the request never reached the server.
+    expect(await client.logout()).toBeNull();
+    expect(client.signOutWasUnconfirmed()).toBe(false);
+  });
+
+  /**
+   * A retry that works clears the verdict of the one that did not.
+   *
+   * `login()` is not the only way out of the flag: `logout()` is public and a
+   * second call can succeed where the first failed. Without a reset on entry
+   * the client would keep reporting the stale failure, and the sign-in screen
+   * would warn about a cookie that has since been revoked — the false direction,
+   * since it tells someone to worry about a session that is actually gone.
+   */
+  it('drops the verdict when a later sign-out succeeds', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(WEB_TOKENS))
+      .mockRejectedValueOnce(new TypeError('network down'))
+      .mockResolvedValue(json({ revokedSessions: 1, note: 'Signed out everywhere.' }));
+    const client = webClient(fetchImpl);
+
+    await client.login({ username: 'duane', password: 'hunter2' });
+    expect(await client.logout()).toBeNull();
+    expect(client.signOutWasUnconfirmed()).toBe(true);
+
+    // No sign-in between the two, so `login()`'s reset cannot be what clears it.
+    await client.logout();
+
+    expect(client.signOutWasUnconfirmed()).toBe(false);
+  });
+
+  /**
+   * Cleared by `login()`, like `signedOut` and `noSessionToResume`.
+   *
+   * Signing in is the thing that makes the warning moot: whatever cookie was
+   * left live, there is a session now and this client is using it.
+   */
+  it('stops reporting an unconfirmed sign-out once signed in again', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(json(WEB_TOKENS))
+      .mockRejectedValueOnce(new TypeError('network down'))
+      .mockResolvedValue(json(WEB_TOKENS));
+    const client = webClient(fetchImpl);
+
+    await client.login({ username: 'duane', password: 'hunter2' });
+    await client.logout();
+    expect(client.signOutWasUnconfirmed()).toBe(true);
+
+    await client.login({ username: 'duane', password: 'hunter2' });
+
+    expect(client.signOutWasUnconfirmed()).toBe(false);
+  });
+
   it('reports an expired cookie as signed out, not as a failed sign-out', async () => {
     // The second operand of the web claim, and the only claim-deciding operand
     // in the file that nothing asserted. Delete `|| isMissingWebCookie(error)`

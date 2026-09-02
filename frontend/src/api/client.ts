@@ -240,6 +240,32 @@ export class ExpenseCalcClient {
    */
   private noSessionToResume = false;
 
+  /**
+   * Set when `logout()` could not confirm the sign-out, cleared by `login()`.
+   *
+   * The third of these flags, and the only one anything outside this class
+   * reads. {@link logout} already says a caller must surface its `null` rather
+   * than show a plain signed-out screen — on web the refresh cookie may still
+   * be live, and a reload builds a fresh client that signs the user back in on
+   * it. That `null` was returned and dropped at the one call site, so the
+   * sentence the doc calls true was never said.
+   *
+   * **Recorded here rather than at the call site** because the knowledge is
+   * this client's, and because "a caller must surface it" is a rule every
+   * caller has to remember separately. One of them already forgot.
+   *
+   * **In memory, not persisted**, which {@link logout} is explicit about: a
+   * persisted marker would hide a live credential behind a local screen and
+   * call that signed out. So this survives the navigation to `/sign-in` — a
+   * client-side one — and not a reload, which is the honest bound.
+   *
+   * **Only ever true on web**, for the reason {@link logout} scopes itself the
+   * same way: the credential this cannot revoke is the `httpOnly` cookie. A
+   * device's store is cleared by `session.clear()`, so nothing survives to
+   * resume with.
+   */
+  private signOutUnconfirmed = false;
+
   constructor(options: ClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? defaultBaseUrl()).replace(/\/$/, '');
     // Wrapped rather than captured bare, so `fetch` is invoked on the global
@@ -533,6 +559,9 @@ export class ExpenseCalcClient {
       anonymous: true,
     });
     this.signedOut = false;
+    // Whatever cookie was left live, there is a session now and this client is
+    // using it, so the warning has nothing left to warn about.
+    this.signOutUnconfirmed = false;
     // The server has just set the cookie, so the refusal recorded on a cold
     // start no longer describes this browser. Left latched, the session would
     // end silently when this access token expired and nothing was allowed to
@@ -671,6 +700,10 @@ export class ExpenseCalcClient {
    * the exact opposite of the true statement above.
    */
   async logout(): Promise<LogoutResult | null> {
+    // Cleared on entry rather than only set on failure, so a second sign-out
+    // that succeeds does not inherit the first one's verdict.
+    this.signOutUnconfirmed = false;
+
     try {
       // `requiresCredential` because the catch below is the better answer. Left
       // to fall through unauthenticated, a sign-out from a browser holding no
@@ -695,6 +728,20 @@ export class ExpenseCalcClient {
             + "device's own credential was already gone.",
         };
       }
+      // The one outcome that is not a confirmation. The branch above is — a
+      // credential the server had already rejected means the sign-out has
+      // happened — and `logout()`'s doc is emphatic that calling it a failure
+      // tells someone to retry something already done.
+      //
+      // **Web only, matching the scope of the doc above**: "*and on web that
+      // matters*, because the refresh cookie may still be live". The `finally`
+      // below calls `session.clear()`, which on a device empties the persisted
+      // store — so there is nothing left to resume with and no sentence to say.
+      // Raised there, a phone with no signal would be told a browser it does
+      // not have may sign back in without a password, which is false and not
+      // actionable. The device story is a different one — other devices may not
+      // have been revoked — and in a single-user v1 may not be worth telling.
+      this.signOutUnconfirmed = this.clientType === 'web';
       return null;
     } finally {
       // Set even when the call failed, which is the point: local state is
@@ -702,6 +749,16 @@ export class ExpenseCalcClient {
       this.signedOut = true;
       await this.session.clear();
     }
+  }
+
+  /**
+   * Whether the last sign-out went unconfirmed — see {@link signOutUnconfirmed}.
+   *
+   * Read by the sign-in screen, which `logout()`'s doc names as the place this
+   * gets consumed.
+   */
+  signOutWasUnconfirmed(): boolean {
+    return this.signOutUnconfirmed;
   }
 
   // ---- reads ------------------------------------------------------------
