@@ -1,6 +1,6 @@
 import Head from 'expo-router/head';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 
 import { RequestFailure } from '../src/api/RequestFailure';
 import { BarChart } from '../src/charts/BarChart';
@@ -15,7 +15,8 @@ import { bucketLegendTitle, describePeriod, PERIOD_CHOICES } from '../src/report
 import { useDelayedFlag } from '../src/reports/useDelayedFlag';
 import { useManilaToday } from '../src/reports/useManilaToday';
 import { useReports } from '../src/reports/useReports';
-import { palette, spacing } from '../src/theme/tokens';
+import { palette } from '../src/theme/tokens';
+import { cn } from '../src/ui/cn';
 
 /**
  * The three reports of spec §7, from the reporting endpoints (issue #16).
@@ -64,7 +65,7 @@ export default function Overview() {
   const stale = loading && breakdown !== null;
 
   return (
-    <ScrollView contentContainerStyle={styles.screen}>
+    <ScrollView contentContainerClassName="gap-6 p-4">
       <Head>
         <title>{webTitleFor('overview')}</title>
       </Head>
@@ -74,20 +75,22 @@ export default function Overview() {
       {error ? (
         <RequestFailure error={error} onRetry={retry} retrying={loading} />
       ) : !signedIn && !breakdown ? (
-        <View style={{ paddingVertical: spacing.xl * 2, alignItems: 'center' }}>
-          <Text style={{ color: palette.textMuted }}>Sign in to see your reports.</Text>
+        <View className="items-center py-16">
+          <Text className="text-textMuted">Sign in to see your reports.</Text>
         </View>
       ) : showSpinner && !breakdown ? (
-        <View style={{ paddingVertical: spacing.xl * 2, alignItems: 'center' }}>
+        <View className="items-center py-16">
           <ActivityIndicator color={palette.accent} />
         </View>
       ) : !breakdown ? null : (
         // Dimmed rather than replaced while a new period loads, so the charts do
         // not disappear and reflow under the reader on every period change.
-        <View style={{ gap: spacing.lg, opacity: stale ? 0.55 : 1 }}>
-          <View style={{ flexDirection: layout.isExpanded ? 'row' : 'column', gap: spacing.lg }}>
-            <View style={[styles.panel, layout.isExpanded && styles.panelInRow]}>
-              <Text style={styles.heading}>By category</Text>
+        // `opacity-[0.55]` rather than a named step: 55 is not on Tailwind's
+        // scale and the exact value is what the stale-data treatment was.
+        <View className={cn('gap-6', stale ? 'opacity-[0.55]' : 'opacity-100')}>
+          <View className={cn('gap-6', layout.isExpanded ? 'flex-row' : 'flex-col')}>
+            <View testID="panel-by-category" className={cn(PANEL, layout.isExpanded && PANEL_IN_ROW)}>
+              <Text className={HEADING}>By category</Text>
               {breakdown.buckets.length === 0 ? (
                 // Spec §7: an empty period is a 200 with no buckets, and an
                 // answer rather than an error.
@@ -97,8 +100,8 @@ export default function Overview() {
               )}
             </View>
 
-            <View style={[styles.panel, layout.isExpanded && styles.panelInRow]}>
-              <Text style={styles.heading}>Over time</Text>
+            <View className={cn(PANEL, layout.isExpanded && PANEL_IN_ROW)}>
+              <Text className={HEADING}>Over time</Text>
               {overTime && overTime.buckets.length > 0 ? (
                 <BarChart
                   buckets={overTime.buckets}
@@ -112,11 +115,11 @@ export default function Overview() {
             </View>
           </View>
 
-          <View style={styles.panel}>
-            <Text style={styles.heading}>This period against the one before</Text>
+          <View className={PANEL}>
+            <Text className={HEADING}>This period against the one before</Text>
             {comparison ? (
               <>
-                <Text style={{ color: palette.textMuted, fontSize: 12 }}>
+                <Text className="text-[12px] text-textMuted">
                   {formatMoney(comparison.currentTotal)} now,{' '}
                   {formatMoney(comparison.previousTotal)} in {describePeriod(comparison.previous)}
                 </Text>
@@ -135,24 +138,22 @@ export default function Overview() {
 /** "No spending in this period" is an answer, and the client renders it as one. */
 function EmptyPeriod() {
   return (
-    <View style={{ paddingVertical: spacing.lg }}>
-      <Text style={{ color: palette.textMuted }}>No expenses recorded in this period.</Text>
+    <View className="py-6">
+      <Text className="text-textMuted">No expenses recorded in this period.</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { padding: spacing.md, gap: spacing.lg },
-  heading: { fontWeight: '600', color: palette.text },
-  panel: { gap: spacing.sm },
-  /**
-   * Applied **only** when the panels sit in a row, which is why it is a
-   * separate style rather than part of `panel`.
-   *
-   * In a column inside a `ScrollView` the cross axis is unbounded, and `flex: 1`
-   * there resolves to `flexBasis: 0%` — so each panel claims zero height and its
-   * chart draws over the section beneath it. It looks like a z-index problem and
-   * is not one.
-   */
-  panelInRow: { flex: 1 },
-});
+const HEADING = 'font-semibold text-text';
+const PANEL = 'gap-2';
+
+/**
+ * Applied **only** when the panels sit in a row, which is why it is separate
+ * from {@link PANEL}.
+ *
+ * In a column inside a `ScrollView` the cross axis is unbounded, and `flex: 1`
+ * there resolves to `flexBasis: 0%` — so each panel claims zero height and its
+ * chart draws over the section beneath it. It looks like a z-index problem and
+ * is not one.
+ */
+const PANEL_IN_ROW = 'flex-1';

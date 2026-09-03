@@ -5,7 +5,7 @@ import Svg, { Line, Rect } from 'react-native-svg';
 import { ChartLegend } from './ChartLegend';
 import { barModel } from './geometry';
 import { useMeasuredWidth } from './useMeasuredWidth';
-import { palette, spacing } from '../theme/tokens';
+import { palette } from '../theme/tokens';
 import type { ReportBucket } from '../api/types';
 
 /**
@@ -34,7 +34,7 @@ export function BarChart({
   );
 
   return (
-    <View style={{ gap: spacing.md }} onLayout={onLayout}>
+    <View className="gap-4" onLayout={onLayout}>
       {width > 0 && bars.length > 0 ? (
         // Decorative; the legend below carries every value. See DonutChart for
         // why `aria-hidden` sits on a wrapping View rather than on `Svg`.

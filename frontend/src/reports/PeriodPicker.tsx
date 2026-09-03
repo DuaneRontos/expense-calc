@@ -1,7 +1,6 @@
 import { Text, View } from 'react-native';
 
 import { describePeriod, PERIOD_CHOICES } from './periods';
-import { palette, spacing } from '../theme/tokens';
 import { Chip } from '../ui/Chip';
 import { Text as UIText } from '../ui/Text';
 
@@ -24,7 +23,7 @@ export function PeriodPicker({
   period: { from: string; to: string };
 }) {
   return (
-    <View style={{ gap: spacing.xs }}>
+    <View className="gap-1">
       <View
         // Grouped and named so the four radios are announced as one set
         // rather than four loose controls — otherwise a screen reader reads
@@ -40,7 +39,7 @@ export function PeriodPicker({
         // improved.
         accessibilityRole="radiogroup"
         accessibilityLabel="Reporting period"
-        style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}
+        className="flex-row flex-wrap gap-1"
       >
         {PERIOD_CHOICES.map((choice) => {
           const active = choice.key === selected;
@@ -80,7 +79,7 @@ export function PeriodPicker({
       {/* Stated because half-open is not a detail: `to` is the first day *after*
           the window, so a month never bleeds into the next one. Phrased through
           `describePeriod` so every caption on the screen says it identically. */}
-      <Text style={{ color: palette.textMuted, fontSize: 11 }}>{describePeriod(period)}</Text>
+      <Text className="text-[11px] text-textMuted">{describePeriod(period)}</Text>
     </View>
   );
 }

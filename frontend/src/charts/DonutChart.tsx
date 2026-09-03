@@ -6,7 +6,7 @@ import { ChartLegend } from './ChartLegend';
 import { donutModel, holeRadius } from './geometry';
 import { useMeasuredWidth } from './useMeasuredWidth';
 import { formatMoney } from '../money/format';
-import { colorForCategory, palette, spacing } from '../theme/tokens';
+import { colorForCategory } from '../theme/tokens';
 import type { ReportBucket } from '../api/types';
 
 /** Beyond this the ring stops reading as a chart and starts reading as a wall. */
@@ -52,8 +52,8 @@ export function DonutChart({
   const drawnKeys = useMemo(() => new Set(drawable.map((bucket) => bucket.key)), [drawable]);
 
   return (
-    <View style={{ gap: spacing.md }} onLayout={onLayout}>
-      <View style={{ alignItems: 'center' }}>
+    <View className="gap-4" onLayout={onLayout}>
+      <View className="items-center">
         {hasRing ? (
           // The ring is decorative: every value in it is in the legend below,
           // which is the representation assistive technology reads.
@@ -74,10 +74,12 @@ export function DonutChart({
           </View>
         ) : null}
 
-        <Text style={{ fontSize: 20, fontWeight: '600', color: palette.text }}>
+        {/* `text-[20px]`, not `text-xl`: Tailwind pairs its named sizes with a
+            line height the old `fontSize: 20` never had. */}
+        <Text className="text-[20px] font-semibold text-text">
           {formatMoney(total)}
         </Text>
-        <Text style={{ color: palette.textMuted }}>Net for the period</Text>
+        <Text className="text-textMuted">Net for the period</Text>
       </View>
 
       {/*
@@ -90,7 +92,7 @@ export function DonutChart({
       <ChartLegend buckets={buckets} drawnKeys={drawnKeys} />
 
       {excluded.length > 0 ? (
-        <Text style={{ color: palette.textMuted, fontSize: 12 }}>
+        <Text className="text-[12px] text-textMuted">
           {excluded.length === 1 ? 'One category is' : `${excluded.length} categories are`} net
           negative for this period and cannot be drawn as a slice. Their values are listed above.
         </Text>

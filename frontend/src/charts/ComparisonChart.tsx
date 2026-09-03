@@ -5,7 +5,7 @@ import Svg, { Line, Rect } from 'react-native-svg';
 import { comparisonModel } from './geometry';
 import { useMeasuredWidth } from './useMeasuredWidth';
 import { formatMoney, isNegative } from '../money/format';
-import { palette, spacing } from '../theme/tokens';
+import { palette } from '../theme/tokens';
 import type { ComparisonBucket } from '../api/types';
 
 /**
@@ -35,7 +35,7 @@ export function ComparisonChart({
   );
 
   return (
-    <View style={{ gap: spacing.md }} onLayout={onLayout}>
+    <View className="gap-4" onLayout={onLayout}>
       {width > 0 && pairs.length > 0 ? (
         <View aria-hidden>
           <Svg width={width} height={height}>
@@ -65,25 +65,25 @@ export function ComparisonChart({
       ) : null}
 
       {pairs.length === 0 ? (
-        <Text style={{ color: palette.textMuted }}>Nothing recorded in either period.</Text>
+        <Text className="text-textMuted">Nothing recorded in either period.</Text>
       ) : (
-        <View accessibilityRole="list" style={{ gap: spacing.xs }}>
+        <View accessibilityRole="list" className="gap-1">
           <View
             // One entry rather than four: without this the column headings are
             // announced as four separate list items ahead of the data, which is
             // why every row below is wrapped the same way.
             accessible
             accessibilityLabel="Category, this period, prior, change"
-            style={{ flexDirection: 'row', gap: spacing.sm }}
+            className="flex-row gap-2"
           >
-            <Text style={{ flex: 1, color: palette.textMuted, fontSize: 11 }}>Category</Text>
-            <Text style={{ width: 90, textAlign: 'right', color: palette.textMuted, fontSize: 11 }}>
+            <Text className="flex-1 text-[11px] text-textMuted">Category</Text>
+            <Text className="w-[90px] text-right text-[11px] text-textMuted">
               This period
             </Text>
-            <Text style={{ width: 90, textAlign: 'right', color: palette.textMuted, fontSize: 11 }}>
+            <Text className="w-[90px] text-right text-[11px] text-textMuted">
               Prior
             </Text>
-            <Text style={{ width: 90, textAlign: 'right', color: palette.textMuted, fontSize: 11 }}>
+            <Text className="w-[90px] text-right text-[11px] text-textMuted">
               Change
             </Text>
           </View>
@@ -93,9 +93,9 @@ export function ComparisonChart({
               key={pair.key}
               accessible
               accessibilityLabel={`${pair.label}, ${formatMoney(pair.current)} this period, ${formatMoney(pair.previous)} prior, change ${formatMoney(pair.change)}`}
-              style={{ flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.xs }}
+              className="flex-row gap-2 py-1"
             >
-              <Text style={{ flex: 1, color: palette.text }} numberOfLines={1}>
+              <Text className="flex-1 text-text" numberOfLines={1}>
                 {pair.label}
               </Text>
               <Text style={cell(isNegative(pair.current))}>{formatMoney(pair.current)}</Text>

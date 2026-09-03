@@ -2,7 +2,8 @@ import { memo } from 'react';
 import { Text, View } from 'react-native';
 
 import { formatMoney, isNegative } from '../money/format';
-import { colorForCategory, palette, spacing } from '../theme/tokens';
+import { colorForCategory } from '../theme/tokens';
+import { cn } from '../ui/cn';
 import type { ReportBucket } from '../api/types';
 
 /**
@@ -36,9 +37,7 @@ function ChartLegendComponent({
 }) {
   if (buckets.length === 0) {
     return (
-      <Text style={{ color: palette.textMuted, padding: spacing.md }}>
-        No spending in this period.
-      </Text>
+      <Text className="p-4 text-textMuted">No spending in this period.</Text>
     );
   }
 
@@ -48,12 +47,8 @@ function ChartLegendComponent({
     // the application starts" and is treated specially by VoiceOver at launch.
     // A screen with two charts would declare two app summaries. The per-row
     // labels below are what actually carry the data.
-    <View accessibilityRole="list" style={{ gap: spacing.xs }}>
-      {title ? (
-        <Text style={{ fontWeight: '600', color: palette.text, marginBottom: spacing.xs }}>
-          {title}
-        </Text>
-      ) : null}
+    <View accessibilityRole="list" className="gap-1">
+      {title ? <Text className="mb-1 font-semibold text-text">{title}</Text> : null}
 
       {buckets.map((bucket) => {
         const negative = isNegative(bucket.total);
@@ -67,35 +62,29 @@ function ChartLegendComponent({
             // read "Groceries, ₱18,420.00", not stop between the two.
             accessible
             accessibilityLabel={`${bucket.label}, ${amount}`}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: spacing.sm,
-              paddingVertical: spacing.xs,
-            }}
+            className="flex-row items-center gap-2 py-1"
           >
             <View
               // Decorative — the label beside it carries the meaning. A row the
               // chart did not draw keeps the spacer but loses the colour.
               aria-hidden
-              style={{
-                width: 12,
-                height: 12,
-                borderRadius: 3,
-                backgroundColor: drawn ? colorForCategory(bucket.key) : 'transparent',
-              }}
+              className="h-3 w-3 rounded-[3px]"
+              // The category colour comes from the server's bucket key, so
+              // there is no class to write ahead of time — the same runtime
+              // lookup the chart slices use, which is what keeps the swatch and
+              // the slice the same colour.
+              style={{ backgroundColor: drawn ? colorForCategory(bucket.key) : 'transparent' }}
             />
-            <Text style={{ flex: 1, color: palette.text }} numberOfLines={1}>
+            <Text className="flex-1 text-text" numberOfLines={1}>
               {bucket.label}
             </Text>
             <Text
-              style={{
-                color: negative ? palette.negative : palette.text,
-                // Honoured on iOS and web; historically a no-op on Android RN,
-                // so the column may not align there. Cosmetic, and there is no
-                // clean fix short of shipping a mono-digit font.
-                fontVariant: ['tabular-nums'],
-              }}
+              className={cn(negative ? 'text-negative' : 'text-text')}
+              // Honoured on iOS and web; historically a no-op on Android RN,
+              // so the column may not align there. Cosmetic, and there is no
+              // clean fix short of shipping a mono-digit font. No NativeWind
+              // utility maps to it, so it stays a style prop.
+              style={{ fontVariant: ['tabular-nums'] }}
             >
               {amount}
             </Text>
