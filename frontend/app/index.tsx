@@ -100,7 +100,7 @@ export default function Overview() {
               )}
             </View>
 
-            <View className={cn(PANEL, layout.isExpanded && PANEL_IN_ROW)}>
+            <View testID="panel-over-time" className={cn(PANEL, layout.isExpanded && PANEL_IN_ROW)}>
               <Text className={HEADING}>Over time</Text>
               {overTime && overTime.buckets.length > 0 ? (
                 <BarChart

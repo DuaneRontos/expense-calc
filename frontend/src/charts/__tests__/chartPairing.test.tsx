@@ -2,9 +2,10 @@ import { render, screen } from '@testing-library/react-native';
 
 import { BarChart } from '../BarChart';
 import { ChartLegend } from '../ChartLegend';
+import { ComparisonChart } from '../ComparisonChart';
 import { DonutChart } from '../DonutChart';
 import { formatMoney } from '../../money/format';
-import type { ReportBucket } from '../../api/types';
+import type { ComparisonBucket, ReportBucket } from '../../api/types';
 
 /**
  * Spec §10's pairing rule, which had no test at all.
@@ -46,7 +47,47 @@ describe('every chart', () => {
       ).toBeOnTheScreen();
     }
   });
+
+  /**
+   * `ComparisonChart` builds its own inline table rather than using
+   * `ChartLegend`, so nothing shared protects it — it is the one chart where
+   * the §10 pairing is hand-rolled per element, and it was the one with no
+   * coverage. Deleting its list role, its header label and every row label all
+   * passed the full suite.
+   */
+  it('pairs the comparison chart with a table carrying the same values', async () => {
+    await render(<ComparisonChart buckets={pairs} />);
+
+    for (const pair of pairs) {
+      expect(
+        screen.getByLabelText(
+          `${pair.label}, ${formatMoney(pair.current)} this period, ` +
+            `${formatMoney(pair.previous)} prior, change ${formatMoney(pair.change)}`,
+        ),
+      ).toBeOnTheScreen();
+    }
+  });
+
+  it('announces the comparison headings once, not as four list items', async () => {
+    await render(<ComparisonChart buckets={pairs} />);
+
+    expect(screen.getByLabelText('Category, this period, prior, change')).toBeOnTheScreen();
+  });
+
+  it('makes the comparison table a list', async () => {
+    await render(<ComparisonChart buckets={pairs} />);
+
+    const header = screen.getByLabelText('Category, this period, prior, change');
+
+    expect(header.parent?.props.accessibilityRole).toBe('list');
+  });
 });
+
+/** A falling category, so a negative `change` is covered. */
+const pairs: ComparisonBucket[] = [
+  { key: 'GROCERIES', label: 'Groceries', current: '100.00', previous: '80.00', change: '20.00' },
+  { key: 'DINING', label: 'Dining', current: '40.00', previous: '90.00', change: '-50.00' },
+];
 
 describe('ChartLegend', () => {
   it('announces each row as one label rather than two cells', async () => {

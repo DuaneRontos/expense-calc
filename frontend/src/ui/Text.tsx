@@ -25,6 +25,28 @@ import { cn } from './cn';
  */
 export const TextClassContext = createContext<string | undefined>(undefined);
 
+/**
+ * **Use this for button labels. Use React Native's own `Text` for everything
+ * else.**
+ *
+ * This component prepends `text-text text-base` — 16 **and** a 24px line
+ * height. Plain prose almost never wants that: the styles being migrated across
+ * this codebase set a `fontSize` and nothing else, so routing them through here
+ * silently makes every line a step larger and taller, and each one then needs an
+ * explicit size class to undo it.
+ *
+ * React Native's `Text` accepts `className` just as well, with no base at all —
+ * so omitting a size class gives exact parity by construction rather than by
+ * remembering. What this component adds over that is {@link TextClassContext},
+ * which is what a `Button` needs and a paragraph does not.
+ *
+ * That distinction cost four migrations to learn: `Label` (#114), `ExpenseRow`
+ * (#116), the shell title and nav label (#117), and the reporting frame (#118).
+ * The same applies to Tailwind's *named* sizes, which are pairs — `text-lg` is
+ * 18 and a 28px line height, `text-xs` is 12 and 16. Where a size was explicit
+ * and bare, write it bare: `text-[18px]`, not `text-lg`.
+ */
+
 export type TextProps = RNTextProps & {
   className?: string;
   /**

@@ -3,7 +3,6 @@ import { Text, View } from 'react-native';
 
 import { formatMoney, isNegative } from '../money/format';
 import { colorForCategory } from '../theme/tokens';
-import { cn } from '../ui/cn';
 import type { ReportBucket } from '../api/types';
 
 /**
@@ -79,7 +78,7 @@ function ChartLegendComponent({
               {bucket.label}
             </Text>
             <Text
-              className={cn(negative ? 'text-negative' : 'text-text')}
+              className={negative ? 'text-negative' : 'text-text'}
               // Honoured on iOS and web; historically a no-op on Android RN,
               // so the column may not align there. Cosmetic, and there is no
               // clean fix short of shipping a mono-digit font. No NativeWind
