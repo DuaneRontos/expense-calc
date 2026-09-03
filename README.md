@@ -105,6 +105,22 @@ in any money path, `BigDecimal` compared with `compareTo` rather than `equals`.
 
 ## Running it
 
+**To run the whole thing — database, backend and app — see
+[`docs/RUNNING-LOCALLY.md`](docs/RUNNING-LOCALLY.md).** It has the IntelliJ and
+Docker Desktop path step by step, and the four-command version if you would
+rather stay in a terminal. Run configurations for both halves are committed in
+`.run/`, so IntelliJ picks them up when you open the project.
+
+The short version:
+
+```bash
+docker run --name expensecalc-db -e POSTGRES_DB=expensecalc -e POSTGRES_USER=expensecalc -e POSTGRES_PASSWORD=expensecalc -p 5432:5432 -d postgres:17
+cd backend && ./mvnw spring-boot:run -Dspring-boot.run.profiles=insecure-local
+cd frontend && npm ci && npm run web     # http://localhost:8081, sign in as dev / dev
+```
+
+Just the build:
+
 ```bash
 cd backend && ./mvnw verify              # compile + test (tests need Docker)
 cd backend && ./mvnw -DskipTests package # compile only, no Docker required

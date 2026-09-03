@@ -1,0 +1,38 @@
+<component name="ProjectRunConfigurationManager">
+  <!--
+    Shared run configuration, committed on purpose.
+
+    `.idea/` is gitignored and `.run/` is not, which is IntelliJ's own split
+    between per-developer state and project-level configuration. These four
+    files are the second kind: they encode the working directory, the profile
+    and the goal, none of which are anyone's personal preference.
+
+    See docs/RUNNING-LOCALLY.md for what each one needs running first.
+  -->
+  <configuration default="false" name="Backend (insecure-local)" type="MavenRunConfiguration" factoryName="Maven">
+    <MavenSettings>
+      <option name="myGeneralSettings" />
+      <option name="myRunnerSettings" />
+      <option name="myRunnerParameters">
+        <MavenRunnerParameters>
+          <option name="cmdOptions" value="-Dspring-boot.run.profiles=insecure-local" />
+          <option name="profiles">
+            <set />
+          </option>
+          <option name="goals">
+            <list>
+              <option value="spring-boot:run" />
+            </list>
+          </option>
+          <option name="pomFileName" value="pom.xml" />
+          <option name="projectsCmdOptionValues">
+            <list />
+          </option>
+          <option name="resolveToWorkspace" value="false" />
+          <option name="workingDirPath" value="$PROJECT_DIR$/backend" />
+        </MavenRunnerParameters>
+      </option>
+    </MavenSettings>
+    <method v="2" />
+  </configuration>
+</component>

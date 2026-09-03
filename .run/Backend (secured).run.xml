@@ -1,0 +1,33 @@
+<component name="ProjectRunConfigurationManager">
+  <!--
+    The deployed behaviour. Needs APP_AUTH_USERNAME and APP_AUTH_PASSWORD_HASH
+    in the environment or SecurityStartupGuard refuses to boot — which is the
+    point of it. See "Option B" in docs/RUNNING-LOCALLY.md for generating a hash.
+  -->
+  <configuration default="false" name="Backend (secured)" type="MavenRunConfiguration" factoryName="Maven">
+    <MavenSettings>
+      <option name="myGeneralSettings" />
+      <option name="myRunnerSettings" />
+      <option name="myRunnerParameters">
+        <MavenRunnerParameters>
+          <option name="cmdOptions" />
+          <option name="profiles">
+            <set />
+          </option>
+          <option name="goals">
+            <list>
+              <option value="spring-boot:run" />
+            </list>
+          </option>
+          <option name="pomFileName" value="pom.xml" />
+          <option name="projectsCmdOptionValues">
+            <list />
+          </option>
+          <option name="resolveToWorkspace" value="false" />
+          <option name="workingDirPath" value="$PROJECT_DIR$/backend" />
+        </MavenRunnerParameters>
+      </option>
+    </MavenSettings>
+    <method v="2" />
+  </configuration>
+</component>
