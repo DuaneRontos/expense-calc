@@ -9,6 +9,16 @@ conventions the client shares with the backend.
 
 ## Running
 
+**The app needs the API running to do anything.** For the whole stack —
+Postgres, backend, then this — see
+[`docs/RUNNING-LOCALLY.md`](../docs/RUNNING-LOCALLY.md), which has the IntelliJ
+and Docker Desktop path as well as the terminal one.
+
+The client finds the API on its own: `http://localhost:8080` on web and iOS,
+and `http://10.0.2.2:8080` on an Android emulator, where `localhost` is the
+emulator itself. `EXPO_PUBLIC_API_URL` overrides it — that prefix is the only
+one Expo inlines into the bundle.
+
 ```bash
 npm install
 npm run web        # desktop web target

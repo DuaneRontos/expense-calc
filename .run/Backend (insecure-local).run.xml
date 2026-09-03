@@ -1,0 +1,28 @@
+<component name="ProjectRunConfigurationManager">
+  <!--
+    Shared run configuration, committed on purpose.
+
+    `.idea/` is gitignored and `.run/` is not, which is IntelliJ's own split
+    between per-developer state and project-level configuration. These five
+    files are the second kind: they encode the working directory, the profile
+    and the goal, none of which are anyone's personal preference.
+
+    **Spring Boot type, not Maven.** `spring-boot:run` through Maven forks a
+    second JVM, so the debugger does not attach, the stop button leaves the
+    child running, and the Endpoints and Beans tool windows stay empty. This
+    type runs the main class in the IDE's own process and all three work. The
+    cost is that it needs the Spring plugin, so it is Ultimate-only — on
+    Community use the command line, which docs/RUNNING-LOCALLY.md gives beside
+    every configuration here.
+
+    See docs/RUNNING-LOCALLY.md for what each one needs running first.
+  -->
+  <configuration default="false" name="Backend (insecure-local)" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+    <option name="ACTIVE_PROFILES" value="insecure-local" />
+    <module name="expense-calc-backend" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="com.duanerontos.expensecalc.ExpenseCalcBackendApplication" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

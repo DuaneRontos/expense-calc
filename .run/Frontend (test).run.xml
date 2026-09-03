@@ -1,0 +1,17 @@
+<component name="ProjectRunConfigurationManager">
+  <!--
+    jest. The other three checks CI runs are `npm run lint`, `npm run typecheck`
+    and `npm run export:check` — the last bundles for iOS, Android and web and
+    is the only one that proves the JS compiles for a device.
+  -->
+  <configuration default="false" name="Frontend (test)" type="js.build_tools.npm">
+    <package-json value="$PROJECT_DIR$/frontend/package.json" />
+    <command value="run" />
+    <scripts>
+      <script value="test" />
+    </scripts>
+    <node-interpreter value="project" />
+    <envs />
+    <method v="2" />
+  </configuration>
+</component>

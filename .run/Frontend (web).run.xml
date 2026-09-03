@@ -1,0 +1,20 @@
+<component name="ProjectRunConfigurationManager">
+  <!--
+    Expo's web target. Serves on http://localhost:8081, which is the origin the
+    `insecure-local` profile allows through CORS — change the port and the
+    browser starts refusing the API calls in a way that looks like the backend
+    is down.
+
+    Run `npm ci` in frontend/ once before this works.
+  -->
+  <configuration default="false" name="Frontend (web)" type="js.build_tools.npm">
+    <package-json value="$PROJECT_DIR$/frontend/package.json" />
+    <command value="run" />
+    <scripts>
+      <script value="web" />
+    </scripts>
+    <node-interpreter value="project" />
+    <envs />
+    <method v="2" />
+  </configuration>
+</component>
