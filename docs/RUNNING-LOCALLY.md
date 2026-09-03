@@ -1,4 +1,4 @@
-# Running the backend on your machine
+# Running expense-calc on your machine
 
 Everything here has been exercised in CI. What CI cannot tell you is whether it
 works on *your* laptop, which is what this is for.
@@ -243,7 +243,10 @@ any caller choose their own bucket, which is a bypass rather than a limit.
 The application needs a PostgreSQL on `localhost:5432`. The quickest one:
 
 ```bash
-docker run --name expensecalc-db -e POSTGRES_DB=expensecalc -e POSTGRES_USER=expensecalc -e POSTGRES_PASSWORD=expensecalc -p 5432:5432 -d postgres:17
+docker start expensecalc-db 2>/dev/null || \
+  docker run --name expensecalc-db \
+    -e POSTGRES_DB=expensecalc -e POSTGRES_USER=expensecalc -e POSTGRES_PASSWORD=expensecalc \
+    -p 5432:5432 -d postgres:17
 ```
 
 Then:
@@ -270,6 +273,15 @@ path to use if you want to click Run rather than keep three terminals.
 Run configurations for all of it are committed in `.run/`, so IntelliJ picks
 them up when you open the project. They appear in the run dropdown beside the
 green arrow.
+
+**What is verified here, and what is not.** The command-line path in this
+section was run end to end on macOS with JDK 24 and Node 22: database up,
+backend started, Expo bundled, signed in as `dev`, and the three report
+endpoints answered 200 to the browser with the CORS headers attached. The
+`.run/` files are IntelliJ's own serialization — copied from a working
+configuration rather than written by hand — but *pressing the green arrow* is
+still unverified, so treat the command beside each one as the ground truth if
+they ever disagree.
 
 ### 0. Open it once
 
@@ -305,8 +317,27 @@ the GUI path is *Images → search `postgres` → Pull `17` → Run*, then open
 **Or one command**, which is less clicking and identical in effect:
 
 ```bash
-docker run --name expensecalc-db -e POSTGRES_DB=expensecalc -e POSTGRES_USER=expensecalc -e POSTGRES_PASSWORD=expensecalc -p 5432:5432 -d postgres:17
+docker start expensecalc-db 2>/dev/null || \
+  docker run --name expensecalc-db \
+    -e POSTGRES_DB=expensecalc -e POSTGRES_USER=expensecalc -e POSTGRES_PASSWORD=expensecalc \
+    -p 5432:5432 -d postgres:17
 ```
+
+**`docker start` first, and that ordering is the whole point.** `docker run`
+creates a container, so it works exactly once — the second time it fails with
+
+```
+docker: Error response from daemon: Conflict. The container name
+"/expensecalc-db" is already in use by container "cb3a38f1f628…". You have to
+remove (or rename) that container to be able to reuse that name.
+```
+
+which is not a database problem and reads like one. A stopped container is the
+normal state after a reboot or a `docker stop`, so the *second* run of this
+runbook is the common case rather than the exception. `docker start` on an
+already-running container is a no-op that exits 0, so the line above is safe to
+paste whatever state you are in. In Docker Desktop the equivalent is pressing
+▶ on the existing `expensecalc-db` row rather than creating another container.
 
 Either way it then shows up under **Services → Docker → Containers** inside
 IntelliJ, where you can read its logs without leaving the IDE.
@@ -322,6 +353,21 @@ docker exec expensecalc-db pg_isready -U expensecalc
 boot, so there is no migration step of your own to run.
 
 ### 2. Start the backend
+
+**If you already made your own `Backend (insecure-local)`, delete it first.**
+The shared configurations in `.run/` use the same two names, so you end up with
+two identically-named entries in the dropdown and no way to tell which one the
+green arrow is about to run. Yours lives in `.idea/workspace.xml`, which is
+gitignored personal state; the `.run/` copies are the project's. **Run → Edit
+Configurations**, remove the duplicates from the top-level list, and the shared
+ones remain.
+
+Both are **Spring Boot** run configurations rather than Maven ones, which
+matters more than it sounds. `mvnw spring-boot:run` forks a second JVM, so
+breakpoints never bind, the stop button orphans the child process, and the
+Endpoints and Beans tool windows stay empty. The Spring Boot type runs the main
+class in-process and all three work. It needs the Spring plugin, so it is
+Ultimate-only — on Community, use the command line below.
 
 Pick **`Backend (insecure-local)`** from the run dropdown and press the green
 arrow. That is the profile you want unless you are specifically testing auth:
@@ -384,10 +430,21 @@ anything that is not a local database.
 
 ### The whole thing, in four terminal commands
 
-If you would rather skip the IDE entirely:
+If you would rather skip the IDE entirely. **Three of these need their own
+terminal tab, and every `cd` is relative to the repository root** — so start
+each tab with `cd ~/IdeaProjects/expense-calc` (or wherever you cloned it).
+
+Pasting all four into one terminal does not work, and fails in a way that
+blames the wrong thing: command 2 never returns, because a dev server running
+in the foreground *is* the success case. Ctrl-C to get the prompt back kills the
+backend, and you are now inside `backend/`, so the next line dies on
+`cd: no such file or directory: frontend`. Nothing is wrong with the frontend.
 
 ```bash
-docker run --name expensecalc-db -e POSTGRES_DB=expensecalc -e POSTGRES_USER=expensecalc -e POSTGRES_PASSWORD=expensecalc -p 5432:5432 -d postgres:17
+docker start expensecalc-db 2>/dev/null || \
+  docker run --name expensecalc-db \
+    -e POSTGRES_DB=expensecalc -e POSTGRES_USER=expensecalc -e POSTGRES_PASSWORD=expensecalc \
+    -p 5432:5432 -d postgres:17
 ```
 
 ```bash
@@ -401,6 +458,9 @@ cd frontend && npm ci
 ```bash
 cd frontend && npm run web
 ```
+
+Commands **2 and 4 stay in the foreground and never return** — that is them
+working. Command 3 is first-run only. Then open `http://localhost:8081`.
 
 ### Running the tests from the IDE
 
@@ -500,6 +560,22 @@ and an unclassified row is visible and fixable.
 
 **Tests fail with a Docker or Testcontainers error.** The daemon is not running.
 `./mvnw -DskipTests package` compiles without it, and CI runs the rest.
+
+**`docker run` says the container name is already in use.** You have run this
+before. The container exists and is merely stopped — `docker start
+expensecalc-db` rather than creating a second one. The commands in this file
+already lead with that.
+
+**The run configurations are not in the dropdown.** They are read from `.run/`
+at project load, so a branch switch that adds them needs **File → Reload All
+from Disk**, or a Maven reimport. If instead you see *two* entries with the same
+name, one of them is your own in `.idea/workspace.xml` — see step 2.
+
+**`Backend (secured)` boots but sign-in always fails.** The
+`APP_AUTH_PASSWORD_HASH` in the run configuration is a placeholder rather than a
+real hash. `Argon2PasswordEncoder` cannot parse `$argon2id$` on its own, and the
+guard only checks the variable is set, so this surfaces at sign-in rather than
+at startup. Generate one with the command in Option B.
 
 **The app fails to start with a connection error.** Nothing is listening on
 5432, or the credentials differ from the `docker run` above. They are read from
